@@ -50,12 +50,14 @@ export default function Login() {
 
       <Card className="w-full max-w-sm p-7 sm:p-8">
         <h2 className="font-display mb-1 text-lg font-semibold text-foreground">거래처 로그인</h2>
+        {/* #27: 안내문 추가 */}
         <p className="mb-6 text-xs text-muted-foreground">
-          로그인은 가입 시 등록한 상호명으로 합니다.
+          가입 시 입력한 상호명으로 로그인하세요 (이메일 아님)
         </p>
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="businessName">상호명</Label>
+            {/* #27: 입력란 라벨 강화 */}
+            <Label htmlFor="businessName">상호명 (로그인 ID)</Label>
             <Input
               id="businessName"
               type="text"
@@ -77,6 +79,12 @@ export default function Login() {
               required
               data-testid="input-password"
             />
+            {/* #27: 비밀번호 찾기 링크 */}
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground" data-testid="link-forgot-password">
+                비밀번호를 잊으셨나요?
+              </Link>
+            </div>
           </div>
           <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

@@ -334,6 +334,60 @@ export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload) {
   }
 }
 
+// ===== V8 #26: 비밀번호 재설정 안내 메일 =====
+export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) {
+  const t = getTransporter();
+  if (!t) {
+    console.warn("[email] SMTP_USER/SMTP_PASS 미설정 — 비밀번호 재설정 메일 발송 건너끨");
+    return;
+  }
+
+  const html = `<!doctype html>
+<html lang="ko"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #ebebeb;">
+    <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
+      <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>
+      <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">비밀번호 재설정 안내</div>
+    </div>
+    <div style="padding:24px 28px;font-size:14px;line-height:1.9;color:#222;">
+      <p>니트커피 도매 거래처 시스템에서 비밀번호 재설정이 요청되었습니다.</p>
+      <p>아래 버튼을 클릭하여 1시간 이내에 비밀번호를 재설정해 주세요.<br>요청하지 않으셨다면 이 메일을 무시하셨도 됩니다.</p>
+      <div style="margin:28px 0;text-align:center;">
+        <a href="${resetUrl}" style="display:inline-block;padding:13px 32px;background:#111;color:#fff;text-decoration:none;font-size:14px;letter-spacing:0.06em;">비밀번호 재설정하기</a>
+      </div>
+      <p style="font-size:12px;color:#888;">또는 아래 링크를 브라우저에 직접 입력하세요:<br>
+        <a href="${resetUrl}" style="color:#111;word-break:break-all;">${resetUrl}</a>
+      </p>
+      <p style="font-size:12px;color:#aaa;">이 링크는 발송 후 1시간 동안만 유효합니다.</p>
+    </div>
+    <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #ebebeb;text-align:center;font-size:11px;color:#999;">
+      Knit Coffee Wholesale &middot; 자동 발송 메일
+    </div>
+  </div>
+</body></html>`;
+
+  const text =
+    `[니트커피 도매] 비밀번호 재설정 안내\n\n` +
+    `비밀번호 재설정을 위해 아래 링크를 클릭하세요 (1시간 유효).\n\n` +
+    `${resetUrl}\n\n` +
+    `요청하지 않으셨다면 이 메일을 무시하세요.\n\n` +
+    `— 니트커피\n`;
+
+  try {
+    await t.sendMail({
+      from: `"니트커피" <${SMTP_USER}>`,
+      to: toEmail,
+      subject: `[니트커피 도매] 비밀번호 재설정 안내`,
+      text,
+      html,
+    });
+    console.log(`[email] 비밀번호 재설정 메일 전송 완료 → ${toEmail}`);
+  } catch (err) {
+    console.error("[email] 비밀번호 재설정 메일 발송 실패:", err);
+  }
+}
+
 function escapeHtml(s: string) {
   return String(s).replace(/[&<>"']/g, (c) =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",

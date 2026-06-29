@@ -2,6 +2,16 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// ===== 비밀번호 재설정 토큰 (#26) =====
+export const passwordResetTokens = sqliteTable("password_reset_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: integer("expires_at").notNull(),
+  usedAt: integer("used_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
 // ===== 거래처(도매 고객) + 관리자 통합 사용자 =====
 export const customers = sqliteTable("customers", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -168,6 +178,8 @@ export const activityLogs = sqliteTable("activity_logs", {
 });
 
 // ===== Insert schemas =====
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
 export const insertPaymentSchema = z.object({
   customerId: z.number().int().positive(),
   amount: z.number().int().positive("입금액을 입력해 주세요."),
@@ -187,10 +199,30 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
 export const registerSchema = insertCustomerSchema.extend({
   email: z.string().email("올바른 이메일을 입력해 주세요."),
   password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다."),
+  passwordConfirm: z.string().min(1, "비밀번호 확인을 입력해 주세요."),
   businessName: z.string().min(1, "상호를 입력해 주세요."),
   managerName: z.string().min(1, "담당자명을 입력해 주세요."),
   phone: z.string().min(1, "연락처를 입력해 주세요."),
+}).refine((d) => d.password === d.passwordConfirm, {
+  message: "비밀번호가 일치하지 않습니다.",
+  path: ["passwordConfirm"],
 });
+
+// 비밀번호 찾기 (#26)
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("올바른 이메일을 입력해 주세요."),
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, "토큰이 필요합니다."),
+  password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다."),
+  passwordConfirm: z.string().min(1, "비밀번호 확인을 입력해 주세요."),
+}).refine((d) => d.password === d.passwordConfirm, {
+  message: "비밀번호가 일치하지 않습니다.",
+  path: ["passwordConfirm"],
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
 // 거래처 로그인: 상호명 + 비밀번호
 export const loginSchema = z.object({

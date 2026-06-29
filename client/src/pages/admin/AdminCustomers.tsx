@@ -18,7 +18,7 @@ import { won, fmtDate, errMsg } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PublicCustomer, Order, OrderItem, CustomerBalance, Product, CustomerPrice } from "@shared/schema";
-import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil } from "lucide-react";
+import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail } from "lucide-react";
 
 export default function AdminCustomers() {
   const [, navigate] = useLocation();
@@ -302,7 +302,10 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
           <Field label="기본 배송지">
             <Input value={form.defaultAddress} onChange={set("defaultAddress")} placeholder="배송지 주소" data-testid="input-edit-default-address" />
           </Field>
-          <p className="text-[11px] text-muted-foreground">비밀번호는 이 화면에서 변경할 수 없습니다.</p>
+          <div className="space-y-1.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+            <p className="text-[11px] text-muted-foreground">비밀번호는 이 화면에서 변경할 수 없습니다.</p>
+            <ResetPasswordButton customer={customer} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={editMut.isPending} data-testid="button-edit-customer-cancel">
@@ -318,6 +321,49 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
   );
 }
 
+
+// V8 #29: 비밀번호 재설정 버튼
+function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) {
+  const { toast } = useToast();
+  const [pending, setPending] = useState(false);
+
+  if (!customer) return null;
+
+  async function handleReset() {
+    if (!confirm(`${customer!.businessName}의 이메일(${customer!.email || "없음"})로 비밀번호 재설정 메일을 발송하시겠습니까?`)) return;
+    if (!customer!.email) {
+      toast({ title: "이메일 없음", description: "거래처에 등록된 이메일이 없습니다.", variant: "destructive" });
+      return;
+    }
+    setPending(true);
+    try {
+      const res = await apiRequest("POST", `/api/admin/customers/${customer!.id}/reset-password`, {});
+      if (res.ok) {
+        toast({ title: "재설정 메일을 발송했습니다", description: `${customer!.email}으로 발송됨` });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: "발송 실패", description: (data as any)?.message ?? "", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "발송 실패", description: e?.message ?? "", variant: "destructive" });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleReset}
+      disabled={pending}
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+      data-testid="button-send-reset-email"
+    >
+      {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+      비밀번호 재설정 메일 보내기
+    </button>
+  );
+}
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (

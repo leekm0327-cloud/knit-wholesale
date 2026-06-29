@@ -20,18 +20,39 @@ export default function Register() {
     phone: "",
     email: "",
     password: "",
+    passwordConfirm: "",
     bizRegNo: "",
-    taxEmail: "",
     defaultAddress: "",
   });
+  // 실시간 비밀번호 불일치 표시
+  const [pwMismatch, setPwMismatch] = useState(false);
 
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: string, v: string) => {
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      // 비밀번호 확인 필드 입력 중 실시간 검증
+      if (k === "passwordConfirm" || k === "password") {
+        const pw = k === "password" ? v : next.password;
+        const pwc = k === "passwordConfirm" ? v : next.passwordConfirm;
+        setPwMismatch(pwc !== "" && pw !== pwc);
+      }
+      return next;
+    });
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.password !== form.passwordConfirm) {
+      toast({ title: "비밀번호 불일치", description: "비밀번호와 비밀번호 확인이 일치하지 않습니다.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/register", { ...form, paymentMethod: "transfer" });
+      const res = await apiRequest("POST", "/api/auth/register", {
+        ...form,
+        paymentMethod: "transfer",
+        // taxEmail은 서버에서 email과 동일하게 세팅됨 (#24)
+      });
       const user = await res.json();
       queryClient.setQueryData(["/api/auth/me"], user);
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
@@ -59,11 +80,12 @@ export default function Register() {
 
       <Card className="w-full max-w-lg p-7 sm:p-8">
         <div className="mb-5 rounded-md border border-border bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground break-keep">
-          로그인은 입력하신 <strong className="font-semibold text-foreground">상호명</strong>으로 진행됩니다. 이메일은 세금계산서 발송용입니다.
+          로그인은 입력하신 <strong className="font-semibold text-foreground">상호명</strong>으로 진행됩니다.
         </div>
         <form onSubmit={submit} className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="상호 *" helper="로그인 시 사용할 상호명입니다">
+            {/* #25: 상호명 라벨에 "(로그인 ID로 사용)" 추가 */}
+            <Field label="상호명 (로그인 ID로 사용) *">
               <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} required placeholder="예: 니트커피" data-testid="input-businessName" />
             </Field>
             <Field label="담당자명 *">
@@ -79,14 +101,27 @@ export default function Register() {
 
           <div className="border-t border-border pt-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="로그인 이메일 *">
+              {/* #24: 이메일 1칸으로 통일 */}
+              <Field label="이메일 *" helper="이 이메일로 세금계산서가 발행되고, 비밀번호 재설정 메일이 발송됩니다" colSpan>
                 <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} required placeholder="business@example.com" data-testid="input-email" />
               </Field>
+              {/* #28: 비밀번호 확인 필드 추가 */}
               <Field label="비밀번호 * (6자 이상)">
                 <Input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} required placeholder="비밀번호" data-testid="input-password" />
               </Field>
-              <Field label="세금계산서 이메일">
-                <Input type="email" value={form.taxEmail} onChange={(e) => set("taxEmail", e.target.value)} placeholder="tax@example.com" data-testid="input-taxEmail" />
+              <Field label="비밀번호 확인 *">
+                <Input
+                  type="password"
+                  value={form.passwordConfirm}
+                  onChange={(e) => set("passwordConfirm", e.target.value)}
+                  required
+                  placeholder="비밀번호 확인"
+                  data-testid="input-passwordConfirm"
+                  className={pwMismatch ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {pwMismatch && (
+                  <p className="text-[11px] text-destructive">비밀번호가 일치하지 않습니다.</p>
+                )}
               </Field>
               <Field label="기본 배송지">
                 <Input value={form.defaultAddress} onChange={(e) => set("defaultAddress", e.target.value)} placeholder="배송 받으실 주소" data-testid="input-defaultAddress" />
@@ -94,7 +129,7 @@ export default function Register() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading} data-testid="button-register">
+          <Button type="submit" className="w-full" disabled={loading || pwMismatch} data-testid="button-register">
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             가입하고 시작하기
           </Button>
@@ -109,9 +144,9 @@ export default function Register() {
   );
 }
 
-function Field({ label, children, helper }: { label: string; children: React.ReactNode; helper?: string }) {
+function Field({ label, children, helper, colSpan }: { label: string; children: React.ReactNode; helper?: string; colSpan?: boolean }) {
   return (
-    <div className="space-y-1.5">
+    <div className={`space-y-1.5${colSpan ? " sm:col-span-2" : ""}`}>
       <Label className="text-xs">{label}</Label>
       {children}
       {helper && <p className="text-[11px] leading-snug text-muted-foreground break-keep">{helper}</p>}

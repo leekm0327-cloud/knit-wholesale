@@ -12,6 +12,8 @@ import { Loader2 } from "lucide-react";
 
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import Catalog from "@/pages/Catalog";
 import ProductDetail from "@/pages/ProductDetail";
 import Board from "@/pages/Board";
@@ -68,6 +70,8 @@ function AppRouter() {
       <Route path="/" component={Login} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
 
       <Route path="/catalog">
         <RequireCustomer><Catalog /></RequireCustomer>

@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -19,6 +19,7 @@ import type {
   CustomerPrice,
   ActivityLog,
   LogActivityInput,
+  PasswordResetToken,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -167,6 +168,15 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at DESC);
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_prt_token ON password_reset_tokens(token);
 `);
 
 // ===== 멱등 컬럼 추가 마이그레이션 =====
@@ -390,6 +400,11 @@ export interface IStorage {
   // 활동 로그 (#10)
   logActivity(input: LogActivityInput): Promise<ActivityLog>;
   listActivityLogs(filter?: { action?: string; actorEmail?: string; targetType?: string; from?: number; to?: number; page?: number; limit?: number }): Promise<{ logs: ActivityLog[]; total: number }>;
+  // 비밀번호 재설정 토큰 (#26)
+  createPasswordResetToken(customerId: number, token: string, expiresAt: number): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markPasswordResetTokenUsed(tokenId: number): Promise<void>;
+  updateCustomerPassword(customerId: number, hashedPassword: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -822,6 +837,24 @@ export class DatabaseStorage implements IStorage {
       })
       .returning()
       .get();
+  }
+
+  // ===== 비밀번호 재설정 토큰 (#26) =====
+  async createPasswordResetToken(customerId: number, token: string, expiresAt: number): Promise<PasswordResetToken> {
+    return db
+      .insert(passwordResetTokens)
+      .values({ customerId, token, expiresAt, usedAt: null, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    return db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token)).get();
+  }
+  async markPasswordResetTokenUsed(tokenId: number): Promise<void> {
+    db.update(passwordResetTokens).set({ usedAt: Date.now() }).where(eq(passwordResetTokens.id, tokenId)).run();
+  }
+  async updateCustomerPassword(customerId: number, hashedPassword: string): Promise<void> {
+    db.update(customers).set({ password: hashedPassword }).where(eq(customers.id, customerId)).run();
   }
 
   async listActivityLogs(filter?: {

@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { storage, seed, db } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
-import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail } from "./email";
+import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail } from "./email";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
@@ -21,11 +21,14 @@ import {
   insertProductSchema,
   insertPaymentSchema,
   ecountSettingsInputSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
   customers,
   type Customer,
   type PublicCustomer,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import crypto from "node:crypto";
 
 declare module "express-session" {
   interface SessionData {
@@ -161,8 +164,13 @@ export async function registerRoutes(
     const dupName = await storage.getCustomerByBusinessName(parsed.data.businessName);
     if (dupName)
       return res.status(400).json({ message: "이미 등록된 상호명입니다. 지점명을 추가하는 등 구분되는 상호명으로 입력해 주세요." });
+    // #28: 비밀번호 확인 (zod refine에서 이미 검증되지만 서버에서도 재검증)
+    if (parsed.data.password !== parsed.data.passwordConfirm)
+      return res.status(400).json({ message: "비밀번호가 일치하지 않습니다." });
     const hashed = bcrypt.hashSync(parsed.data.password, 10);
-    const customer = await storage.createCustomer({ ...parsed.data, password: hashed, role: "customer" });
+    // #24: taxEmail을 email과 동일하게 세팅
+    const { passwordConfirm: _pc, ...restData } = parsed.data;
+    const customer = await storage.createCustomer({ ...restData, taxEmail: parsed.data.email, password: hashed, role: "customer" });
     req.session.userId = customer.id;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
@@ -1232,6 +1240,80 @@ export async function registerRoutes(
     const beforeTs = Date.now() - days * 24 * 60 * 60 * 1000;
     const deleted = await storage.deleteOldEcountLogs(beforeTs);
     res.json({ deleted });
+  });
+
+  // ===== V8 #26: 비밀번호 찾기 =====
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+
+    // 등록되지 않은 이메일이어도 동일 메시지 (이메일 존재 여부 누출 방지)
+    const customer = await storage.getCustomerByEmail(parsed.data.email);
+    if (customer && customer.role === "customer") {
+      const token = crypto.randomBytes(32).toString("hex"); // 64자 hex
+      const expiresAt = Date.now() + 60 * 60 * 1000; // 1시간
+      await storage.createPasswordResetToken(customer.id, token, expiresAt);
+
+      // 동적 도메인 처리
+      const origin = process.env.PUBLIC_URL ||
+        (req.headers.origin as string) ||
+        `${req.protocol}://${req.headers.host}`;
+      const resetUrl = `${origin}/#/reset-password?token=${token}`;
+
+      sendPasswordResetEmail(parsed.data.email, resetUrl).catch((e) =>
+        console.error("[forgot-password] 메일 발송 실패", e),
+      );
+    }
+    // 등록 여부 상관없이 동일 응답
+    res.json({ message: "메일을 보냈습니다. 받은편지함을 확인하세요." });
+  });
+
+  // ===== V8 #26: 비밀번호 재설정 =====
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+
+    const tokenRow = await storage.getPasswordResetToken(parsed.data.token);
+    if (!tokenRow)
+      return res.status(400).json({ message: "유효하지 않은 토큰입니다." });
+    if (tokenRow.usedAt !== null)
+      return res.status(400).json({ message: "이미 사용된 토큰입니다." });
+    if (Date.now() > tokenRow.expiresAt)
+      return res.status(400).json({ message: "만료된 토큰입니다. 비밀번호 찾기를 다시 시도해 주세요." });
+
+    const hashed = bcrypt.hashSync(parsed.data.password, 10);
+    await storage.updateCustomerPassword(tokenRow.customerId, hashed);
+    await storage.markPasswordResetTokenUsed(tokenRow.id);
+
+    res.json({ message: "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요." });
+  });
+
+  // ===== V8 #29: 관리자 거래처 비밀번호 재설정 메일 발송 =====
+  app.post("/api/admin/customers/:id/reset-password", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const customer = await storage.getCustomer(id);
+    if (!customer || customer.role !== "customer")
+      return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+    if (!customer.email || customer.email.trim() === "")
+      return res.status(400).json({ message: "등록된 이메일이 없습니다." });
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + 60 * 60 * 1000;
+    await storage.createPasswordResetToken(customer.id, token, expiresAt);
+
+    const origin = process.env.PUBLIC_URL ||
+      (req.headers.origin as string) ||
+      `${req.protocol}://${req.headers.host}`;
+    const resetUrl = `${origin}/#/reset-password?token=${token}`;
+
+    sendPasswordResetEmail(customer.email, resetUrl).catch((e) =>
+      console.error("[admin/reset-password] 메일 발송 실패", e),
+    );
+
+    res.json({ message: "재설정 메일을 발송했습니다." });
   });
 
   // ===== Board (게시판) =====
