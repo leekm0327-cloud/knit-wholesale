@@ -44,13 +44,9 @@ async function buildAll() {
   ];
   const externals = allDeps.filter((dep) => !allowlist.includes(dep));
 
-  // 시크릿을 빌드 시 직접 키어 넣기 (pplx.app 프록시 사용자 process.env 주입을 지원하지 않기 때문)
-  const SESSION_SECRET = process.env.BUILD_SESSION_SECRET || "";
-  const CRON_TOKEN = process.env.BUILD_CRON_TOKEN || "";
-  const SMTP_USER = process.env.BUILD_SMTP_USER || "";
-  const SMTP_PASS = process.env.BUILD_SMTP_PASS || "";
-  const NOTIFY_TO = process.env.BUILD_NOTIFY_TO || "";
-  const ECOUNT_SECRET = process.env.BUILD_ECOUNT_SECRET || "";
+  // Railway/일반 Node 환경: 런타임에서 process.env를 그대로 읽음.
+  // ECOUNT_SECRET만 자체 암호화 용 대체 식별자(__ECOUNT_SECRET__)로 주입 (시크릿 동적 조합용).
+  const ECOUNT_SECRET = process.env.BUILD_ECOUNT_SECRET || process.env.ECOUNT_SECRET || "";
 
   await esbuild({
     entryPoints: ["server/index.ts"],
@@ -60,11 +56,6 @@ async function buildAll() {
     outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
-      "process.env.SESSION_SECRET": JSON.stringify(SESSION_SECRET),
-      "process.env.CRON_TOKEN": JSON.stringify(CRON_TOKEN),
-      "process.env.SMTP_USER": JSON.stringify(SMTP_USER),
-      "process.env.SMTP_PASS": JSON.stringify(SMTP_PASS),
-      "process.env.NOTIFY_TO": JSON.stringify(NOTIFY_TO),
       "__ECOUNT_SECRET__": JSON.stringify(ECOUNT_SECRET),
     },
     minify: true,
