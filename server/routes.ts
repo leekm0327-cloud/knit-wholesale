@@ -4,7 +4,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, db } from "./storage";
+import { storage, seed, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail } from "./email";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
@@ -105,7 +105,7 @@ export async function registerRoutes(
   }
 
   const SqliteStore = SqliteStoreFactory(session);
-  const sessionDb = new Database("data.db");
+  const sessionDb = new Database(DB_PATH);
   app.use(
     session({
       name: isProd ? "__Host-knit-sid" : "knit-sid",
@@ -1051,7 +1051,7 @@ export async function registerRoutes(
 
   // ===== 백업 (#4) =====
   app.get("/api/admin/backup/export", requireOwner, async (_req, res) => {
-    const dbPath = path.resolve("data.db");
+    const dbPath = DB_PATH;
     if (!fs.existsSync(dbPath)) return res.status(404).json({ message: "DB 파일 없음" });
     const now = new Date();
     const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
@@ -1064,8 +1064,8 @@ export async function registerRoutes(
 
   app.post("/api/admin/backup/import", requireOwner, upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: "파일이 없습니다." });
-    const dbPath = path.resolve("data.db");
-    const backupPath = path.resolve(`data.db.bak.${Date.now()}`);
+    const dbPath = DB_PATH;
+    const backupPath = path.join(path.dirname(DB_PATH), `data.db.bak.${Date.now()}`);
     try {
       // 현재 DB 백업
       if (fs.existsSync(dbPath)) {

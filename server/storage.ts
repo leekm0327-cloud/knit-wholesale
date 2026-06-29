@@ -25,8 +25,17 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc, gt, and, asc, gte, lte, like } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import path from "node:path";
+import fs from "node:fs";
 
-const sqlite = new Database("data.db");
+// DB 경로: 환경변수 DATA_DIR이 있으면 거기에, 없으면 작업 디렉토리에.
+// Railway 등에서는 Volume mount path를 DATA_DIR로 지정 → 컨테이너 재시작 시에도 데이터 영구 보존.
+const DATA_DIR = process.env.DATA_DIR || ".";
+if (DATA_DIR !== "." && !fs.existsSync(DATA_DIR)) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* ignore */ }
+}
+export const DB_PATH = path.join(DATA_DIR, "data.db");
+const sqlite = new Database(DB_PATH);
 sqlite.pragma("journal_mode = WAL");
 
 // 테이블 자동 생성 (마이그레이션 대용 — 데모/프리뷰 환경용)
