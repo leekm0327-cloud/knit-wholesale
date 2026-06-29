@@ -1,31 +1,51 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Logo } from "./Logo";
+import { Wordmark } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { useTheme } from "@/lib/theme";
 import type { Order } from "@shared/schema";
 import {
   LayoutDashboard,
+  ShoppingCart,
   Package,
   Building2,
-  Moon,
-  Sun,
   LogOut,
   Loader2,
+  Wallet,
+  Link2,
+  ScrollText,
+  MessageSquare,
+  Users,
+  Archive,
+  Activity,
 } from "lucide-react";
 
-const NAV = [
+// NAV 항목 타입
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  ownerOnly?: boolean;
+};
+
+const NAV_BASE: NavItem[] = [
   { href: "/admin", label: "대시보드", icon: LayoutDashboard },
+  { href: "/admin/orders", label: "주문 관리", icon: ShoppingCart },
   { href: "/admin/products", label: "상품 관리", icon: Package },
   { href: "/admin/customers", label: "거래처 관리", icon: Building2 },
+  { href: "/admin/balances", label: "채권 관리", icon: Wallet },
+  { href: "/admin/ecount", label: "ECOUNT 연동", icon: Link2 },
+  { href: "/admin/ecount-logs", label: "ECOUNT 로그", icon: ScrollText },
+  { href: "/admin/board", label: "게시판", icon: MessageSquare },
+  { href: "/admin/managers", label: "매니저", icon: Users, ownerOnly: true },
+  { href: "/admin/activity-logs", label: "활동 로그", icon: Activity },
+  { href: "/admin/backup", label: "백업", icon: Archive, ownerOnly: true },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, logout } = useAuth();
   const [location, navigate] = useLocation();
-  const { theme, toggle } = useTheme();
 
   // 관리자 가드
   useEffect(() => {
@@ -33,6 +53,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       navigate("/admin/login");
     }
   }, [isLoading, user, navigate]);
+
+  const isOwner = (user as any)?.adminRole === "owner";
 
   // 미처리 주문 수 (배지)
   const { data: orders } = useQuery<Order[]>({
@@ -50,18 +72,21 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // ownerOnly 메뉴는 manager에게 숨김
+  const visibleNav = NAV_BASE.filter((n) => !n.ownerOnly || isOwner);
+
   return (
     <div className="flex min-h-screen bg-background">
       {/* 사이드바 */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
-        <div className="border-b p-5">
-          <Logo size={28} />
-          <div className="mt-3 inline-flex items-center rounded-md bg-accent/15 px-2 py-0.5 text-[11px] font-semibold text-accent">
-            관리자
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+        <div className="border-b border-border p-5">
+          <Wordmark size={26} />
+          <div className="mt-3 inline-flex items-center border border-foreground px-2 py-0.5 font-ui text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">
+            {isOwner ? "Owner" : "Manager"}
           </div>
         </div>
         <nav className="flex-1 space-y-1 p-3">
-          {NAV.map((n) => {
+          {visibleNav.map((n) => {
             const active = location === n.href;
             const Icon = n.icon;
             return (
@@ -69,7 +94,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                 key={n.href}
                 href={n.href}
                 data-testid={`nav-${n.href}`}
-                className={`flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center justify-between rounded-none px-3 py-2 font-ui text-sm font-semibold tracking-wide transition-colors ${
                   active
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground hover-elevate"
@@ -80,7 +105,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                   {n.label}
                 </span>
                 {n.href === "/admin" && pendingCount > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-semibold text-accent-foreground">
+                  <span className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-ui text-[11px] font-bold ${active ? "bg-sidebar-primary-foreground text-sidebar-primary" : "bg-foreground text-background"}`}>
                     {pendingCount}
                   </span>
                 )}
@@ -88,12 +113,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="space-y-1 border-t p-3">
-          <div className="px-3 py-1 text-xs text-muted-foreground">{user.managerName} · {user.email}</div>
-          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={toggle} data-testid="button-theme-toggle">
-            {theme === "light" ? <Moon className="mr-2 h-4 w-4" /> : <Sun className="mr-2 h-4 w-4" />}
-            {theme === "light" ? "다크모드" : "라이트모드"}
-          </Button>
+        <div className="space-y-1 border-t border-border p-3">
+          <div className="px-3 py-1 font-ui text-xs text-muted-foreground">{user.managerName} · {user.email}</div>
           <Button
             variant="ghost"
             size="sm"
@@ -112,23 +133,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
       {/* 모바일 상단바 */}
       <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-between border-b bg-sidebar px-4 py-3 md:hidden">
-          <Logo size={26} />
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={toggle} aria-label="테마">
-              {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={async () => { await logout(); navigate("/admin/login"); }} aria-label="로그아웃">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex items-center justify-between border-b border-border bg-sidebar px-4 py-3 md:hidden">
+          <Wordmark size={24} />
+          <Button variant="ghost" size="icon" onClick={async () => { await logout(); navigate("/admin/login"); }} aria-label="로그아웃">
+            <LogOut className="h-4 w-4" />
+          </Button>
         </div>
         {/* 모바일 네비 */}
-        <div className="flex gap-1 overflow-x-auto border-b bg-background px-3 py-2 md:hidden">
-          {NAV.map((n) => {
+        <div className="flex gap-1 overflow-x-auto border-b border-border bg-background px-3 py-2 md:hidden">
+          {visibleNav.map((n) => {
             const active = location === n.href;
             return (
-              <Link key={n.href} href={n.href} className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover-elevate"}`}>
+              <Link key={n.href} href={n.href} className={`whitespace-nowrap rounded-none px-3 py-1.5 font-ui text-sm font-semibold tracking-wide ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover-elevate"}`}>
                 {n.label}
                 {n.href === "/admin" && pendingCount > 0 && ` (${pendingCount})`}
               </Link>

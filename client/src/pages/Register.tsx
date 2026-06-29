@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
-import { Logo } from "@/components/Logo";
+import { StackedLogo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
@@ -30,7 +23,6 @@ export default function Register() {
     bizRegNo: "",
     taxEmail: "",
     defaultAddress: "",
-    paymentMethod: "transfer",
   });
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -39,8 +31,10 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiRequest("POST", "/api/auth/register", form);
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      const res = await apiRequest("POST", "/api/auth/register", { ...form, paymentMethod: "transfer" });
+      const user = await res.json();
+      queryClient.setQueryData(["/api/auth/me"], user);
+      await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "거래처 등록 완료", description: "환영합니다! 이제 주문하실 수 있습니다." });
       navigate("/catalog");
     } catch (err: any) {
@@ -52,21 +46,25 @@ export default function Register() {
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-background px-4 py-10">
-      <div className="mb-7 flex flex-col items-center text-center">
-        <Logo size={40} withWordmark={false} className="mb-3" />
-        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
+      <div className="mb-9 flex flex-col items-center text-center">
+        <StackedLogo size={80} className="mb-5" />
+        <p className="eyebrow mb-3">New partner</p>
+        <h1 className="font-display text-3xl font-medium tracking-tight text-foreground">
           거래처 가입
         </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           한 번만 입력하면 다음 주문부터 자동으로 채워집니다.
         </p>
       </div>
 
-      <Card className="w-full max-w-lg p-6 sm:p-7">
+      <Card className="w-full max-w-lg p-7 sm:p-8">
+        <div className="mb-5 rounded-md border border-border bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground break-keep">
+          로그인은 입력하신 <strong className="font-semibold text-foreground">상호명</strong>으로 진행됩니다. 이메일은 세금계산서 발송용입니다.
+        </div>
         <form onSubmit={submit} className="space-y-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="상호 *">
-              <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} required placeholder="예: 도원 베이커리" data-testid="input-businessName" />
+            <Field label="상호 *" helper="로그인 시 사용할 상호명입니다">
+              <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} required placeholder="예: 니트커피" data-testid="input-businessName" />
             </Field>
             <Field label="담당자명 *">
               <Input value={form.managerName} onChange={(e) => set("managerName", e.target.value)} required placeholder="예: 김도원" data-testid="input-managerName" />
@@ -79,7 +77,7 @@ export default function Register() {
             </Field>
           </div>
 
-          <div className="border-t pt-5">
+          <div className="border-t border-border pt-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="로그인 이메일 *">
                 <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} required placeholder="business@example.com" data-testid="input-email" />
@@ -90,18 +88,6 @@ export default function Register() {
               <Field label="세금계산서 이메일">
                 <Input type="email" value={form.taxEmail} onChange={(e) => set("taxEmail", e.target.value)} placeholder="tax@example.com" data-testid="input-taxEmail" />
               </Field>
-              <Field label="결제방식">
-                <Select value={form.paymentMethod} onValueChange={(v) => set("paymentMethod", v)}>
-                  <SelectTrigger data-testid="select-paymentMethod"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="transfer">계좌이체</SelectItem>
-                    <SelectItem value="card">카드</SelectItem>
-                    <SelectItem value="deferred">후지급</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-            <div className="mt-4">
               <Field label="기본 배송지">
                 <Input value={form.defaultAddress} onChange={(e) => set("defaultAddress", e.target.value)} placeholder="배송 받으실 주소" data-testid="input-defaultAddress" />
               </Field>
@@ -114,20 +100,21 @@ export default function Register() {
           </Button>
         </form>
 
-        <div className="mt-5 border-t pt-4 text-center text-sm text-muted-foreground">
+        <div className="mt-6 border-t border-border pt-5 text-center text-xs text-muted-foreground">
           이미 거래처이신가요?{" "}
-          <Link href="/login" data-testid="link-login" className="font-medium text-accent hover:underline">로그인</Link>
+          <Link href="/login" data-testid="link-login" className="font-semibold text-foreground underline underline-offset-2">로그인</Link>
         </div>
       </Card>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, helper }: { label: string; children: React.ReactNode; helper?: string }) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs">{label}</Label>
       {children}
+      {helper && <p className="text-[11px] leading-snug text-muted-foreground break-keep">{helper}</p>}
     </div>
   );
 }

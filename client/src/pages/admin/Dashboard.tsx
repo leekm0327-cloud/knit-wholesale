@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { won, wonNum, fmtDate } from "@/lib/format";
-import type { Order, OrderItem } from "@shared/schema";
+import type { Order, OrderItem, CustomerBalance } from "@shared/schema";
 import {
   BarChart,
   Bar,
@@ -26,6 +26,7 @@ import {
   Bell,
   CheckCircle2,
   RotateCcw,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,6 +48,10 @@ export default function Dashboard() {
   });
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["/api/admin/orders"],
+    refetchInterval: 30000,
+  });
+  const { data: balanceData } = useQuery<{ totalOutstanding: number; topOverdue: CustomerBalance[] }>({
+    queryKey: ["/api/admin/balances"],
     refetchInterval: 30000,
   });
 
@@ -95,11 +100,12 @@ export default function Dashboard() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="font-display text-xl font-semibold text-foreground">대시보드</h1>
+            <div className="eyebrow">Dashboard</div>
+            <h1 className="font-display mt-1 text-xl font-semibold text-foreground">대시보드</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">니트커피 도매 주문 현황</p>
           </div>
           {stats && stats.pendingOrders > 0 && (
-            <Badge className="gap-1 bg-accent text-accent-foreground hover:bg-accent" data-testid="badge-pending">
+            <Badge className="gap-1 bg-destructive text-destructive-foreground hover:bg-destructive" data-testid="badge-pending">
               <Bell className="h-3.5 w-3.5" />
               신규/미처리 {stats.pendingOrders}건
             </Badge>
@@ -107,12 +113,39 @@ export default function Dashboard() {
         </div>
 
         {/* KPI */}
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Kpi icon={ShoppingCart} label="총 주문" value={isLoading ? "" : String(stats!.totalOrders)} loading={isLoading} />
           <Kpi icon={Clock} label="미처리 주문" value={isLoading ? "" : String(stats!.pendingOrders)} accent loading={isLoading} />
           <Kpi icon={Building2} label="거래처 수" value={isLoading ? "" : String(stats!.totalCustomers)} loading={isLoading} />
           <Kpi icon={Coins} label="누적 매출" value={isLoading ? "" : won(stats!.totalRevenue)} loading={isLoading} />
+          <Kpi icon={AlertCircle} label="총 미수금" value={balanceData ? won(balanceData.totalOutstanding) : ""} accent loading={!balanceData} />
         </div>
+
+        {/* 미수금 TOP 거래처 */}
+        {balanceData && balanceData.topOverdue.length > 0 && (
+          <Card className="mb-6 overflow-hidden">
+            <div className="flex items-center justify-between border-b p-5">
+              <h2 className="text-sm font-semibold text-foreground">미수금 TOP</h2>
+              <Button variant="ghost" size="sm" onClick={() => navigate("/admin/balances")}>전체 보기</Button>
+            </div>
+            <div className="divide-y">
+              {balanceData.topOverdue.map((b) => (
+                <button
+                  key={b.customerId}
+                  onClick={() => navigate(`/admin/customers/${b.customerId}/ledger`)}
+                  className="flex w-full items-center justify-between p-4 text-left hover-elevate"
+                  data-testid={`row-overdue-${b.customerId}`}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-foreground">{b.businessName}</div>
+                    <div className="text-xs text-muted-foreground">담당 {b.managerName}{b.lastPaidAt ? ` · 최근 입금 ${b.lastPaidAt}` : ""}</div>
+                  </div>
+                  <div className="shrink-0 font-display tabular text-base font-semibold text-destructive">{won(b.balance)}</div>
+                </button>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
           {/* 월별 매출 차트 */}
@@ -139,7 +172,7 @@ export default function Dashboard() {
                     }}
                     formatter={(v: number) => [`${wonNum(v)}천원`, "매출"]}
                   />
-                  <Bar dataKey="revenue" fill="hsl(var(--accent))" radius={[5, 5, 0, 0]} maxBarSize={48} />
+                  <Bar dataKey="revenue" fill="hsl(var(--foreground))" radius={[0, 0, 0, 0]} maxBarSize={48} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -185,13 +218,16 @@ export default function Dashboard() {
               {orders.slice(0, 10).map((o) => {
                 const items: OrderItem[] = JSON.parse(o.items);
                 const snap = JSON.parse(o.customerSnapshot);
+                const cancelled = o.status === "cancelled";
                 return (
-                  <div key={o.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`row-order-${o.id}`}>
+                  <div key={o.id} className={`flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between ${cancelled ? "opacity-50 grayscale" : ""}`} data-testid={`row-order-${o.id}`}>
                     <div className="flex min-w-0 items-center gap-3">
-                      {o.status === "done" ? (
+                      {cancelled ? (
+                        <Badge className="shrink-0 bg-gray-200 text-[11px] text-gray-500 hover:bg-gray-200">취소됨</Badge>
+                      ) : o.status === "done" ? (
                         <Badge variant="secondary" className="shrink-0 text-[11px]">처리완료</Badge>
                       ) : (
-                        <Badge className="shrink-0 bg-accent text-[11px] text-accent-foreground hover:bg-accent">미처리</Badge>
+                        <Badge className="shrink-0 bg-destructive text-[11px] text-destructive-foreground hover:bg-destructive">미처리</Badge>
                       )}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -205,9 +241,11 @@ export default function Dashboard() {
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <span className="text-sm font-semibold tabular text-foreground">{won(o.totalAmount)}</span>
-                      <Button variant="ghost" size="sm" onClick={() => toggleStatus(o)} data-testid={`button-toggle-${o.id}`} title="상태 토글">
-                        {o.status === "pending" ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
-                      </Button>
+                      {!cancelled && (
+                        <Button variant="ghost" size="sm" onClick={() => toggleStatus(o)} data-testid={`button-toggle-${o.id}`} title="상태 토글">
+                          {o.status === "pending" ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => navigate(`/admin/orders/${o.id}`)} data-testid={`button-detail-${o.id}`}>
                         상세
                       </Button>
@@ -227,13 +265,13 @@ function Kpi({ icon: Icon, label, value, accent, loading }: { icon: any; label: 
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className={`h-4 w-4 ${accent ? "text-accent" : ""}`} />
+        <Icon className={`h-4 w-4 ${accent ? "text-destructive" : ""}`} />
         <span className="text-xs">{label}</span>
       </div>
       {loading ? (
         <Skeleton className="mt-2 h-7 w-20" />
       ) : (
-        <div className={`mt-1.5 font-display text-xl font-semibold tabular ${accent ? "text-accent" : "text-foreground"}`}>{value}</div>
+        <div className={`mt-1.5 font-display text-xl font-semibold tabular ${accent ? "text-destructive" : "text-foreground"}`}>{value}</div>
       )}
     </Card>
   );

@@ -40,8 +40,8 @@ export default function InvoicePage() {
         </div>
 
         {/* 주문 완료 안내 */}
-        <div className="no-print mb-5 flex items-start gap-2.5 rounded-lg border border-accent/30 bg-accent/5 p-4">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+        <div className="no-print mb-5 flex items-start gap-2.5 rounded-none border border-border bg-[#f5f5f5] p-4">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
           <div className="text-sm">
             <p className="font-medium text-foreground">거래명세서가 발행되었습니다.</p>
             <p className="mt-0.5 text-muted-foreground">
@@ -51,7 +51,7 @@ export default function InvoicePage() {
         </div>
 
         {isLoading ? (
-          <Skeleton className="h-[700px] w-full rounded-xl" />
+          <Skeleton className="h-[700px] w-full rounded-none" />
         ) : !order ? (
           <div className="py-20 text-center text-muted-foreground">
             주문을 찾을 수 없습니다.

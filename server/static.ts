@@ -5,10 +5,12 @@ import path from "node:path";
 
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
+  // pplx.app 배포 환경에서는 정적 파일이 S3에서 직접 서빙되므로
+  // 백엔드 sandbox 내에 dist/public 폴더가 없을 수 있습니다. 그 경우 정적 서빙을 건너뜁니다.
   if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
-    );
+    // eslint-disable-next-line no-console
+    console.log(`[static] no local dist found at ${distPath}, skipping static serve`);
+    return;
   }
 
   app.use(express.static(distPath));

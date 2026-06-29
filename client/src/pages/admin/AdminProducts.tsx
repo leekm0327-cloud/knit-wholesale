@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ProductDetailEditor, emptyDetailFields, type DetailFields } from "./ProductDetailEditor";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -34,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { won, parsePrices, CATEGORY_LABEL, errMsg } from "@/lib/format";
+import { won, CATEGORY_LABEL, errMsg } from "@/lib/format";
 import type { Product } from "@shared/schema";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 
@@ -42,23 +43,52 @@ type FormState = {
   name: string;
   category: string;
   origin: string;
-  p200: string;
-  p500: string;
-  p1000: string;
+  price: string;
   available: boolean;
   sortOrder: string;
+  ecountCode: string;
+  detailTemplate: "blend" | "single";
+  detail: DetailFields;
+  detailImages: string[];
 };
 
 const empty: FormState = {
   name: "",
   category: "blend",
   origin: "",
-  p200: "",
-  p500: "",
-  p1000: "",
+  price: "",
   available: true,
   sortOrder: "99",
+  ecountCode: "",
+  detailTemplate: "blend",
+  detail: { ...emptyDetailFields },
+  detailImages: [],
 };
+
+function parseStoredDetail(p: Product): { template: "blend" | "single"; detail: DetailFields } {
+  const base: DetailFields = { ...emptyDetailFields };
+  let template: "blend" | "single" = p.category === "blend" ? "blend" : "single";
+  if (p.detailTemplate === "blend" || p.detailTemplate === "single") template = p.detailTemplate;
+  if (p.detailJson) {
+    try {
+      const parsed = JSON.parse(p.detailJson);
+      if (parsed?.template === "blend" || parsed?.template === "single") template = parsed.template;
+      for (const k of Object.keys(base) as Array<keyof DetailFields>) {
+        if (typeof parsed?.[k] === "string") base[k] = parsed[k];
+      }
+    } catch {}
+  }
+  return { template, detail: base };
+}
+
+function parseStoredImages(p: Product): string[] {
+  if (!p.detailImages) return [];
+  try {
+    const arr = JSON.parse(p.detailImages);
+    if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === "string");
+  } catch {}
+  return [];
+}
 
 export default function AdminProducts() {
   const { toast } = useToast();
@@ -77,35 +107,67 @@ export default function AdminProducts() {
     setOpen(true);
   }
   function openEdit(p: Product) {
-    const prices = parsePrices(p.prices);
     setEditing(p);
+    const { template, detail } = parseStoredDetail(p);
     setForm({
       name: p.name,
       category: p.category,
       origin: p.origin,
-      p200: prices["200"] ? String(prices["200"]) : "",
-      p500: prices["500"] ? String(prices["500"]) : "",
-      p1000: prices["1000"] ? String(prices["1000"]) : "",
+      price: String(p.price ?? 0),
       available: p.available === 1,
       sortOrder: String(p.sortOrder),
+      ecountCode: p.ecountCode || "",
+      detailTemplate: template,
+      detail,
+      detailImages: parseStoredImages(p),
     });
     setOpen(true);
   }
 
+  const setDetail = (k: keyof DetailFields, v: string) =>
+    setForm((f) => ({ ...f, detail: { ...f.detail, [k]: v } }));
+
   async function save() {
     setSaving(true);
     try {
-      const prices: Record<string, number> = {};
-      if (form.p200) prices["200"] = Number(form.p200);
-      if (form.p500) prices["500"] = Number(form.p500);
-      if (form.p1000) prices["1000"] = Number(form.p1000);
+      // detailJson 직렬화 (template에 따라 관련 필드만 포함)
+      const tpl = form.detailTemplate;
+      const d = form.detail;
+      const detailObj =
+        tpl === "blend"
+          ? {
+              template: "blend" as const,
+              tagline: d.tagline,
+              blendRatio: d.blendRatio,
+              flavorNotes: d.flavorNotes,
+              roastLevel: d.roastLevel,
+              recommendedUse: d.recommendedUse,
+              description: d.description,
+            }
+          : {
+              template: "single" as const,
+              tagline: d.tagline,
+              country: d.country,
+              region: d.region,
+              farm: d.farm,
+              variety: d.variety,
+              process: d.process,
+              altitude: d.altitude,
+              flavorNotes: d.flavorNotes,
+              roastLevel: d.roastLevel,
+              description: d.description,
+            };
       const payload = {
         name: form.name,
         category: form.category,
         origin: form.origin,
-        prices: JSON.stringify(prices),
+        price: Number(form.price) || 0,
         available: form.available ? 1 : 0,
         sortOrder: Number(form.sortOrder) || 0,
+        ecountCode: form.ecountCode.trim(),
+        detailTemplate: tpl,
+        detailJson: JSON.stringify(detailObj),
+        detailImages: JSON.stringify(form.detailImages),
       };
       if (editing) {
         await apiRequest("PATCH", `/api/admin/products/${editing.id}`, payload);
@@ -140,8 +202,9 @@ export default function AdminProducts() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="font-display text-xl font-semibold text-foreground">상품 관리</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">시즌별 싱글 오리진을 켜고 끌 수 있습니다.</p>
+            <div className="eyebrow">Products</div>
+            <h1 className="font-display mt-1 text-xl font-semibold text-foreground">상품 관리</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">ECOUNT 1품목 1코드 원칙 — 중량별로 상품을 별도로 등록하세요.</p>
           </div>
           <Button onClick={openNew} data-testid="button-new-product">
             <Plus className="mr-1.5 h-4 w-4" /> 상품 추가
@@ -150,48 +213,46 @@ export default function AdminProducts() {
 
         {isLoading ? (
           <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-none" />)}
           </div>
         ) : (
           <Card className="overflow-hidden">
             <div className="divide-y">
-              {(products ?? []).map((p) => {
-                const prices = parsePrices(p.prices);
-                return (
-                  <div key={p.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`row-product-${p.id}`}>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground">{p.name}</span>
-                        <Badge variant="secondary" className="text-[11px]">{CATEGORY_LABEL[p.category]}</Badge>
-                      </div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground">{p.origin}</div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {prices["200"] != null && <span>200g {won(prices["200"])}</span>}
-                        {prices["500"] != null && <span>500g {won(prices["500"])}</span>}
-                        {prices["1000"] != null && <span>1kg {won(prices["1000"])}</span>}
-                      </div>
+              {(products ?? []).map((p) => (
+                <div key={p.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`row-product-${p.id}`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">{p.name}</span>
+                      <Badge variant="secondary" className="text-[11px]">{CATEGORY_LABEL[p.category]}</Badge>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-medium ${p.available ? "text-accent" : "text-muted-foreground"}`}>
-                          {p.available ? "판매중" : "품절"}
-                        </span>
-                        <Switch
-                          checked={p.available === 1}
-                          onCheckedChange={() => toggleAvailable(p)}
-                          data-testid={`switch-available-${p.id}`}
-                        />
-                      </div>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(p)} aria-label="수정" data-testid={`button-edit-${p.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} aria-label="삭제" data-testid={`button-delete-${p.id}`}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">{p.origin}</div>
+                    <div className="mt-1 text-xs text-foreground">
+                      <span className="font-semibold tabular">{won(p.price)}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      ECOUNT 품목코드: {p.ecountCode ? <span className="font-mono text-foreground">{p.ecountCode}</span> : <span className="text-destructive">미설정</span>}
                     </div>
                   </div>
-                );
-              })}
+                  <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium ${p.available ? "text-foreground" : "text-muted-foreground"}`}>
+                        {p.available ? "판매중" : "품절"}
+                      </span>
+                      <Switch
+                        checked={p.available === 1}
+                        onCheckedChange={() => toggleAvailable(p)}
+                        data-testid={`switch-available-${p.id}`}
+                      />
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(p)} aria-label="수정" data-testid={`button-edit-${p.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(p)} aria-label="삭제" data-testid={`button-delete-${p.id}`}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         )}
@@ -199,14 +260,22 @@ export default function AdminProducts() {
 
       {/* 추가/수정 다이얼로그 */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? "상품 수정" : "상품 추가"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-xs">상품명</Label>
-              <Input value={form.name} onChange={(e) => set("name", e.target.value)} data-testid="input-product-name" />
+              <Label className="text-xs">상품명 (중량 포함)</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="예: 실크 블렌드 1kg"
+                data-testid="input-product-name"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                중량은 상품명에 표시하세요 (예: "코튼 블렌드 200g", "코튼 블렌드 1kg"). ECOUNT 품목코드도 중량별로 다르게 부여합니다.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -229,24 +298,42 @@ export default function AdminProducts() {
               <Label className="text-xs">산지 / 설명</Label>
               <Input value={form.origin} onChange={(e) => set("origin", e.target.value)} placeholder="예: 에티오피아 예가체프 / 블루베리, 플로럴" data-testid="input-product-origin" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">200g (원)</Label>
-                <Input type="number" value={form.p200} onChange={(e) => set("p200", e.target.value)} data-testid="input-price-200" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">500g (원)</Label>
-                <Input type="number" value={form.p500} onChange={(e) => set("p500", e.target.value)} data-testid="input-price-500" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">1kg (원)</Label>
-                <Input type="number" value={form.p1000} onChange={(e) => set("p1000", e.target.value)} data-testid="input-price-1000" />
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">단가 (원)</Label>
+              <Input
+                type="number"
+                value={form.price}
+                onChange={(e) => set("price", e.target.value)}
+                placeholder="예: 32000"
+                data-testid="input-product-price"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">ECOUNT 품목코드</Label>
+              <Input
+                value={form.ecountCode}
+                onChange={(e) => set("ecountCode", e.target.value)}
+                placeholder="예: KCP-SILK-1000"
+                data-testid="input-product-ecount-code"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                ECOUNT 품목 마스터의 품목코드와 일치해야 합니다. 비어두면 주문의 ECOUNT 전송이 실패합니다.
+              </p>
             </div>
             <div className="flex items-center justify-between rounded-md border p-3">
               <Label className="text-sm">판매중</Label>
               <Switch checked={form.available} onCheckedChange={(v) => set("available", v)} data-testid="switch-form-available" />
             </div>
+
+            {/* 상세페이지 양식 + 이미지 */}
+            <ProductDetailEditor
+              template={form.detailTemplate}
+              setTemplate={(t) => setForm((f) => ({ ...f, detailTemplate: t }))}
+              detail={form.detail}
+              setDetail={setDetail}
+              images={form.detailImages}
+              setImages={(imgs) => setForm((f) => ({ ...f, detailImages: imgs }))}
+            />
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>취소</Button>

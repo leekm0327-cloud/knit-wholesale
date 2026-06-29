@@ -1,22 +1,20 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect } from "react";
 
-type Theme = "light" | "dark";
+// 다크모드 제거 — 본 브랜드 사이트와 동일하게 라이트(흑백)로 통일.
+// 기존 호출부 호환을 위해 동일한 인터페이스를 유지하되 항상 light, toggle은 no-op.
+type Theme = "light";
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({
   theme: "light",
   toggle: () => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
-
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") root.classList.add("dark");
-    else root.classList.remove("dark");
-  }, [theme]);
+    document.documentElement.classList.remove("dark");
+  }, []);
 
   return (
-    <ThemeCtx.Provider value={{ theme, toggle: () => setTheme((t) => (t === "light" ? "dark" : "light")) }}>
+    <ThemeCtx.Provider value={{ theme: "light", toggle: () => {} }}>
       {children}
     </ThemeCtx.Provider>
   );

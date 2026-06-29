@@ -13,15 +13,27 @@ import { Loader2 } from "lucide-react";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Catalog from "@/pages/Catalog";
+import ProductDetail from "@/pages/ProductDetail";
+import Board from "@/pages/Board";
 import Cart from "@/pages/Cart";
 import Orders from "@/pages/Orders";
+import OrderDetail from "@/pages/OrderDetail";
 import Account from "@/pages/Account";
 import InvoicePage from "@/pages/InvoicePage";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import Dashboard from "@/pages/admin/Dashboard";
+import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
+import AdminBalances from "@/pages/admin/AdminBalances";
+import AdminCustomerLedger from "@/pages/admin/AdminCustomerLedger";
 import AdminOrderDetail from "@/pages/admin/AdminOrderDetail";
+import AdminEcount from "@/pages/admin/AdminEcount";
+import AdminEcountLogs from "@/pages/admin/AdminEcountLogs";
+import AdminBoard from "@/pages/admin/AdminBoard";
+import AdminBackup from "@/pages/admin/AdminBackup";
+import AdminManagers from "@/pages/admin/AdminManagers";
+import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
 import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
@@ -60,11 +72,20 @@ function AppRouter() {
       <Route path="/catalog">
         <RequireCustomer><Catalog /></RequireCustomer>
       </Route>
+      <Route path="/products/:id">
+        <RequireCustomer><ProductDetail /></RequireCustomer>
+      </Route>
+      <Route path="/board">
+        <RequireCustomer><Board /></RequireCustomer>
+      </Route>
       <Route path="/cart">
         <RequireCustomer><Cart /></RequireCustomer>
       </Route>
       <Route path="/orders">
         <RequireCustomer><Orders /></RequireCustomer>
+      </Route>
+      <Route path="/orders/:id">
+        <RequireCustomer><OrderDetail /></RequireCustomer>
       </Route>
       <Route path="/account">
         <RequireCustomer><Account /></RequireCustomer>
@@ -76,9 +97,18 @@ function AppRouter() {
       {/* 관리자 */}
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin" component={Dashboard} />
+      <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/customers" component={AdminCustomers} />
+      <Route path="/admin/customers/:id/ledger" component={AdminCustomerLedger} />
+      <Route path="/admin/balances" component={AdminBalances} />
       <Route path="/admin/orders/:id" component={AdminOrderDetail} />
+      <Route path="/admin/ecount" component={AdminEcount} />
+      <Route path="/admin/ecount-logs" component={AdminEcountLogs} />
+      <Route path="/admin/board" component={AdminBoard} />
+      <Route path="/admin/backup" component={AdminBackup} />
+      <Route path="/admin/managers" component={AdminManagers} />
+      <Route path="/admin/activity-logs" component={AdminActivityLogs} />
 
       <Route component={NotFound} />
     </Switch>

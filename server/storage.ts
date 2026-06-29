@@ -1,4 +1,4 @@
-import { customers, products, orders } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -6,10 +6,23 @@ import type {
   InsertProduct,
   Order,
   OrderItem,
+  Payment,
+  InsertPayment,
+  CustomerBalance,
+  LedgerRow,
+  EcountSettings,
+  EcountLog,
+  Post,
+  Comment,
+  PostWithMeta,
+  PostCategory,
+  CustomerPrice,
+  ActivityLog,
+  LogActivityInput,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq, desc, gt, and } from "drizzle-orm";
+import { eq, desc, gt, and, asc, gte, lte, like } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 const sqlite = new Database("data.db");
@@ -19,9 +32,10 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.exec(`
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
   password TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'customer',
+  admin_role TEXT NOT NULL DEFAULT 'owner',
   business_name TEXT NOT NULL,
   manager_name TEXT NOT NULL,
   phone TEXT NOT NULL,
@@ -36,10 +50,51 @@ CREATE TABLE IF NOT EXISTS products (
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   origin TEXT NOT NULL DEFAULT '',
-  prices TEXT NOT NULL,
+  price INTEGER NOT NULL DEFAULT 0,
   available INTEGER NOT NULL DEFAULT 1,
-  sort_order INTEGER NOT NULL DEFAULT 0
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  ecount_code TEXT NOT NULL DEFAULT '',
+  detail_template TEXT NOT NULL DEFAULT '',
+  detail_json TEXT NOT NULL DEFAULT '',
+  detail_images TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  images TEXT NOT NULL DEFAULT '[]',
+  author_id INTEGER,
+  author_business_name TEXT NOT NULL,
+  author_manager_name TEXT NOT NULL,
+  is_admin INTEGER NOT NULL DEFAULT 0,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category, pinned DESC, created_at DESC);
+CREATE TABLE IF NOT EXISTS comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  author_id INTEGER,
+  author_business_name TEXT NOT NULL,
+  author_manager_name TEXT NOT NULL,
+  is_admin INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id, created_at);
+CREATE TABLE IF NOT EXISTS customer_prices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  price INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(customer_id, product_id)
+);
+CREATE INDEX IF NOT EXISTS idx_customer_prices_customer ON customer_prices(customer_id);
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_no TEXT NOT NULL UNIQUE,
@@ -54,9 +109,222 @@ CREATE TABLE IF NOT EXISTS orders (
   status TEXT NOT NULL DEFAULT 'pending',
   tracking_no TEXT NOT NULL DEFAULT '',
   admin_memo TEXT NOT NULL DEFAULT '',
+  quick_request INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL,
+  paid_at TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT 'transfer',
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments(customer_id);
+CREATE TABLE IF NOT EXISTS ecount_settings (
+  id INTEGER PRIMARY KEY,
+  com_code TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '',
+  api_cert_key_enc TEXT NOT NULL DEFAULT '',
+  zone TEXT NOT NULL DEFAULT '',
+  warehouse_code TEXT NOT NULL DEFAULT '',
+  use_test_endpoint INTEGER NOT NULL DEFAULT 1,
+  auto_send_sales INTEGER NOT NULL DEFAULT 0,
+  auto_send_payments INTEGER NOT NULL DEFAULT 0,
+  auto_send_customer INTEGER NOT NULL DEFAULT 1,
+  auto_send_product INTEGER NOT NULL DEFAULT 1,
+  last_verified_at INTEGER,
+  verification_log TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ecount_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  label TEXT NOT NULL,
+  ref_kind TEXT NOT NULL DEFAULT '',
+  ref_id TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  ok INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  request_json TEXT NOT NULL DEFAULT '',
+  response_json TEXT NOT NULL DEFAULT '',
+  duration_ms INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ecount_logs_created ON ecount_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ecount_logs_ref ON ecount_logs(ref_kind, ref_id);
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_user_id INTEGER NOT NULL,
+  actor_email TEXT NOT NULL,
+  actor_role TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id TEXT,
+  summary TEXT,
+  metadata TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at DESC);
 `);
+
+// ===== 멱등 컬럼 추가 마이그레이션 =====
+for (const [table, col] of [
+  ["ecount_settings", "auto_send_customer INTEGER NOT NULL DEFAULT 1"],
+  ["ecount_settings", "auto_send_product INTEGER NOT NULL DEFAULT 1"],
+  ["customers", "admin_role TEXT NOT NULL DEFAULT 'owner'"],
+  ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
+  ["orders", "cancelled_at INTEGER"],
+  ["orders", "cancelled_by INTEGER"],
+]) {
+  try {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
+  } catch (e: any) {
+    if (!/duplicate column/i.test(String(e?.message ?? ""))) {
+      console.warn(`[migration ${table}]`, e?.message);
+    }
+  }
+}
+
+// ===== V6: 상호명(business_name) 고유 인덱스 (멱등) =====
+try {
+  sqlite.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_business_name ON customers(business_name);`);
+} catch (e: any) {
+  console.warn("[migration] business_name unique idx", e?.message);
+}
+
+// ===== V7 #20: customers.email unique 제약 제거 (taxEmail 중복 허용) =====
+// SQLite는 UNIQUE 컬럼 제약을 ALTER로 제거할 수 없으므로, 기존 DB에 email UNIQUE가
+// 남아있으면 customers 테이블을 재생성하여 제약을 제거한다.
+try {
+  const customersSchemaRow = sqlite
+    .prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='customers';`)
+    .get() as { sql?: string } | undefined;
+  const customersSql = customersSchemaRow?.sql ?? "";
+  // "email" 컬럼에 UNIQUE가 박혀있는지 정규식으로 확인 (대소문자 무시)
+  const emailUniqueRegex = /\bemail\b[^,)]*\bUNIQUE\b/i;
+  if (emailUniqueRegex.test(customersSql)) {
+    console.log("[migration v7] customers.email UNIQUE 감지 → 테이블 재생성으로 제약 제거");
+    sqlite.exec(`
+      PRAGMA foreign_keys=OFF;
+      BEGIN TRANSACTION;
+      CREATE TABLE customers_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'customer',
+        business_name TEXT NOT NULL,
+        manager_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        biz_reg_no TEXT NOT NULL DEFAULT '',
+        tax_email TEXT NOT NULL DEFAULT '',
+        default_address TEXT NOT NULL DEFAULT '',
+        payment_method TEXT NOT NULL DEFAULT 'transfer',
+        created_at INTEGER NOT NULL,
+        admin_role TEXT NOT NULL DEFAULT 'owner'
+      );
+      INSERT INTO customers_new (id, email, password, role, business_name, manager_name, phone, biz_reg_no, tax_email, default_address, payment_method, created_at, admin_role)
+        SELECT id, email, password, role, business_name, manager_name, phone, biz_reg_no, tax_email, default_address, payment_method, created_at, admin_role FROM customers;
+      DROP TABLE customers;
+      ALTER TABLE customers_new RENAME TO customers;
+      COMMIT;
+      PRAGMA foreign_keys=ON;
+    `);
+    // 재생성 후 business_name unique 인덱스 다시 생성 (위에서 만든 게 DROP 되었으므로)
+    sqlite.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_business_name ON customers(business_name);`);
+    console.log("[migration v7] customers 테이블 재생성 완료, email UNIQUE 제거됨");
+  }
+} catch (e: any) {
+  console.warn("[migration v7] customers email unique 제거 실패", e?.message);
+}
+
+// 명시적으로 만들어진 email unique index가 있다면 추가로 정리
+try {
+  sqlite.exec(`DROP INDEX IF EXISTS idx_customers_email;`);
+} catch (e: any) {
+  /* ignore */
+}
+
+// ===== v2 마이그레이션: 중량별 분리 상품 구조로 전환 =====
+try {
+  const cols = sqlite
+    .prepare(`PRAGMA table_info(products);`)
+    .all() as Array<{ name: string }>;
+  const hasOldPricesCol = cols.some((c) => c.name === "prices");
+  if (hasOldPricesCol) {
+    console.log("[migration v2] 이전 상품 구조 감지 → products/orders/ecount_logs 초기화");
+    sqlite.exec(`
+      DROP TABLE IF EXISTS products;
+      DROP TABLE IF EXISTS orders;
+      DROP TABLE IF EXISTS ecount_logs;
+      CREATE TABLE products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        origin TEXT NOT NULL DEFAULT '',
+        price INTEGER NOT NULL DEFAULT 0,
+        available INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        ecount_code TEXT NOT NULL DEFAULT ''
+      );
+      CREATE TABLE orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_no TEXT NOT NULL UNIQUE,
+        customer_id INTEGER NOT NULL,
+        customer_snapshot TEXT NOT NULL,
+        items TEXT NOT NULL,
+        supply_amount INTEGER NOT NULL,
+        vat INTEGER NOT NULL,
+        total_amount INTEGER NOT NULL,
+        desired_date TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        tracking_no TEXT NOT NULL DEFAULT '',
+        admin_memo TEXT NOT NULL DEFAULT '',
+        quick_request INTEGER NOT NULL DEFAULT 0,
+        cancelled_at INTEGER,
+        cancelled_by INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE ecount_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        label TEXT NOT NULL,
+        ref_kind TEXT NOT NULL DEFAULT '',
+        ref_id TEXT NOT NULL DEFAULT '',
+        summary TEXT NOT NULL DEFAULT '',
+        ok INTEGER NOT NULL DEFAULT 0,
+        message TEXT NOT NULL DEFAULT '',
+        request_json TEXT NOT NULL DEFAULT '',
+        response_json TEXT NOT NULL DEFAULT '',
+        duration_ms INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_ecount_logs_created ON ecount_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ecount_logs_ref ON ecount_logs(ref_kind, ref_id);
+    `);
+  }
+} catch (e: any) {
+  console.warn("[migration v2]", e?.message);
+}
+
+// 혹시 이미 v2 구조인데 ecount_code/price 컬럼이 빠졌을 수도 있으니 멱등 ALTER 한 번 더
+for (const col of [
+  "ecount_code TEXT NOT NULL DEFAULT ''",
+  "price INTEGER NOT NULL DEFAULT 0",
+  "detail_template TEXT NOT NULL DEFAULT ''",
+  "detail_json TEXT NOT NULL DEFAULT ''",
+  "detail_images TEXT NOT NULL DEFAULT '[]'",
+]) {
+  try {
+    sqlite.exec(`ALTER TABLE products ADD COLUMN ${col};`);
+  } catch (e: any) {
+    if (!/duplicate column/i.test(String(e?.message ?? ""))) {
+      console.warn("[products migration]", e?.message);
+    }
+  }
+}
 
 export const db = drizzle(sqlite);
 
@@ -64,9 +332,12 @@ export interface IStorage {
   // customers
   getCustomer(id: number): Promise<Customer | undefined>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
-  createCustomer(c: InsertCustomer & { password: string; role?: string }): Promise<Customer>;
+  getCustomerByBusinessName(name: string): Promise<Customer | undefined>;
+  createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string }): Promise<Customer>;
   updateCustomer(id: number, patch: Partial<Customer>): Promise<Customer | undefined>;
   listCustomers(): Promise<Customer[]>;
+  listAdmins(): Promise<Customer[]>;
+  deleteCustomer(id: number): Promise<void>;
   // products
   listProducts(): Promise<Product[]>;
   getProduct(id: number): Promise<Product | undefined>;
@@ -74,13 +345,51 @@ export interface IStorage {
   updateProduct(id: number, patch: Partial<Product>): Promise<Product | undefined>;
   deleteProduct(id: number): Promise<void>;
   // orders
-  createOrder(o: Omit<Order, "id">): Promise<Order>;
+  createOrder(
+    o: Omit<Order, "id" | "cancelledAt" | "cancelledBy"> &
+      Partial<Pick<Order, "cancelledAt" | "cancelledBy">>,
+  ): Promise<Order>;
   getOrder(id: number): Promise<Order | undefined>;
   getOrderByNo(orderNo: string): Promise<Order | undefined>;
   listOrders(): Promise<Order[]>;
   listOrdersByCustomer(customerId: number): Promise<Order[]>;
   listOrdersSince(ts: number): Promise<Order[]>;
   updateOrder(id: number, patch: Partial<Order>): Promise<Order | undefined>;
+  // payments
+  createPayment(p: InsertPayment): Promise<Payment>;
+  deletePayment(id: number): Promise<void>;
+  getPayment(id: number): Promise<Payment | undefined>;
+  listPaymentsByCustomer(customerId: number): Promise<Payment[]>;
+  listAllPayments(): Promise<Payment[]>;
+  getCustomerBalances(): Promise<CustomerBalance[]>;
+  getCustomerLedger(customerId: number): Promise<{ balance: CustomerBalance | null; rows: LedgerRow[] }>;
+  // ecount
+  getEcountSettings(): Promise<EcountSettings | undefined>;
+  updateEcountSettings(patch: Partial<EcountSettings>): Promise<EcountSettings>;
+  // ecount logs
+  insertEcountLog(log: Omit<EcountLog, "id" | "createdAt"> & { createdAt?: number }): Promise<EcountLog>;
+  listEcountLogs(filter?: { action?: string; refKind?: string; refId?: string; okOnly?: boolean; failOnly?: boolean; sinceTs?: number; limit?: number }): Promise<EcountLog[]>;
+  getEcountLog(id: number): Promise<EcountLog | undefined>;
+  deleteOldEcountLogs(beforeTs: number): Promise<number>;
+  // posts
+  listPosts(category?: PostCategory): Promise<PostWithMeta[]>;
+  getPost(id: number): Promise<Post | undefined>;
+  createPost(p: Omit<Post, "id" | "createdAt" | "updatedAt" | "viewCount">): Promise<Post>;
+  updatePost(id: number, patch: Partial<Post>): Promise<Post | undefined>;
+  deletePost(id: number): Promise<void>;
+  incrementPostView(id: number): Promise<void>;
+  // comments
+  listComments(postId: number): Promise<Comment[]>;
+  createComment(c: Omit<Comment, "id" | "createdAt">): Promise<Comment>;
+  deleteComment(id: number): Promise<void>;
+  // 거래처별 가격
+  listCustomerPrices(customerId: number): Promise<CustomerPrice[]>;
+  getCustomerPrice(customerId: number, productId: number): Promise<CustomerPrice | undefined>;
+  upsertCustomerPrice(customerId: number, productId: number, price: number): Promise<CustomerPrice>;
+  deleteCustomerPrice(customerId: number, productId: number): Promise<void>;
+  // 활동 로그 (#10)
+  logActivity(input: LogActivityInput): Promise<ActivityLog>;
+  listActivityLogs(filter?: { action?: string; actorEmail?: string; targetType?: string; from?: number; to?: number; page?: number; limit?: number }): Promise<{ logs: ActivityLog[]; total: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -90,13 +399,17 @@ export class DatabaseStorage implements IStorage {
   async getCustomerByEmail(email: string) {
     return db.select().from(customers).where(eq(customers.email, email)).get();
   }
-  async createCustomer(c: InsertCustomer & { password: string; role?: string }) {
+  async getCustomerByBusinessName(name: string) {
+    return db.select().from(customers).where(eq(customers.businessName, name)).get();
+  }
+  async createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string }) {
     return db
       .insert(customers)
       .values({
         email: c.email,
         password: c.password,
         role: c.role ?? "customer",
+        adminRole: c.adminRole ?? "owner",
         businessName: c.businessName,
         managerName: c.managerName,
         phone: c.phone,
@@ -120,6 +433,17 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(customers.createdAt))
       .all();
   }
+  async listAdmins() {
+    return db
+      .select()
+      .from(customers)
+      .where(eq(customers.role, "admin"))
+      .orderBy(desc(customers.createdAt))
+      .all();
+  }
+  async deleteCustomer(id: number) {
+    db.delete(customers).where(eq(customers.id, id)).run();
+  }
 
   async listProducts() {
     return db.select().from(products).orderBy(products.sortOrder).all();
@@ -137,8 +461,15 @@ export class DatabaseStorage implements IStorage {
     db.delete(products).where(eq(products.id, id)).run();
   }
 
-  async createOrder(o: Omit<Order, "id">) {
-    return db.insert(orders).values(o).returning().get();
+  async createOrder(
+    o: Omit<Order, "id" | "cancelledAt" | "cancelledBy"> &
+      Partial<Pick<Order, "cancelledAt" | "cancelledBy">>,
+  ) {
+    return db
+      .insert(orders)
+      .values({ cancelledAt: null, cancelledBy: null, ...o })
+      .returning()
+      .get();
   }
   async getOrder(id: number) {
     return db.select().from(orders).where(eq(orders.id, id)).get();
@@ -168,236 +499,385 @@ export class DatabaseStorage implements IStorage {
   async updateOrder(id: number, patch: Partial<Order>) {
     return db.update(orders).set(patch).where(eq(orders.id, id)).returning().get();
   }
+
+  // ===== payments =====
+  async createPayment(p: InsertPayment): Promise<Payment> {
+    return db
+      .insert(payments)
+      .values({
+        customerId: p.customerId,
+        amount: p.amount,
+        paidAt: p.paidAt,
+        method: p.method ?? "transfer",
+        memo: p.memo ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async deletePayment(id: number) {
+    db.delete(payments).where(eq(payments.id, id)).run();
+  }
+  async getPayment(id: number) {
+    return db.select().from(payments).where(eq(payments.id, id)).get();
+  }
+  async listPaymentsByCustomer(customerId: number) {
+    return db
+      .select()
+      .from(payments)
+      .where(eq(payments.customerId, customerId))
+      .orderBy(desc(payments.paidAt), desc(payments.id))
+      .all();
+  }
+  async listAllPayments() {
+    return db.select().from(payments).orderBy(desc(payments.paidAt), desc(payments.id)).all();
+  }
+
+  async getCustomerBalances(): Promise<CustomerBalance[]> {
+    const allCustomers = await this.listCustomers();
+    const allOrders = await this.listOrders();
+    const allPayments = await this.listAllPayments();
+
+    return allCustomers.map((c) => {
+      const myOrders = allOrders.filter((o) => o.customerId === c.id);
+      const myPayments = allPayments.filter((p) => p.customerId === c.id);
+      const totalOrdered = myOrders.reduce((s, o) => s + o.totalAmount, 0);
+      const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
+      return {
+        customerId: c.id,
+        businessName: c.businessName,
+        managerName: c.managerName,
+        phone: c.phone,
+        totalOrdered,
+        totalPaid,
+        balance: totalOrdered - totalPaid,
+        lastOrderAt: myOrders[0]?.createdAt ?? null,
+        lastPaidAt: myPayments[0]?.paidAt ?? null,
+      };
+    });
+  }
+
+  async getCustomerLedger(customerId: number) {
+    const customer = await this.getCustomer(customerId);
+    if (!customer) return { balance: null as CustomerBalance | null, rows: [] as LedgerRow[] };
+    const myOrders = await this.listOrdersByCustomer(customerId);
+    const myPayments = await this.listPaymentsByCustomer(customerId);
+
+    type RawRow =
+      | { kind: "order"; ts: number; o: Order }
+      | { kind: "payment"; ts: number; p: Payment };
+    const raws: RawRow[] = [
+      ...myOrders.map((o) => ({ kind: "order" as const, ts: o.createdAt, o })),
+      ...myPayments.map((p) => ({
+        kind: "payment" as const,
+        ts: new Date(p.paidAt + "T00:00:00+09:00").getTime() || p.createdAt,
+        p,
+      })),
+    ].sort((a, b) => a.ts - b.ts);
+
+    let running = 0;
+    const rowsAsc: LedgerRow[] = raws.map((r) => {
+      if (r.kind === "order") {
+        running += r.o.totalAmount;
+        return {
+          kind: "order",
+          id: r.o.id,
+          orderNo: r.o.orderNo,
+          date: r.ts,
+          debit: r.o.totalAmount,
+          credit: 0,
+          balance: running,
+          memo: r.o.note,
+          status: r.o.status,
+        };
+      } else {
+        running -= r.p.amount;
+        return {
+          kind: "payment",
+          id: r.p.id,
+          date: r.ts,
+          debit: 0,
+          credit: r.p.amount,
+          balance: running,
+          method: r.p.method,
+          memo: r.p.memo,
+        };
+      }
+    });
+    const rows = rowsAsc.slice().reverse();
+
+    const totalOrdered = myOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
+    return {
+      balance: {
+        customerId: customer.id,
+        businessName: customer.businessName,
+        managerName: customer.managerName,
+        phone: customer.phone,
+        totalOrdered,
+        totalPaid,
+        balance: totalOrdered - totalPaid,
+        lastOrderAt: myOrders[0]?.createdAt ?? null,
+        lastPaidAt: myPayments[0]?.paidAt ?? null,
+      } as CustomerBalance,
+      rows,
+    };
+  }
+  // ===== ECOUNT 설정 (단일 레코드, id=1) =====
+  async getEcountSettings(): Promise<EcountSettings | undefined> {
+    return db.select().from(ecountSettings).where(eq(ecountSettings.id, 1)).get();
+  }
+
+  async updateEcountSettings(patch: Partial<EcountSettings>): Promise<EcountSettings> {
+    const existing = await this.getEcountSettings();
+    const now = Date.now();
+    if (!existing) {
+      const row: EcountSettings = {
+        id: 1,
+        comCode: patch.comCode ?? "",
+        userId: patch.userId ?? "",
+        apiCertKeyEnc: patch.apiCertKeyEnc ?? "",
+        zone: patch.zone ?? "",
+        warehouseCode: patch.warehouseCode ?? "",
+        useTestEndpoint: patch.useTestEndpoint ?? 1,
+        autoSendSales: patch.autoSendSales ?? 0,
+        autoSendPayments: patch.autoSendPayments ?? 0,
+        autoSendCustomer: patch.autoSendCustomer ?? 1,
+        autoSendProduct: patch.autoSendProduct ?? 1,
+        lastVerifiedAt: patch.lastVerifiedAt ?? null,
+        verificationLog: patch.verificationLog ?? "",
+        updatedAt: now,
+      };
+      return db.insert(ecountSettings).values(row).returning().get();
+    }
+    return db
+      .update(ecountSettings)
+      .set({ ...patch, updatedAt: now })
+      .where(eq(ecountSettings.id, 1))
+      .returning()
+      .get();
+  }
+
+  // ===== ECOUNT 로그 =====
+  async insertEcountLog(log: Omit<EcountLog, "id" | "createdAt"> & { createdAt?: number }): Promise<EcountLog> {
+    return db
+      .insert(ecountLogs)
+      .values({
+        createdAt: log.createdAt ?? Date.now(),
+        action: log.action,
+        label: log.label,
+        refKind: log.refKind ?? "",
+        refId: log.refId ?? "",
+        summary: log.summary ?? "",
+        ok: log.ok ?? 0,
+        message: log.message ?? "",
+        requestJson: log.requestJson ?? "",
+        responseJson: log.responseJson ?? "",
+        durationMs: log.durationMs ?? 0,
+      })
+      .returning()
+      .get();
+  }
+
+  async listEcountLogs(filter?: { action?: string; refKind?: string; refId?: string; okOnly?: boolean; failOnly?: boolean; sinceTs?: number; limit?: number }): Promise<EcountLog[]> {
+    const conds: any[] = [];
+    if (filter?.action) conds.push(eq(ecountLogs.action, filter.action));
+    if (filter?.refKind) conds.push(eq(ecountLogs.refKind, filter.refKind));
+    if (filter?.refId) conds.push(eq(ecountLogs.refId, filter.refId));
+    if (filter?.okOnly) conds.push(eq(ecountLogs.ok, 1));
+    if (filter?.failOnly) conds.push(eq(ecountLogs.ok, 0));
+    if (filter?.sinceTs) conds.push(gt(ecountLogs.createdAt, filter.sinceTs));
+    let q: any = db.select().from(ecountLogs);
+    if (conds.length === 1) q = q.where(conds[0]);
+    else if (conds.length > 1) q = q.where(and(...conds));
+    return q.orderBy(desc(ecountLogs.createdAt)).limit(filter?.limit ?? 500).all();
+  }
+
+  async getEcountLog(id: number): Promise<EcountLog | undefined> {
+    return db.select().from(ecountLogs).where(eq(ecountLogs.id, id)).get();
+  }
+
+  async deleteOldEcountLogs(beforeTs: number): Promise<number> {
+    const result = sqlite.prepare("DELETE FROM ecount_logs WHERE created_at < ?").run(beforeTs);
+    return result.changes ?? 0;
+  }
+
+  // ===== 게시판 =====
+  async listPosts(category?: PostCategory): Promise<PostWithMeta[]> {
+    const rows = category
+      ? db.select().from(posts).where(eq(posts.category, category)).orderBy(desc(posts.pinned), desc(posts.createdAt)).all()
+      : db.select().from(posts).orderBy(desc(posts.pinned), desc(posts.createdAt)).all();
+    // 댓글 수 집계
+    const countMap = new Map<number, number>();
+    if (rows.length > 0) {
+      const allComments = db.select().from(comments).all();
+      for (const c of allComments) {
+        countMap.set(c.postId, (countMap.get(c.postId) ?? 0) + 1);
+      }
+    }
+    return rows.map((r) => ({ ...r, commentCount: countMap.get(r.id) ?? 0 }));
+  }
+  async getPost(id: number) {
+    return db.select().from(posts).where(eq(posts.id, id)).get();
+  }
+  async createPost(p: Omit<Post, "id" | "createdAt" | "updatedAt" | "viewCount">): Promise<Post> {
+    const now = Date.now();
+    return db
+      .insert(posts)
+      .values({ ...p, viewCount: 0, createdAt: now, updatedAt: now })
+      .returning()
+      .get();
+  }
+  async updatePost(id: number, patch: Partial<Post>): Promise<Post | undefined> {
+    return db
+      .update(posts)
+      .set({ ...patch, updatedAt: Date.now() })
+      .where(eq(posts.id, id))
+      .returning()
+      .get();
+  }
+  async deletePost(id: number) {
+    db.delete(comments).where(eq(comments.postId, id)).run();
+    db.delete(posts).where(eq(posts.id, id)).run();
+  }
+  async incrementPostView(id: number) {
+    sqlite.prepare("UPDATE posts SET view_count = view_count + 1 WHERE id = ?").run(id);
+  }
+  async listComments(postId: number): Promise<Comment[]> {
+    return db.select().from(comments).where(eq(comments.postId, postId)).orderBy(asc(comments.createdAt)).all();
+  }
+  async createComment(c: Omit<Comment, "id" | "createdAt">): Promise<Comment> {
+    return db
+      .insert(comments)
+      .values({ ...c, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async deleteComment(id: number) {
+    db.delete(comments).where(eq(comments.id, id)).run();
+  }
+
+  // ===== 거래처별 가격 =====
+  async listCustomerPrices(customerId: number) {
+    return db
+      .select()
+      .from(customerPrices)
+      .where(eq(customerPrices.customerId, customerId))
+      .all();
+  }
+  async getCustomerPrice(customerId: number, productId: number) {
+    return db
+      .select()
+      .from(customerPrices)
+      .where(
+        and(
+          eq(customerPrices.customerId, customerId),
+          eq(customerPrices.productId, productId),
+        ),
+      )
+      .get();
+  }
+  async upsertCustomerPrice(customerId: number, productId: number, price: number) {
+    const now = Date.now();
+    const existing = await this.getCustomerPrice(customerId, productId);
+    if (existing) {
+      return db
+        .update(customerPrices)
+        .set({ price, updatedAt: now })
+        .where(eq(customerPrices.id, existing.id))
+        .returning()
+        .get()!;
+    }
+    return db
+      .insert(customerPrices)
+      .values({ customerId, productId, price, createdAt: now, updatedAt: now })
+      .returning()
+      .get();
+  }
+  async deleteCustomerPrice(customerId: number, productId: number) {
+    db.delete(customerPrices)
+      .where(
+        and(
+          eq(customerPrices.customerId, customerId),
+          eq(customerPrices.productId, productId),
+        ),
+      )
+      .run();
+  }
+
+  // ===== 활동 로그 (#10) =====
+  async logActivity(input: LogActivityInput): Promise<ActivityLog> {
+    return db
+      .insert(activityLogs)
+      .values({
+        actorUserId: input.actorUserId,
+        actorEmail: input.actorEmail,
+        actorRole: input.actorRole,
+        action: input.action,
+        targetType: input.targetType ?? null,
+        targetId: input.targetId ?? null,
+        summary: input.summary ?? null,
+        metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+
+  async listActivityLogs(filter?: {
+    action?: string;
+    actorEmail?: string;
+    targetType?: string;
+    from?: number;
+    to?: number;
+    page?: number;
+    limit?: number;
+  }): Promise<{ logs: ActivityLog[]; total: number }> {
+    const limit = filter?.limit ?? 50;
+    const offset = ((filter?.page ?? 1) - 1) * limit;
+
+    const conds: any[] = [];
+    if (filter?.action) conds.push(eq(activityLogs.action, filter.action));
+    if (filter?.actorEmail) conds.push(like(activityLogs.actorEmail, `%${filter.actorEmail}%`));
+    if (filter?.targetType) conds.push(eq(activityLogs.targetType, filter.targetType));
+    if (filter?.from) conds.push(gte(activityLogs.createdAt, filter.from));
+    if (filter?.to) conds.push(lte(activityLogs.createdAt, filter.to));
+
+    let q: any = db.select().from(activityLogs);
+    if (conds.length === 1) q = q.where(conds[0]);
+    else if (conds.length > 1) q = q.where(and(...conds));
+
+    const allRows = await q.orderBy(desc(activityLogs.createdAt)).all();
+    const total = allRows.length;
+    const logs = allRows.slice(offset, offset + limit);
+    return { logs, total };
+  }
 }
 
 export const storage = new DatabaseStorage();
 
-// ===== 시드 데이터 =====
+// ===== 시드 데이터 (#2: 관리자 계정 1개만) =====
 export async function seed() {
-  const existing = db.select().from(products).all();
-  if (existing.length > 0) return; // 이미 시드됨
+  // 관리자 계정이 이미 있으면 skip
+  const existingAdmins = db.select().from(customers).where(eq(customers.role, "admin")).all();
+  if (existingAdmins.length > 0) return;
 
-  const now = Date.now();
   const hash = (pw: string) => bcrypt.hashSync(pw, 10);
 
-  // --- 관리자 ---
-  const admin = await storage.createCustomer({
-    email: "leekm0327@gmail.com",
+  // --- 관리자 계정만 시드 (#8 회사 이메일) ---
+  await storage.createCustomer({
+    email: "knitcoffee00@gmail.com",
     password: hash("knit2026"),
     role: "admin",
+    adminRole: "owner",
     businessName: "니트커피",
-    managerName: "이강민",
+    managerName: "니트커피 관리자",
     phone: "010-0000-0000",
     bizRegNo: "000-00-00000",
-    taxEmail: "leekm0327@gmail.com",
+    taxEmail: "knitcoffee00@gmail.com",
     defaultAddress: "서울 중구 남산트라팰리스 1층 니트커피",
     paymentMethod: "transfer",
   });
 
-  // --- 샘플 거래처 ---
-  const c1 = await storage.createCustomer({
-    email: "dowon@example.com",
-    password: hash("sample123"),
-    role: "customer",
-    businessName: "도원 베이커리",
-    managerName: "김도원",
-    phone: "010-2345-6789",
-    bizRegNo: "214-88-12345",
-    taxEmail: "dowon.tax@example.com",
-    defaultAddress: "서울 용산구 한강대로 99 도원베이커리",
-    paymentMethod: "transfer",
-  });
-  const c2 = await storage.createCustomer({
-    email: "huam@example.com",
-    password: hash("sample123"),
-    role: "customer",
-    businessName: "후암 다이닝",
-    managerName: "박후암",
-    phone: "010-9876-5432",
-    bizRegNo: "120-81-67890",
-    taxEmail: "huam.tax@example.com",
-    defaultAddress: "서울 용산구 후암로 45 후암다이닝",
-    paymentMethod: "deferred",
-  });
-
-  // --- 상품 ---
-  const productSeed: InsertProduct[] = [
-    {
-      name: "실크 블렌드",
-      category: "blend",
-      origin: "브라질 · 콜롬비아 · 에티오피아 / 부드러운 밀크초콜릿과 견과류 여운",
-      prices: JSON.stringify({ "200": 12000, "500": 28000, "1000": 52000 }),
-      available: 1,
-      sortOrder: 1,
-    },
-    {
-      name: "니트 블렌드",
-      category: "blend",
-      origin: "과테말라 · 콜롬비아 / 시그니처 블렌드, 캐러멜과 잘 익은 자두",
-      prices: JSON.stringify({ "200": 12000, "500": 28000, "1000": 52000 }),
-      available: 1,
-      sortOrder: 2,
-    },
-    {
-      name: "오피스 블렌드",
-      category: "blend",
-      origin: "브라질 · 베트남 / 가성비 데일리, 묵직한 바디와 다크초콜릿",
-      prices: JSON.stringify({ "200": 10000, "500": 23000, "1000": 42000 }),
-      available: 1,
-      sortOrder: 3,
-    },
-    {
-      name: "스위스워터 디카페인",
-      category: "decaf",
-      origin: "콜롬비아 / 스위스워터 공법, 깔끔한 단맛과 부드러운 산미",
-      prices: JSON.stringify({ "200": 15000, "500": 35000, "1000": 65000 }),
-      available: 1,
-      sortOrder: 4,
-    },
-    {
-      name: "에티오피아 부루사 내추럴",
-      category: "single",
-      origin: "에티오피아 예가체프 / 블루베리, 와인, 화사한 플로럴",
-      prices: JSON.stringify({ "200": 18000, "500": 42000, "1000": 78000 }),
-      available: 1,
-      sortOrder: 5,
-    },
-    {
-      name: "과테말라 아구아 티비아",
-      category: "single",
-      origin: "과테말라 안티구아 / 밀크초콜릿, 오렌지, 부드러운 바디",
-      prices: JSON.stringify({ "200": 16000, "500": 38000, "1000": 70000 }),
-      available: 1,
-      sortOrder: 6,
-    },
-    {
-      name: "콜롬비아 라 팔마 게이샤",
-      category: "single",
-      origin: "콜롬비아 우일라 / 게이샤, 자스민, 베르가못, 복숭아",
-      prices: JSON.stringify({ "200": 22000, "500": 52000, "1000": 95000 }),
-      available: 0,
-      sortOrder: 7,
-    },
-    {
-      name: "케냐 키리냐가 AA",
-      category: "single",
-      origin: "케냐 키리냐가 / 블랙커런트, 자몽, 토마토 같은 산미",
-      prices: JSON.stringify({ "200": 19000, "500": 45000, "1000": 84000 }),
-      available: 1,
-      sortOrder: 8,
-    },
-    {
-      name: "코스타리카 라 칸델리야",
-      category: "single",
-      origin: "코스타리카 타라주 / 허니 프로세스, 흑설탕, 살구, 깔끔한 단맛",
-      prices: JSON.stringify({ "200": 17000, "500": 40000, "1000": 74000 }),
-      available: 1,
-      sortOrder: 9,
-    },
-  ];
-  const createdProducts: Product[] = [];
-  for (const p of productSeed) {
-    createdProducts.push(await storage.createProduct(p));
-  }
-
-  // --- 샘플 과거 주문 ---
-  const byName = (n: string) => createdProducts.find((p) => p.name === n)!;
-  const priceOf = (p: Product, w: number) => (JSON.parse(p.prices) as Record<string, number>)[String(w)];
-
-  function buildOrder(opts: {
-    no: string;
-    cust: Customer;
-    lines: { p: Product; weight: number; qty: number }[];
-    desiredDate: string;
-    note: string;
-    status: "pending" | "done";
-    tracking?: string;
-    daysAgo: number;
-  }): Omit<Order, "id"> {
-    const items: OrderItem[] = opts.lines.map((l) => {
-      const unitPrice = priceOf(l.p, l.weight);
-      return {
-        productId: l.p.id,
-        name: l.p.name,
-        category: l.p.category,
-        weight: l.weight,
-        unitPrice,
-        qty: l.qty,
-        amount: unitPrice * l.qty,
-      };
-    });
-    const supplyAmount = items.reduce((s, i) => s + i.amount, 0);
-    const vat = Math.round(supplyAmount * 0.1);
-    return {
-      orderNo: opts.no,
-      customerId: opts.cust.id,
-      customerSnapshot: JSON.stringify({
-        businessName: opts.cust.businessName,
-        managerName: opts.cust.managerName,
-        phone: opts.cust.phone,
-        bizRegNo: opts.cust.bizRegNo,
-        taxEmail: opts.cust.taxEmail,
-        defaultAddress: opts.cust.defaultAddress,
-        paymentMethod: opts.cust.paymentMethod,
-      }),
-      items: JSON.stringify(items),
-      supplyAmount,
-      vat,
-      totalAmount: supplyAmount + vat,
-      desiredDate: opts.desiredDate,
-      note: opts.note,
-      status: opts.status,
-      trackingNo: opts.tracking ?? "",
-      adminMemo: "",
-      createdAt: now - opts.daysAgo * 86400000,
-    };
-  }
-
-  await storage.createOrder(
-    buildOrder({
-      no: "KC-260605-1001",
-      cust: c1,
-      lines: [
-        { p: byName("실크 블렌드"), weight: 1000, qty: 3 },
-        { p: byName("니트 블렌드"), weight: 500, qty: 2 },
-      ],
-      desiredDate: "2026-06-09",
-      note: "오전 중 배송 부탁드립니다.",
-      status: "done",
-      tracking: "1234-5678-9012",
-      daysAgo: 19,
-    }),
-  );
-  await storage.createOrder(
-    buildOrder({
-      no: "KC-260616-1002",
-      cust: c2,
-      lines: [
-        { p: byName("스위스워터 디카페인"), weight: 1000, qty: 2 },
-        { p: byName("에티오피아 부루사 내추럴"), weight: 500, qty: 3 },
-        { p: byName("오피스 블렌드"), weight: 1000, qty: 5 },
-      ],
-      desiredDate: "2026-06-20",
-      note: "디카페인은 분쇄 없이 홀빈으로 주세요.",
-      status: "done",
-      tracking: "9876-5432-1000",
-      daysAgo: 8,
-    }),
-  );
-  await storage.createOrder(
-    buildOrder({
-      no: "KC-260622-1003",
-      cust: c1,
-      lines: [
-        { p: byName("케냐 키리냐가 AA"), weight: 500, qty: 4 },
-        { p: byName("니트 블렌드"), weight: 1000, qty: 2 },
-      ],
-      desiredDate: "2026-06-26",
-      note: "",
-      status: "pending",
-      daysAgo: 2,
-    }),
-  );
-
-  console.log("[seed] 초기 데이터 생성 완료 (관리자/거래처2/상품9/주문3)");
+  console.log("[seed] 초기 데이터 생성 완료 (관리자 1개만)");
 }

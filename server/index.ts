@@ -1,4 +1,11 @@
-import "dotenv/config";
+// dotenv는 개발 환경에서만 .env 파일을 로드. production sandbox에서는 환경변수가
+// 이미 주입되므로 dotenv가 깔려있지 않아도 안전하게 무시한다.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("dotenv/config");
+} catch {
+  /* dotenv 미설치 — production 환경에서는 정상 */
+}
 import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
 import { registerRoutes } from "./routes";

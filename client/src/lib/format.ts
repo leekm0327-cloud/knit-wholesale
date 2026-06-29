@@ -27,10 +27,10 @@ export const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export const CATEGORY_COLOR: Record<string, string> = {
-  // 색상 칩 (HSL 기반)
-  blend: "25 35% 38%", // 우드브라운
-  decaf: "150 25% 38%", // 차분한 그린
-  single: "18 55% 50%", // 테라코타
+  // 본 사이트는 흑백. 카테고리 칩도 회색 톤으로 통일.
+  blend: "0 0% 13%",   // 검정에 가까운
+  decaf: "0 0% 47%",   // 중간 회색
+  single: "0 0% 33%",  // 진한 회색
 };
 
 export const PAYMENT_LABEL: Record<string, string> = {
@@ -38,20 +38,6 @@ export const PAYMENT_LABEL: Record<string, string> = {
   card: "카드",
   deferred: "후지급",
 };
-
-export const WEIGHT_OPTIONS = [200, 500, 1000];
-
-export function weightLabel(w: number): string {
-  return w >= 1000 ? `${w / 1000}kg` : `${w}g`;
-}
-
-export function parsePrices(s: string): Record<string, number> {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return {};
-  }
-}
 
 export function errMsg(err: any): string {
   const raw = String(err?.message ?? err ?? "오류가 발생했습니다.");
