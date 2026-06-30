@@ -2,16 +2,28 @@ import nodemailer from "nodemailer";
 import path from "node:path";
 import fs from "node:fs";
 
-// Gmail SMTP — 앱 비밀번호 사용
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
-const NOTIFY_TO = process.env.NOTIFY_TO || SMTP_USER;
+// 진단: 모듈 로드 시점에 환경변수 상태를 1회 출력
+console.log("[email] 모듈 로드 시점 env 확인:", {
+  SMTP_USER_set: !!process.env.SMTP_USER,
+  SMTP_USER_len: (process.env.SMTP_USER || "").length,
+  SMTP_PASS_set: !!process.env.SMTP_PASS,
+  SMTP_PASS_len: (process.env.SMTP_PASS || "").length,
+  NOTIFY_TO_set: !!process.env.NOTIFY_TO,
+  NODE_ENV: process.env.NODE_ENV,
+});
 
 let transporter: nodemailer.Transporter | null = null;
 
 function getTransporter() {
-  if (!SMTP_USER || !SMTP_PASS) return null;
+  // 런타임에 매번 process.env에서 읽어 캐시 우회 (모듈 톱 레벨 캡처 회피)
+  const SMTP_USER = process.env.SMTP_USER || "";
+  const SMTP_PASS = process.env.SMTP_PASS || "";
+  if (!SMTP_USER || !SMTP_PASS) {
+    console.warn("[email] getTransporter() → null 반환. SMTP_USER 또는 SMTP_PASS 비어있음.");
+    return null;
+  }
   if (!transporter) {
+    console.log("[email] transporter 최초 생성:", { user: SMTP_USER });
     transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -21,6 +33,16 @@ function getTransporter() {
   }
   return transporter;
 }
+
+// 런타임에서 NOTIFY_TO 동적 조회
+function getNotifyTo() {
+  return process.env.NOTIFY_TO || process.env.SMTP_USER || "";
+}
+
+// 기존 코드 호환을 위한 상수형 alias (런타임 값 readonly accessor)
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const NOTIFY_TO = process.env.NOTIFY_TO || SMTP_USER;
 
 export interface OrderEmailPayload {
   orderNo: string;
