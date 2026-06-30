@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Wordmark } from "./Logo";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
-import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare } from "lucide-react";
+import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle } from "lucide-react";
 
 export function AppHeader() {
   const { user, logout } = useAuth();
@@ -42,6 +42,14 @@ export function AppHeader() {
           >
             <span className="hidden sm:inline">Board</span>
             <MessageSquare className="h-4 w-4 sm:hidden" />
+          </button>
+          <button
+            onClick={() => navigate("/help")}
+            data-testid="link-help"
+            className={navLink(location.startsWith("/help"))}
+          >
+            <span className="hidden sm:inline">Help</span>
+            <HelpCircle className="h-4 w-4 sm:hidden" />
           </button>
         </nav>
 

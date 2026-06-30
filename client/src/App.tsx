@@ -22,6 +22,7 @@ import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Account from "@/pages/Account";
 import InvoicePage from "@/pages/InvoicePage";
+import Help from "@/pages/Help";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import Dashboard from "@/pages/admin/Dashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
@@ -97,6 +98,9 @@ function AppRouter() {
       </Route>
       <Route path="/invoice/:id">
         <RequireCustomer><InvoicePage /></RequireCustomer>
+      </Route>
+      <Route path="/help">
+        <RequireCustomer><Help /></RequireCustomer>
       </Route>
 
       {/* 관리자 */}
