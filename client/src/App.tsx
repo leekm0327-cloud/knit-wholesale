@@ -72,7 +72,7 @@ function AppRouter() {
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/forgot-password" component={ForgotPassword} />
-      <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/reset-password/:token" component={ResetPassword} />
 
       <Route path="/catalog">
         <RequireCustomer><Catalog /></RequireCustomer>

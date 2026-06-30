@@ -1293,7 +1293,7 @@ export async function registerRoutes(
       const origin = process.env.PUBLIC_URL ||
         (req.headers.origin as string) ||
         `${req.protocol}://${req.headers.host}`;
-      const resetUrl = `${origin}/#/reset-password?token=${token}`;
+      const resetUrl = `${origin}/#/reset-password/${token}`;
 
       sendPasswordResetEmail(parsed.data.email, resetUrl)
         .catch((e) => console.error("[forgot-password] 메일 발송 실패", e));
@@ -1340,7 +1340,7 @@ export async function registerRoutes(
     const origin = process.env.PUBLIC_URL ||
       (req.headers.origin as string) ||
       `${req.protocol}://${req.headers.host}`;
-    const resetUrl = `${origin}/#/reset-password?token=${token}`;
+    const resetUrl = `${origin}/#/reset-password/${token}`;
 
     sendPasswordResetEmail(customer.email, resetUrl).catch((e) =>
       console.error("[admin/reset-password] 메일 발송 실패", e),

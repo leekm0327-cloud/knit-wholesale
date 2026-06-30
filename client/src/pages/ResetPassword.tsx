@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useLocation, Link } from "wouter";
+import { useState } from "react";
+import { useLocation, Link, useParams } from "wouter";
 import { StackedLogo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,14 +14,9 @@ export default function ResetPassword() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
-  // hash 라우터이므로 window.location.hash에서 token 파싱
-  const [token, setToken] = useState("");
-  useEffect(() => {
-    const hash = window.location.hash; // e.g. "#/reset-password?token=abc"
-    const queryStr = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
-    const params = new URLSearchParams(queryStr);
-    setToken(params.get("token") ?? "");
-  }, []);
+  // URL path param에서 token 추출 (예: /#/reset-password/abc123)
+  const params = useParams<{ token: string }>();
+  const token = params.token ?? "";
 
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
