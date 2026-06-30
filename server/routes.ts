@@ -1252,7 +1252,8 @@ export async function registerRoutes(
     }
 
     // 등록되지 않은 이메일이어도 동일 메시지 (이메일 존재 여부 누출 방지)
-    const customer = await storage.getCustomerByEmail(parsed.data.email);
+    // 관리자가 같은 이메일을 쓸 수 있으므로, 명시적으로 customer만 조회
+    const customer = await storage.getCustomerOnlyByEmail(parsed.data.email);
     console.log("[forgot-password] 거래처 조회 결과:", {
       email: parsed.data.email,
       found: !!customer,

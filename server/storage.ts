@@ -351,6 +351,7 @@ export interface IStorage {
   // customers
   getCustomer(id: number): Promise<Customer | undefined>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
+  getCustomerOnlyByEmail(email: string): Promise<Customer | undefined>;
   getCustomerByBusinessName(name: string): Promise<Customer | undefined>;
   createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string }): Promise<Customer>;
   updateCustomer(id: number, patch: Partial<Customer>): Promise<Customer | undefined>;
@@ -422,6 +423,12 @@ export class DatabaseStorage implements IStorage {
   }
   async getCustomerByEmail(email: string) {
     return db.select().from(customers).where(eq(customers.email, email)).get();
+  }
+  // V8 #26: 관리자가 같은 이메일을 쓸 수 있으므로, customer만 명시적으로 조회
+  async getCustomerOnlyByEmail(email: string) {
+    return db.select().from(customers)
+      .where(and(eq(customers.email, email), eq(customers.role, "customer")))
+      .get();
   }
   async getCustomerByBusinessName(name: string) {
     return db.select().from(customers).where(eq(customers.businessName, name)).get();
