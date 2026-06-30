@@ -1,7 +1,27 @@
 import { Resend } from "resend";
 
-// Resend SDK 초기화 — RESEND_API_KEY 없으면 메일 발송 건너뜀 (에러 없이)
-const resend = new Resend(process.env.RESEND_API_KEY || "");
+// Resend SDK 게으른 초기화 — 실제 메일 발송 시점에만 생성
+let _resend: Resend | null = null;
+let _resendChecked = false;
+
+function getResend(): Resend | null {
+  if (_resendChecked) return _resend;
+  _resendChecked = true;
+  const key = process.env.RESEND_API_KEY;
+  if (!key || key.trim() === "") {
+    console.warn("[email] RESEND_API_KEY 없음 — 메일 발송 비활성화");
+    return null;
+  }
+  try {
+    _resend = new Resend(key.trim());
+    console.log("[email] Resend SDK 초기화 완료");
+    return _resend;
+  } catch (e) {
+    console.error("[email] Resend 초기화 실패:", e);
+    return null;
+  }
+}
+
 const MAIL_FROM = process.env.MAIL_FROM || "onboarding@resend.dev";
 const NOTIFY_TO = process.env.NOTIFY_TO || "";
 
@@ -80,6 +100,11 @@ async function sendEmail(opts: {
     return;
   }
   try {
+    const resend = getResend();
+    if (!resend) {
+      console.warn("[email] Resend 미초기화 — 메일 스킵");
+      return;
+    }
     const result = await resend.emails.send({
       from: MAIL_FROM,
       to: opts.to,
