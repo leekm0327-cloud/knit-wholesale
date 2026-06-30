@@ -1,49 +1,33 @@
-import nodemailer from "nodemailer";
-import path from "node:path";
-import fs from "node:fs";
+import { Resend } from "resend";
 
-// 진단: 모듈 로드 시점에 환경변수 상태를 1회 출력
-console.log("[email] 모듈 로드 시점 env 확인:", {
-  SMTP_USER_set: !!process.env.SMTP_USER,
-  SMTP_USER_len: (process.env.SMTP_USER || "").length,
-  SMTP_PASS_set: !!process.env.SMTP_PASS,
-  SMTP_PASS_len: (process.env.SMTP_PASS || "").length,
-  NOTIFY_TO_set: !!process.env.NOTIFY_TO,
-  NODE_ENV: process.env.NODE_ENV,
-});
+// Resend SDK 초기화 — RESEND_API_KEY 없으면 메일 발송 건너뜀 (에러 없이)
+const resend = new Resend(process.env.RESEND_API_KEY || "");
+const MAIL_FROM = process.env.MAIL_FROM || "onboarding@resend.dev";
+const NOTIFY_TO = process.env.NOTIFY_TO || "";
 
-let transporter: nodemailer.Transporter | null = null;
-
-function getTransporter() {
-  // 런타임에 매번 process.env에서 읽어 캐시 우회 (모듈 톱 레벨 캡처 회피)
-  const SMTP_USER = process.env.SMTP_USER || "";
-  const SMTP_PASS = process.env.SMTP_PASS || "";
-  if (!SMTP_USER || !SMTP_PASS) {
-    console.warn("[email] getTransporter() → null 반환. SMTP_USER 또는 SMTP_PASS 비어있음.");
-    return null;
-  }
-  if (!transporter) {
-    console.log("[email] transporter 최초 생성:", { user: SMTP_USER });
-    transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
-    });
-  }
-  return transporter;
+// ===== 공통 유틸 =====
+function fmtKRW(n: number) {
+  return n.toLocaleString("ko-KR") + "원";
 }
 
-// 런타임에서 NOTIFY_TO 동적 조회
-function getNotifyTo() {
-  return process.env.NOTIFY_TO || process.env.SMTP_USER || "";
+function fmtDate(ts: number) {
+  const d = new Date(ts);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(kst.getUTCDate()).padStart(2, "0");
+  const hh = String(kst.getUTCHours()).padStart(2, "0");
+  const mm = String(kst.getUTCMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
-// 기존 코드 호환을 위한 상수형 alias (런타임 값 readonly accessor)
-const SMTP_USER = process.env.SMTP_USER || "";
-const SMTP_PASS = process.env.SMTP_PASS || "";
-const NOTIFY_TO = process.env.NOTIFY_TO || SMTP_USER;
+function escapeHtml(s: string) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+  );
+}
 
+// ===== 인터페이스 =====
 export interface OrderEmailPayload {
   orderNo: string;
   businessName: string;
@@ -66,43 +50,57 @@ export interface OrderProcessedPayload {
   items: Array<{ name: string; qty: number; unitPrice?: number; amount?: number }>;
 }
 
-function fmtKRW(n: number) {
-  return n.toLocaleString("ko-KR") + "원";
+export interface OrderUpdatedPayload {
+  orderId: number;
+  orderNo: string;
+  businessName: string;
+  taxEmail: string;
 }
 
-function fmtDate(ts: number) {
-  const d = new Date(ts);
-  // KST 보정
-  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(kst.getUTCDate()).padStart(2, "0");
-  const hh = String(kst.getUTCHours()).padStart(2, "0");
-  const mm = String(kst.getUTCMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day} ${hh}:${mm}`;
+export interface OrderMergedEmailPayload {
+  orderNo: string;
+  businessName: string;
+  managerName: string;
+  phone: string;
+  addedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }>;
+  newSupplyAmount: number;
+  newVat: number;
+  newTotalAmount: number;
 }
 
-// 로고 파일은 빌드 후 dist/public/ 또는 client/public/ 에 존재.
-function findLogoPath(): string | null {
-  const candidates = [
-    path.join(process.cwd(), "dist", "public", "knit-logo-horizontal.png"),
-    path.join(process.cwd(), "client", "public", "knit-logo-horizontal.png"),
-    path.join(__dirname, "public", "knit-logo-horizontal.png"),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch {
-      /* noop */
-    }
+// ===== 공통 메일 래퍼: RESEND_API_KEY 없으면 건너뜀, 실패해도 메인 흐름 불가 =====
+async function sendEmail(opts: {
+  to: string | string[];
+  subject: string;
+  html: string;
+  text: string;
+}) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("[email] RESEND_API_KEY 미설정 — 메일 발송 건너뜀:", opts.subject);
+    return;
   }
-  return null;
+  try {
+    const result = await resend.emails.send({
+      from: MAIL_FROM,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+      text: opts.text,
+    });
+    if (result.error) {
+      console.error("[email] Resend 발송 오류:", result.error);
+    } else {
+      console.log("[email] 발송 완료:", { id: result.data?.id, subject: opts.subject });
+    }
+  } catch (err) {
+    console.error("[email] 발송 실패 (catch):", err);
+  }
 }
 
+// ===== 신규 주문 관리자 알림 =====
 export async function sendNewOrderEmail(payload: OrderEmailPayload) {
-  const t = getTransporter();
-  if (!t) {
-    console.warn("[email] SMTP_USER/SMTP_PASS 미설정 — 메일 발송 건너뜀");
+  if (!NOTIFY_TO) {
+    console.warn("[email] NOTIFY_TO 미설정 — 신규 주문 알림 건너뜀");
     return;
   }
 
@@ -118,10 +116,7 @@ export async function sendNewOrderEmail(payload: OrderEmailPayload) {
     )
     .join("");
 
-  const logoPath = findLogoPath();
-  const logoHtml = logoPath
-    ? `<img src="cid:knit-logo" alt="knit COFFEE" style="display:block;height:36px;width:auto;" />`
-    : `<div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>`;
+  const logoHtml = `<div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>`;
 
   const html = `<!doctype html>
 <html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
@@ -162,7 +157,7 @@ export async function sendNewOrderEmail(payload: OrderEmailPayload) {
       ${payload.note ? `<div style="margin-top:24px;padding:14px 16px;background:#f6f6f6;border-left:3px solid #111;font-size:13px;color:#222;"><strong style="color:#666;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;display:block;margin-bottom:6px;">요청사항</strong>${escapeHtml(payload.note)}</div>` : ""}
 
       <div style="margin-top:32px;text-align:center;">
-        <a href="https://knit-wholesale-v3.pplx.app/#/admin/orders" style="display:inline-block;padding:12px 28px;background:#111;color:#fff;text-decoration:none;font-size:13px;letter-spacing:0.06em;">관리자 페이지에서 보기</a>
+        <a href="${process.env.PUBLIC_URL || "https://web-production-afb9f.up.railway.app"}/#/admin/orders" style="display:inline-block;padding:12px 28px;background:#111;color:#fff;text-decoration:none;font-size:13px;letter-spacing:0.06em;">관리자 페이지에서 보기</a>
       </div>
     </div>
     <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #ebebeb;text-align:center;font-size:11px;color:#999;letter-spacing:0.04em;">
@@ -181,46 +176,26 @@ export async function sendNewOrderEmail(payload: OrderEmailPayload) {
     `상품:\n` +
     payload.items.map((i) => `  · ${i.name} × ${i.qty} = ${fmtKRW(i.amount)}`).join("\n") +
     (payload.note ? `\n\n요청사항: ${payload.note}` : "") +
-    `\n\n관리자 페이지: https://knit-wholesale-v3.pplx.app/#/admin/orders\n`;
+    `\n\n— 니트커피\n`;
 
-  try {
-    await t.sendMail({
-      from: `"니트커피 도매" <${SMTP_USER}>`,
-      to: NOTIFY_TO,
-      subject: `[니트커피] 신규 주문 ${payload.orderNo} · ${payload.businessName} · ${fmtKRW(payload.totalAmount)}`,
-      text,
-      html,
-      attachments: logoPath
-        ? [
-            {
-              filename: "knit-logo.png",
-              path: logoPath,
-              cid: "knit-logo",
-            },
-          ]
-        : [],
-    });
-    console.log(`[email] 알림 메일 전송 완료 → ${NOTIFY_TO} (${payload.orderNo})`);
-  } catch (err) {
-    console.error("[email] 메일 발송 실패:", err);
-  }
+  await sendEmail({
+    to: NOTIFY_TO,
+    subject: `[니트커피] 신규 주문 ${payload.orderNo} · ${payload.businessName} · ${fmtKRW(payload.totalAmount)}`,
+    html,
+    text,
+  });
 }
 
-// ===== 처리완료 메일 (#7) =====
-export async function sendOrderProcessedEmail(payload: OrderProcessedPayload) {
+// ===== 처리완료 메일 =====
+export async function sendOrderProcessedEmail(payload: OrderProcessedPayload, baseUrl?: string) {
   if (!payload.taxEmail || payload.taxEmail.trim() === "") {
-    console.log("[email] taxEmail 비어있음 — 발송 건너뜀", { orderNo: payload.orderNo });
-    return;
-  }
-  const t = getTransporter();
-  if (!t) {
-    console.warn("[email] SMTP_USER/SMTP_PASS 미설정 — 처리완료 메일 건너뜀");
+    console.log("[email] taxEmail 비어있음 — 처리완료 메일 건너뜀", { orderNo: payload.orderNo });
     return;
   }
 
+  const invoiceUrl = `${baseUrl || process.env.PUBLIC_URL || "https://web-production-afb9f.up.railway.app"}/#/invoice/${payload.orderId}`;
   const itemLines = payload.items.map((i) => `  · ${escapeHtml(i.name)} × ${i.qty}`).join("<br>");
   const itemText = payload.items.map((i) => `  · ${i.name} × ${i.qty}`).join("\n");
-  const invoiceUrl = `https://knit-wholesale-v3.pplx.app/#/invoice/${payload.orderId}`;
 
   const html = `<!doctype html>
 <html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
@@ -273,40 +248,22 @@ export async function sendOrderProcessedEmail(payload: OrderProcessedPayload) {
     `  · 이메일: knitcoffee00@gmail.com\n\n` +
     `— 니트커피\n`;
 
-  try {
-    await t.sendMail({
-      from: `"니트커피" <${SMTP_USER}>`,
-      to: payload.taxEmail,
-      subject: `[니트커피] 주문 ${payload.orderNo} 처리완료 안내`,
-      text,
-      html,
-    });
-    console.log(`[email] 처리완료 메일 전송 완료 → ${payload.taxEmail} (${payload.orderNo})`);
-  } catch (err) {
-    console.error("[email] 처리완료 메일 발송 실패:", err);
-  }
+  await sendEmail({
+    to: payload.taxEmail,
+    subject: `[니트커피] 주문 ${payload.orderNo} 처리완료 안내`,
+    html,
+    text,
+  });
 }
 
-// ===== 주문 수정 안내 메일 (#11) =====
-export interface OrderUpdatedPayload {
-  orderId: number;
-  orderNo: string;
-  businessName: string;
-  taxEmail: string;
-}
-
-export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload) {
+// ===== 주문 수정 안내 메일 =====
+export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload, baseUrl?: string) {
   if (!payload.taxEmail || payload.taxEmail.trim() === "") {
-    console.log("[email] taxEmail 비어있음 — 발송 건너뜀", { orderNo: payload.orderNo });
-    return;
-  }
-  const t = getTransporter();
-  if (!t) {
-    console.warn("[email] SMTP_USER/SMTP_PASS 미설정 — 주문 수정 메일 건너뜀");
+    console.log("[email] taxEmail 비어있음 — 주문 수정 메일 건너뜀", { orderNo: payload.orderNo });
     return;
   }
 
-  const orderUrl = `https://knit-wholesale-v3.pplx.app/#/orders/${payload.orderId}`;
+  const orderUrl = `${baseUrl || process.env.PUBLIC_URL || "https://web-production-afb9f.up.railway.app"}/#/orders/${payload.orderId}`;
 
   const html = `<!doctype html>
 <html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
@@ -325,7 +282,7 @@ export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload) {
 
       <div style="margin-top:24px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
         <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">문의</div>
-        <p style="margin:0;">02-XXXX-XXXX</p>
+        <p style="margin:0;">knitcoffee00@gmail.com</p>
       </div>
     </div>
     <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #ebebeb;text-align:center;font-size:11px;color:#999;">
@@ -339,31 +296,19 @@ export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload) {
     `니트커피 주문 #${payload.orderNo} 가 관리자에 의해 수정되었습니다.\n` +
     `변경된 내용은 사이트에서 확인해 주세요.\n\n` +
     `[주문 확인] ${orderUrl}\n\n` +
-    `문의: 02-XXXX-XXXX\n` +
+    `문의: knitcoffee00@gmail.com\n` +
     `니트커피\n`;
 
-  try {
-    await t.sendMail({
-      from: `"니트커피" <${SMTP_USER}>`,
-      to: payload.taxEmail,
-      subject: `[니트커피] 주문이 수정되었습니다 (주문번호 ${payload.orderNo})`,
-      text,
-      html,
-    });
-    console.log(`[email] 주문 수정 메일 전송 완료 → ${payload.taxEmail} (${payload.orderNo})`);
-  } catch (err) {
-    console.error("[email] 주문 수정 메일 발송 실패:", err);
-  }
+  await sendEmail({
+    to: payload.taxEmail,
+    subject: `[니트커피] 주문이 수정되었습니다 (주문번호 ${payload.orderNo})`,
+    html,
+    text,
+  });
 }
 
-// ===== V8 #26: 비밀번호 재설정 안내 메일 =====
+// ===== 비밀번호 재설정 안내 메일 =====
 export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) {
-  const t = getTransporter();
-  if (!t) {
-    console.warn("[email] SMTP_USER/SMTP_PASS 미설정 — 비밀번호 재설정 메일 발송 건너끨");
-    return;
-  }
-
   const html = `<!doctype html>
 <html lang="ko"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
@@ -374,7 +319,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) 
     </div>
     <div style="padding:24px 28px;font-size:14px;line-height:1.9;color:#222;">
       <p>니트커피 도매 거래처 시스템에서 비밀번호 재설정이 요청되었습니다.</p>
-      <p>아래 버튼을 클릭하여 1시간 이내에 비밀번호를 재설정해 주세요.<br>요청하지 않으셨다면 이 메일을 무시하셨도 됩니다.</p>
+      <p>아래 버튼을 클릭하여 1시간 이내에 비밀번호를 재설정해 주세요.<br>요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.</p>
       <div style="margin:28px 0;text-align:center;">
         <a href="${resetUrl}" style="display:inline-block;padding:13px 32px;background:#111;color:#fff;text-decoration:none;font-size:14px;letter-spacing:0.06em;">비밀번호 재설정하기</a>
       </div>
@@ -396,42 +341,18 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) 
     `요청하지 않으셨다면 이 메일을 무시하세요.\n\n` +
     `— 니트커피\n`;
 
-  try {
-    await t.sendMail({
-      from: `"니트커피" <${SMTP_USER}>`,
-      to: toEmail,
-      subject: `[니트커피 도매] 비밀번호 재설정 안내`,
-      text,
-      html,
-    });
-    console.log(`[email] 비밀번호 재설정 메일 전송 완료 → ${toEmail}`);
-  } catch (err) {
-    console.error("[email] 비밀번호 재설정 메일 발송 실패:", err);
-  }
+  await sendEmail({
+    to: toEmail,
+    subject: `[니트커피 도매] 비밀번호 재설정 안내`,
+    html,
+    text,
+  });
 }
 
-function escapeHtml(s: string) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
-  );
-}
-
-// ===== V7 #23C: 주문 누적(추가) 관리자 알림 메일 =====
-export interface OrderMergedEmailPayload {
-  orderNo: string;
-  businessName: string;
-  managerName: string;
-  phone: string;
-  addedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }>;
-  newSupplyAmount: number;
-  newVat: number;
-  newTotalAmount: number;
-}
-
+// ===== 주문 추가(머지) 관리자 알림 메일 =====
 export async function sendOrderMergedEmail(payload: OrderMergedEmailPayload) {
-  const t = getTransporter();
-  if (!t) {
-    console.warn("[email] SMTP_USER/SMTP_PASS 미설정 — 주문 추가 메일 발송 건너뜀");
+  if (!NOTIFY_TO) {
+    console.warn("[email] NOTIFY_TO 미설정 — 주문 추가 알림 건너뜀");
     return;
   }
 
@@ -496,16 +417,10 @@ export async function sendOrderMergedEmail(payload: OrderMergedEmailPayload) {
     `총 합계: ${fmtKRW(payload.newTotalAmount)}\n\n` +
     `니트커피\n`;
 
-  try {
-    await t.sendMail({
-      from: `"니트커피" <${SMTP_USER}>`,
-      to: NOTIFY_TO,
-      subject: `[니트커피] 주문 추가 - ${payload.businessName} (#${payload.orderNo})`,
-      text,
-      html,
-    });
-    console.log(`[email] 주문 추가 알림 메일 전송 완료 (${payload.orderNo})`);
-  } catch (err) {
-    console.error("[email] 주문 추가 알림 메일 발송 실패:", err);
-  }
+  await sendEmail({
+    to: NOTIFY_TO,
+    subject: `[니트커피] 주문 추가 - ${payload.businessName} (#${payload.orderNo})`,
+    html,
+    text,
+  });
 }

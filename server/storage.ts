@@ -415,6 +415,13 @@ export interface IStorage {
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
   markPasswordResetTokenUsed(tokenId: number): Promise<void>;
   updateCustomerPassword(customerId: number, hashedPassword: string): Promise<void>;
+  // #32 거래내역서
+  listTransactions(customerId: number, startDate: string, endDate: string): Promise<{
+    orders: Array<Order & { parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> }>;
+    totalAmount: number;
+    paidAmount: number;
+    unpaidAmount: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -871,6 +878,57 @@ export class DatabaseStorage implements IStorage {
   }
   async updateCustomerPassword(customerId: number, hashedPassword: string): Promise<void> {
     db.update(customers).set({ password: hashedPassword }).where(eq(customers.id, customerId)).run();
+  }
+
+  // #32 거래내역서
+  async listTransactions(customerId: number, startDate: string, endDate: string): Promise<{
+    orders: Array<Order & { parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> }>;
+    totalAmount: number;
+    paidAmount: number;
+    unpaidAmount: number;
+  }> {
+    // startDate / endDate: YYYY-MM-DD (KST 기준)
+    const startTs = new Date(startDate + "T00:00:00+09:00").getTime();
+    const endTs = new Date(endDate + "T23:59:59+09:00").getTime();
+
+    const allOrders = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.customerId, customerId),
+          gte(orders.createdAt, startTs),
+          lte(orders.createdAt, endTs),
+        ),
+      )
+      .orderBy(asc(orders.createdAt))
+      .all();
+
+    // 취소된 주문 제외
+    const activeOrders = allOrders.filter((o) => o.status !== "cancelled");
+
+    const resultOrders = activeOrders.map((o) => {
+      let parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> = [];
+      try {
+        parsedItems = JSON.parse(o.items);
+      } catch { /* noop */ }
+      return { ...o, parsedItems };
+    });
+
+    const totalAmount = resultOrders.reduce((s, o) => s + o.totalAmount, 0);
+
+    // 기간 내 입금 조회 (paidAt이 해당 기간 내)
+    const allPayments = await this.listPaymentsByCustomer(customerId);
+    const paidAmount = allPayments
+      .filter((p) => p.paidAt >= startDate && p.paidAt <= endDate)
+      .reduce((s, p) => s + p.amount, 0);
+
+    return {
+      orders: resultOrders,
+      totalAmount,
+      paidAmount,
+      unpaidAmount: Math.max(0, totalAmount - paidAmount),
+    };
   }
 
   async listActivityLogs(filter?: {

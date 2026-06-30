@@ -36,6 +36,7 @@ import AdminBoard from "@/pages/admin/AdminBoard";
 import AdminBackup from "@/pages/admin/AdminBackup";
 import AdminManagers from "@/pages/admin/AdminManagers";
 import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
+import AdminTransactions from "@/pages/admin/AdminTransactions";
 import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
@@ -113,6 +114,7 @@ function AppRouter() {
       <Route path="/admin/backup" component={AdminBackup} />
       <Route path="/admin/managers" component={AdminManagers} />
       <Route path="/admin/activity-logs" component={AdminActivityLogs} />
+      <Route path="/admin/transactions" component={AdminTransactions} />
 
       <Route component={NotFound} />
     </Switch>

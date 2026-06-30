@@ -101,8 +101,8 @@ export default function Register() {
 
           <div className="border-t border-border pt-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* #24: 이메일 1칸으로 통일 */}
-              <Field label="이메일 *" helper="이 이메일로 세금계산서가 발행되고, 비밀번호 재설정 메일이 발송됩니다" colSpan>
+              {/* #34: 이메일 1칸으로 통일 */}
+              <Field label="이메일 *" helper="이 이메일로 세금계산서가 발행됩니다" colSpan>
                 <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} required placeholder="business@example.com" data-testid="input-email" />
               </Field>
               {/* #28: 비밀번호 확인 필드 추가 */}
@@ -123,8 +123,9 @@ export default function Register() {
                   <p className="text-[11px] text-destructive">비밀번호가 일치하지 않습니다.</p>
                 )}
               </Field>
-              <Field label="기본 배송지">
-                <Input value={form.defaultAddress} onChange={(e) => set("defaultAddress", e.target.value)} placeholder="배송 받으실 주소" data-testid="input-defaultAddress" />
+              {/* #35: 기본 배송지 전체 너비 */}
+              <Field label="기본 배송지" colSpan>
+                <Input value={form.defaultAddress} onChange={(e) => set("defaultAddress", e.target.value)} placeholder="배송 받으실 주소 (도로명 주소 또는 지번 주소)" data-testid="input-defaultAddress" />
               </Field>
             </div>
           </div>

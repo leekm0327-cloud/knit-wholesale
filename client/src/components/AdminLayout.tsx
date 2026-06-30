@@ -19,6 +19,7 @@ import {
   Users,
   Archive,
   Activity,
+  FileBarChart,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -35,6 +36,7 @@ const NAV_BASE: NavItem[] = [
   { href: "/admin/products", label: "상품 관리", icon: Package },
   { href: "/admin/customers", label: "거래처 관리", icon: Building2 },
   { href: "/admin/balances", label: "채권 관리", icon: Wallet },
+  { href: "/admin/transactions", label: "거래내역서", icon: FileBarChart },
   { href: "/admin/ecount", label: "ECOUNT 연동", icon: Link2 },
   { href: "/admin/ecount-logs", label: "ECOUNT 로그", icon: ScrollText },
   { href: "/admin/board", label: "게시판", icon: MessageSquare },

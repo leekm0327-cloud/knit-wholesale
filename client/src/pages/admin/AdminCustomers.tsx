@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -18,7 +18,10 @@ import { won, fmtDate, errMsg } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PublicCustomer, Order, OrderItem, CustomerBalance, Product, CustomerPrice } from "@shared/schema";
-import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail } from "lucide-react";
+import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown } from "lucide-react";
+
+type SortKey = "businessName" | "balance" | "createdAt";
+type SortDir = "asc" | "desc";
 
 export default function AdminCustomers() {
   const [, navigate] = useLocation();
@@ -28,10 +31,66 @@ export default function AdminCustomers() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editCustomer, setEditCustomer] = useState<PublicCustomer | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  // 검색 + 정렬 상태
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const qc = useQueryClient();
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "businessName" ? "asc" : "desc");
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const list = customers ?? [];
+    const q = search.trim().toLowerCase();
+    const searched = q ? list.filter((c) => c.businessName.toLowerCase().includes(q)) : list;
+    return [...searched].sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "businessName") {
+        cmp = a.businessName.localeCompare(b.businessName, "ko");
+      } else if (sortKey === "balance") {
+        cmp = (balanceMap.get(a.id) ?? 0) - (balanceMap.get(b.id) ?? 0);
+      } else {
+        cmp = a.createdAt - b.createdAt;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [customers, search, sortKey, sortDir, balanceMap]);
+
+  async function handleDelete(id: number) {
+    try {
+      await apiRequest("DELETE", `/api/admin/customers/${id}`, {});
+      qc.invalidateQueries({ queryKey: ["/api/admin/customers"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/balances"] });
+    } catch (e: any) {
+      alert("삭제 실패: " + (e?.message ?? ""));
+    } finally {
+      setDeleteId(null);
+    }
+  }
+
+  const SortBtn = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
+    <button
+      onClick={() => toggleSort(k)}
+      className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground hover:text-foreground"
+    >
+      {children}
+      <ArrowUpDown className={`h-3 w-3 ${sortKey === k ? "text-foreground" : ""}`} />
+    </button>
+  );
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="eyebrow">Customers</div>
@@ -43,66 +102,190 @@ export default function AdminCustomers() {
           </Button>
         </div>
 
+        {/* 검색창 */}
+        <div className="mb-4">
+          <Input
+            placeholder="상호명 검색…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs"
+            data-testid="input-customer-search"
+          />
+        </div>
+
         {isLoading ? (
           <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-none" />)}
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-none" />)}
           </div>
-        ) : !customers || customers.length === 0 ? (
+        ) : !filtered || filtered.length === 0 ? (
           <Card className="flex flex-col items-center gap-3 py-16 text-center">
             <Building2 className="h-10 w-10 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">등록된 거래처가 없습니다.</p>
+            <p className="text-sm text-muted-foreground">
+              {search ? "검색 결과가 없습니다." : "등록된 거래처가 없습니다."}
+            </p>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {customers.map((c) => (
-              <Card
-                key={c.id}
-                className="cursor-pointer p-5 hover-elevate"
-                onClick={() => setDetailId(c.id)}
-                data-testid={`card-customer-${c.id}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">{c.businessName}</span>
-                </div>
-                <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  <div>담당자 {c.managerName} · {c.phone}</div>
-                  <div className="truncate">{c.email}</div>
-                  <div className="truncate">{c.defaultAddress || "배송지 미등록"}</div>
-                </div>
-                <div className="mt-3 flex items-center justify-between border-t pt-2.5">
-                  <span className="text-[11px] text-muted-foreground">미수금</span>
-                  <span className={`font-display tabular text-sm font-semibold ${(balanceMap.get(c.id) ?? 0) > 0 ? "text-destructive" : "text-foreground"}`}>
-                    {balanceMap.has(c.id) ? won(balanceMap.get(c.id)!) : "—"}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">가입일 {fmtDate(c.createdAt)}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setEditCustomer(c); }}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground hover:underline"
-                      data-testid={`button-edit-customer-${c.id}`}
-                    >
-                      <Pencil className="h-3 w-3" /> 수정
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/admin/customers/${c.id}/ledger`); }}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground hover:underline"
-                      data-testid={`button-ledger-${c.id}`}
-                    >
-                      <Wallet className="h-3 w-3" /> 원장
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+          <>
+            {/* === 데스크탑 테이블 (lg 이상) === */}
+            <div className="hidden lg:block">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-y border-border bg-muted/30">
+                    <th className="px-4 py-3 text-left">
+                      <SortBtn k="businessName">상호명</SortBtn>
+                    </th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">대표자 / 연락처</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">기본배송지</th>
+                    <th className="px-4 py-3 text-right">
+                      <SortBtn k="balance">미수금</SortBtn>
+                    </th>
+                    <th className="px-4 py-3 text-left">
+                      <SortBtn k="createdAt">가입일</SortBtn>
+                    </th>
+                    <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">관리</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filtered.map((c) => {
+                    const balance = balanceMap.get(c.id) ?? 0;
+                    return (
+                      <tr
+                        key={c.id}
+                        className="hover:bg-muted/20 transition-colors"
+                        data-testid={`row-customer-${c.id}`}
+                      >
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setDetailId(c.id)}
+                            className="text-sm font-semibold text-foreground hover:underline underline-offset-2"
+                            data-testid={`link-customer-${c.id}`}
+                          >
+                            {c.businessName}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          <div className="text-xs">{c.managerName}</div>
+                          <div className="text-xs">{c.phone}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="max-w-[200px] truncate text-xs text-muted-foreground">{c.defaultAddress || "—"}</p>
+                        </td>
+                        <td className={`px-4 py-3 text-right font-ui text-sm font-semibold tabular ${balance > 0 ? "text-destructive" : "text-foreground"}`}>
+                          {balanceMap.has(c.id) ? won(balance) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{fmtDate(c.createdAt)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setEditCustomer(c)}
+                              className="inline-flex items-center gap-0.5 rounded border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+                              data-testid={`button-edit-customer-${c.id}`}
+                            >
+                              <Pencil className="h-3 w-3" /> 수정
+                            </button>
+                            <button
+                              onClick={() => navigate(`/admin/customers/${c.id}/ledger`)}
+                              className="inline-flex items-center gap-0.5 rounded border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+                              data-testid={`button-ledger-${c.id}`}
+                            >
+                              <Wallet className="h-3 w-3" /> 원장
+                            </button>
+                            <button
+                              onClick={() => setDeleteId(c.id)}
+                              className="inline-flex items-center gap-0.5 rounded border border-destructive/40 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10"
+                              data-testid={`button-delete-customer-${c.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" /> 삭제
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="border-b border-border" />
+            </div>
+
+            {/* === 모바일 카드 (lg 미만) === */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+              {filtered.map((c) => {
+                const balance = balanceMap.get(c.id) ?? 0;
+                return (
+                  <Card
+                    key={c.id}
+                    className="cursor-pointer p-5 hover-elevate"
+                    onClick={() => setDetailId(c.id)}
+                    data-testid={`card-customer-${c.id}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-foreground">{c.businessName}</span>
+                    </div>
+                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      <div>담당자 {c.managerName} · {c.phone}</div>
+                      <div className="truncate">{c.email}</div>
+                      <div className="truncate">{c.defaultAddress || "배송지 미등록"}</div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between border-t pt-2.5">
+                      <span className="text-[11px] text-muted-foreground">미수금</span>
+                      <span className={`font-display tabular text-sm font-semibold ${balance > 0 ? "text-destructive" : "text-foreground"}`}>
+                        {balanceMap.has(c.id) ? won(balance) : "—"}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-[11px] text-muted-foreground">가입일 {fmtDate(c.createdAt)}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditCustomer(c); }}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground hover:underline"
+                          data-testid={`button-edit-customer-mobile-${c.id}`}
+                        >
+                          <Pencil className="h-3 w-3" /> 수정
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/admin/customers/${c.id}/ledger`); }}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground hover:underline"
+                          data-testid={`button-ledger-mobile-${c.id}`}
+                        >
+                          <Wallet className="h-3 w-3" /> 원장
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteId(c.id); }}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-destructive hover:underline"
+                          data-testid={`button-delete-customer-mobile-${c.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" /> 삭제
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
       <CustomerDetail id={detailId} onClose={() => setDetailId(null)} onOpenOrder={(oid) => { setDetailId(null); navigate(`/admin/orders/${oid}`); }} />
       <CreateCustomerDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       <EditCustomerDialog customer={editCustomer} onClose={() => setEditCustomer(null)} />
+
+      {/* 삭제 확인 다이얼로그 */}
+      <Dialog open={deleteId != null} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>거래처 삭제</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {filtered.find((c) => c.id === deleteId)?.businessName} 거래처를 삭제하시겠습니까?<br />
+            이 작업은 되돌릴 수 없습니다.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteId(null)}>취소</Button>
+            <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>삭제</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
@@ -559,4 +742,3 @@ function CustomerPricesSection({ customerId }: { customerId: number }) {
     </div>
   );
 }
-

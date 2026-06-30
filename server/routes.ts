@@ -850,12 +850,16 @@ export async function registerRoutes(
       });
       const cust = await storage.getCustomer(updated.customerId);
       if (cust) {
+        // #31 동적 도메인 처리
+        const baseUrl = process.env.PUBLIC_URL ||
+          (req.headers.origin as string) ||
+          `${req.protocol}://${req.headers.host}`;
         sendOrderUpdatedEmail({
           orderId: updated.id,
           orderNo: updated.orderNo,
           businessName: cust.businessName,
           taxEmail: cust.taxEmail,
-        }).catch((e) => console.error("[email] 주문 수정 메일 실패:", e));
+        }, baseUrl).catch((e) => console.error("[email] 주문 수정 메일 실패:", e));
       }
     }
 
@@ -875,13 +879,17 @@ export async function registerRoutes(
       if (patch.status === "done") {
         const customer = await storage.getCustomer(updated.customerId);
         if (customer) {
+          // #31 동적 도메인 처리
+          const baseUrl = process.env.PUBLIC_URL ||
+            (req.headers.origin as string) ||
+            `${req.protocol}://${req.headers.host}`;
           sendOrderProcessedEmail({
             orderId: updated.id,
             orderNo: updated.orderNo,
             businessName: customer.businessName,
             taxEmail: customer.taxEmail,
             items: JSON.parse(updated.items),
-          }).catch((e) => console.error("[email] 처리완료 메일 실패:", e));
+          }, baseUrl).catch((e) => console.error("[email] 처리완료 메일 실패:", e));
         }
       }
     }
@@ -1047,6 +1055,30 @@ export async function registerRoutes(
 
     const result = await storage.listActivityLogs({ action, actorEmail, targetType, from, to, page, limit });
     res.json(result);
+  });
+
+  // ===== #32 거래내역서 =====
+  app.get("/api/admin/transactions", requireAdmin, async (req, res) => {
+    const customerId = Number(req.query.customerId);
+    const startDate = typeof req.query.startDate === "string" ? req.query.startDate : "";
+    const endDate = typeof req.query.endDate === "string" ? req.query.endDate : "";
+
+    if (!Number.isFinite(customerId) || customerId <= 0)
+      return res.status(400).json({ message: "거래처 ID가 필요합니다." });
+    if (!startDate || !endDate)
+      return res.status(400).json({ message: "시작일과 종료일이 필요합니다." });
+
+    const customer = await storage.getCustomer(customerId);
+    if (!customer || customer.role !== "customer")
+      return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+
+    const result = await storage.listTransactions(customerId, startDate, endDate);
+    res.json({
+      customer: { id: customer.id, businessName: customer.businessName, managerName: customer.managerName, phone: customer.phone },
+      startDate,
+      endDate,
+      ...result,
+    });
   });
 
   // ===== 백업 (#4) =====
@@ -1242,75 +1274,29 @@ export async function registerRoutes(
     res.json({ deleted });
   });
 
-  // ===== 응급 진단 라우트 (메일 발송 실패 추적) =====
-  app.get("/api/_debug/mail-status", async (req, res) => {
-    const testEmail = (req.query.email as string) || "knitcoffee00@gmail.com";
-    let customer: any = null;
-    let customerErr: string | null = null;
-    try {
-      customer = await storage.getCustomerOnlyByEmail(testEmail);
-    } catch (e: any) {
-      customerErr = String(e?.message || e);
-    }
-    res.json({
-      now: new Date().toISOString(),
-      build: "2026-06-30-debug-mail",
-      env: {
-        SMTP_USER_set: !!process.env.SMTP_USER,
-        SMTP_USER_len: process.env.SMTP_USER?.length || 0,
-        SMTP_PASS_set: !!process.env.SMTP_PASS,
-        SMTP_PASS_len: process.env.SMTP_PASS?.length || 0,
-        NOTIFY_TO_set: !!process.env.NOTIFY_TO,
-        NODE_ENV: process.env.NODE_ENV,
-        DATA_DIR: process.env.DATA_DIR,
-      },
-      hasGetCustomerOnlyByEmail: typeof (storage as any).getCustomerOnlyByEmail === "function",
-      customerLookup: {
-        email: testEmail,
-        found: !!customer,
-        role: customer?.role,
-        id: customer?.id,
-        err: customerErr,
-      },
-    });
-  });
-
   // ===== V8 #26: 비밀번호 찾기 =====
   app.post("/api/auth/forgot-password", async (req, res) => {
-    console.error("[forgot-password] ENTRY");  // stderr로 강제 출력
-    console.log("[forgot-password] 요청 받음 body=", req.body);
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
-      console.log("[forgot-password] 스키마 검증 실패:", parsed.error.errors);
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
     }
 
     // 등록되지 않은 이메일이어도 동일 메시지 (이메일 존재 여부 누출 방지)
     // 관리자가 같은 이메일을 쓸 수 있으므로, 명시적으로 customer만 조회
     const customer = await storage.getCustomerOnlyByEmail(parsed.data.email);
-    console.log("[forgot-password] 거래처 조회 결과:", {
-      email: parsed.data.email,
-      found: !!customer,
-      role: customer?.role,
-      id: customer?.id,
-    });
     if (customer && customer.role === "customer") {
       const token = crypto.randomBytes(32).toString("hex"); // 64자 hex
       const expiresAt = Date.now() + 60 * 60 * 1000; // 1시간
       await storage.createPasswordResetToken(customer.id, token, expiresAt);
 
-      // 동적 도메인 처리
+      // #31 동적 도메인 처리
       const origin = process.env.PUBLIC_URL ||
         (req.headers.origin as string) ||
         `${req.protocol}://${req.headers.host}`;
       const resetUrl = `${origin}/#/reset-password?token=${token}`;
-      console.log("[forgot-password] 메일 발송 시작:", { to: parsed.data.email, resetUrl });
 
       sendPasswordResetEmail(parsed.data.email, resetUrl)
-        .then(() => console.log("[forgot-password] 메일 발송 then() 도달"))
         .catch((e) => console.error("[forgot-password] 메일 발송 실패", e));
-    } else {
-      console.log("[forgot-password] 해당 조건 안 맞아 메일 발송 안 함");
     }
     // 등록 여부 상관없이 동일 응답
     res.json({ message: "메일을 보냈습니다. 받은편지함을 확인하세요." });
