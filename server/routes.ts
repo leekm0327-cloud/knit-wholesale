@@ -1242,8 +1242,42 @@ export async function registerRoutes(
     res.json({ deleted });
   });
 
+  // ===== 응급 진단 라우트 (메일 발송 실패 추적) =====
+  app.get("/api/_debug/mail-status", async (req, res) => {
+    const testEmail = (req.query.email as string) || "knitcoffee00@gmail.com";
+    let customer: any = null;
+    let customerErr: string | null = null;
+    try {
+      customer = await storage.getCustomerOnlyByEmail(testEmail);
+    } catch (e: any) {
+      customerErr = String(e?.message || e);
+    }
+    res.json({
+      now: new Date().toISOString(),
+      build: "2026-06-30-debug-mail",
+      env: {
+        SMTP_USER_set: !!process.env.SMTP_USER,
+        SMTP_USER_len: process.env.SMTP_USER?.length || 0,
+        SMTP_PASS_set: !!process.env.SMTP_PASS,
+        SMTP_PASS_len: process.env.SMTP_PASS?.length || 0,
+        NOTIFY_TO_set: !!process.env.NOTIFY_TO,
+        NODE_ENV: process.env.NODE_ENV,
+        DATA_DIR: process.env.DATA_DIR,
+      },
+      hasGetCustomerOnlyByEmail: typeof (storage as any).getCustomerOnlyByEmail === "function",
+      customerLookup: {
+        email: testEmail,
+        found: !!customer,
+        role: customer?.role,
+        id: customer?.id,
+        err: customerErr,
+      },
+    });
+  });
+
   // ===== V8 #26: 비밀번호 찾기 =====
   app.post("/api/auth/forgot-password", async (req, res) => {
+    console.error("[forgot-password] ENTRY");  // stderr로 강제 출력
     console.log("[forgot-password] 요청 받음 body=", req.body);
     const parsed = forgotPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
