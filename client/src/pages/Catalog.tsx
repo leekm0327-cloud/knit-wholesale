@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
-import { CATEGORY_LABEL, won } from "@/lib/format";
+import { won } from "@/lib/format";
 import type { Product } from "@shared/schema";
 import { Plus, Minus, ShoppingCart } from "lucide-react";
 
@@ -17,32 +17,45 @@ const CATEGORY_ORDER = [
   { key: "single", label: "싱글 오리진" },
 ] as const;
 
-// ===== detailJson에서 상품 설명 한 줄 자동 조립 =====
-function buildProductDescription(product: Product): string {
-  if (!product.detailJson) return product.origin;
+// ===== detailJson에서 컬럼별 값 추출 =====
+type ProductFields = {
+  composition?: string; // 블렌드: 구성 (blendRatio)
+  variety?: string;     // 디카페인/싱글: 품종
+  process?: string;     // 디카페인/싱글: 가공방식
+  notes?: string;       // 공통: 노트 (flavorNotes · roastLevel)
+};
+
+function getProductFields(product: Product): ProductFields {
+  if (!product.detailJson) return {};
   try {
     const json = JSON.parse(product.detailJson);
     const template = product.detailTemplate || (product.category === "blend" ? "blend" : "single");
 
-    const parts: string[] = [];
-    if (template === "blend") {
-      // blend: blendRatio · flavorNotes · roastLevel
-      if (json.blendRatio) parts.push(json.blendRatio);
-      if (json.flavorNotes) parts.push(json.flavorNotes);
-      if (json.roastLevel) parts.push(json.roastLevel);
-    } else {
-      // single / decaf: variety · process · flavorNotes · roastLevel
-      if (json.variety) parts.push(json.variety);
-      if (json.process) parts.push(json.process);
-      if (json.flavorNotes) parts.push(json.flavorNotes);
-      if (json.roastLevel) parts.push(json.roastLevel);
-    }
+    // 노트 = flavorNotes + roastLevel (둘 다 있으면 · 로 연결)
+    const noteParts: string[] = [];
+    if (json.flavorNotes) noteParts.push(String(json.flavorNotes));
+    if (json.roastLevel) noteParts.push(String(json.roastLevel));
+    const notes = noteParts.length > 0 ? noteParts.join(" · ") : undefined;
 
-    if (parts.length === 0) return product.origin;
-    return parts.join(" · ");
+    if (template === "blend") {
+      return {
+        composition: json.blendRatio || undefined,
+        notes,
+      };
+    }
+    // single / decaf
+    return {
+      variety: json.variety || undefined,
+      process: json.process || undefined,
+      notes,
+    };
   } catch {
-    return product.origin;
+    return {};
   }
+}
+
+function isBlendCategory(category: string): boolean {
+  return category === "blend";
 }
 
 export default function Catalog() {
@@ -117,7 +130,7 @@ export default function Catalog() {
 
       <main className="mx-auto max-w-[1200px] px-5 pb-56 pt-8 sm:px-8 sm:pb-60 sm:pt-10">
         {/* 인트로 헤더 */}
-        <div className="mb-8 border-b border-border pb-6">
+        <div className="mb-6 border-b border-border pb-6">
           <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">For wholesale partners</p>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
             원두 발주
@@ -127,10 +140,20 @@ export default function Catalog() {
           </p>
         </div>
 
+        {/* 출고 안내 박스 */}
+        <div
+          className="mb-8 border-l-2 border-teal-600 bg-muted/40 px-4 py-3"
+          data-testid="shipping-notice"
+        >
+          <p className="text-xs leading-relaxed text-foreground">
+            평일 기준, <span className="font-semibold">12:00 이전 주문</span>은 택배(대한통운)로 당일 출고되며, 주문량에 따라 지연될 수 있습니다.
+          </p>
+        </div>
+
         {/* 미니멀 앵커 바 */}
         {!isLoading && anchorCats.length > 1 && (
           <div
-            className="mb-10 flex flex-wrap items-center gap-x-5 gap-y-1"
+            className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-1"
             data-testid="anchor-bar"
           >
             {anchorCats.map((cat) => (
@@ -149,7 +172,7 @@ export default function Catalog() {
         {isLoading ? (
           <div className="space-y-0 divide-y divide-border border-b border-t border-border">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 w-full rounded-none" />
+              <Skeleton key={i} className="h-16 w-full rounded-none" />
             ))}
           </div>
         ) : grouped.length === 0 ? (
@@ -162,25 +185,37 @@ export default function Catalog() {
               <section
                 key={group.key}
                 ref={(el) => { sectionRefs.current[group.key] = el; }}
-                className={gi > 0 ? "mt-14" : ""}
+                className={gi > 0 ? "mt-10" : ""}
                 data-testid={`section-${group.key}`}
               >
-                {/* 카테고리 제목 — 크고 굵게, 장식 없이 */}
+                {/* 카테고리 헤더 — 작은 폰트 */}
                 <h2
-                  className="mb-1 text-2xl font-bold tracking-tight text-foreground"
+                  className="mb-2 text-sm font-semibold tracking-tight text-foreground"
                   data-testid={`section-title-${group.key}`}
                 >
                   {group.label}
                 </h2>
-                <div className="mb-4 h-px bg-border" />
+                <div className="mb-2 h-px bg-border" />
 
-                {/* 테이블 헤더 (데스크탑) */}
-                <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(260px,2fr)_minmax(200px,1.5fr)_110px_160px] lg:items-center lg:gap-4">
-                  <div>상품명</div>
-                  <div>설명</div>
-                  <div className="text-right">공급가액</div>
-                  <div className="text-right">수량</div>
-                </div>
+                {/* 테이블 헤더 (데스크탑) — 카테고리별 컬럼 차별화 */}
+                {isBlendCategory(group.key) ? (
+                  <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(180px,1.4fr)_minmax(140px,1.2fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
+                    <div>상품명</div>
+                    <div>구성</div>
+                    <div>노트</div>
+                    <div className="text-right">공급가액</div>
+                    <div className="text-right">수량</div>
+                  </div>
+                ) : (
+                  <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(170px,1.3fr)_minmax(110px,1fr)_minmax(110px,1fr)_minmax(160px,1.4fr)_110px_140px] lg:items-center lg:gap-4">
+                    <div>상품명</div>
+                    <div>품종</div>
+                    <div>가공방식</div>
+                    <div>노트</div>
+                    <div className="text-right">공급가액</div>
+                    <div className="text-right">수량</div>
+                  </div>
+                )}
 
                 <ul className="divide-y divide-border">
                   {group.items.map((p) => (
@@ -248,130 +283,250 @@ function ProductRow({
   const soldOut = product.available === 0;
   const unitPrice = (product as any).effectivePrice ?? product.price;
   const hasCustomPrice = Boolean((product as any).hasCustomPrice);
-  const description = buildProductDescription(product);
+  const fields = getProductFields(product);
+  const isBlend = isBlendCategory(product.category);
 
   return (
     <li
-      className={`py-6 transition-colors ${soldOut ? "opacity-50" : ""}`}
+      className={`py-3 transition-colors ${soldOut ? "opacity-50" : ""}`}
       data-testid={`row-product-${product.id}`}
     >
-      {/* 데스크탑 — 4컬럼 */}
-      <div className="hidden lg:grid lg:grid-cols-[minmax(260px,2fr)_minmax(200px,1.5fr)_110px_160px] lg:items-center lg:gap-4">
-        {/* 상품명 */}
-        <div className="min-w-0">
-          {soldOut && (
-            <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-              Sold out
-            </span>
-          )}
-          <Link href={`/products/${product.id}`}>
-            <a
-              className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
-              data-testid={`link-product-${product.id}`}
-            >
-              {product.name}
-            </a>
-          </Link>
-        </div>
-
-        {/* 설명 */}
-        <div className="min-w-0">
-          <p className="truncate text-xs text-muted-foreground">{description}</p>
-        </div>
-
-        {/* 공급가액 */}
-        <div
-          className="text-right font-ui text-sm tabular text-foreground"
-          data-testid={`text-price-${product.id}`}
-        >
-          {won(unitPrice)}
-          {hasCustomPrice && (
-            <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
-          )}
-        </div>
-
-        {/* 수량 컨트롤 */}
-        <div className="flex justify-end">
-          <div className="flex items-center border border-border">
-            <button
-              disabled={soldOut}
-              onClick={() => onQtyChange(qty - 1)}
-              className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-              aria-label="수량 감소"
-              data-testid={`button-qty-minus-${product.id}`}
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <span
-              className="w-9 text-center font-ui text-sm tabular"
-              data-testid={`text-qty-${product.id}`}
-            >
-              {qty}
-            </span>
-            <button
-              disabled={soldOut}
-              onClick={() => onQtyChange(qty + 1)}
-              className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-              aria-label="수량 증가"
-              data-testid={`button-qty-plus-${product.id}`}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 모바일 / 태블릿 */}
-      <div className="lg:hidden">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {CATEGORY_LABEL[product.category]}
+      {/* ===== 데스크탑 ===== */}
+      {isBlend ? (
+        // 블렌드: 상품명 / 구성 / 노트 / 가격 / 수량
+        <div className="hidden lg:grid lg:grid-cols-[minmax(180px,1.4fr)_minmax(140px,1.2fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
+          {/* 상품명 */}
+          <div className="min-w-0">
+            {soldOut && (
+              <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                Sold out
               </span>
-              {soldOut && (
-                <span className="border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Sold out
-                </span>
-              )}
-            </div>
+            )}
             <Link href={`/products/${product.id}`}>
-              <a className="mt-1 block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 hover:decoration-current">
+              <a
+                className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                data-testid={`link-product-${product.id}`}
+              >
                 {product.name}
               </a>
             </Link>
-            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{description}</p>
           </div>
-          <div className="shrink-0 text-right">
-            <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
-            <div className="text-[10px] text-muted-foreground">
-              {hasCustomPrice ? <span className="text-teal-600">전용가</span> : "공급가액"}
-            </div>
+
+          {/* 구성 */}
+          <div className="min-w-0 text-xs text-muted-foreground">
+            {fields.composition || "—"}
+          </div>
+
+          {/* 노트 */}
+          <div className="min-w-0 text-xs text-muted-foreground">
+            {fields.notes || "—"}
+          </div>
+
+          {/* 공급가액 */}
+          <div
+            className="text-right font-ui text-sm tabular text-foreground"
+            data-testid={`text-price-${product.id}`}
+          >
+            {won(unitPrice)}
+            {hasCustomPrice && (
+              <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
+            )}
+          </div>
+
+          {/* 수량 컨트롤 */}
+          <div className="flex justify-end">
+            <QtyControl
+              productId={product.id}
+              qty={qty}
+              soldOut={soldOut}
+              onQtyChange={onQtyChange}
+            />
           </div>
         </div>
-
-        <div className="mt-3 flex items-center justify-end">
-          <div className="flex items-center border border-border">
-            <button
-              disabled={soldOut}
-              onClick={() => onQtyChange(qty - 1)}
-              className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-              aria-label="수량 감소"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <span className="w-8 text-center font-ui text-sm tabular">{qty}</span>
-            <button
-              disabled={soldOut}
-              onClick={() => onQtyChange(qty + 1)}
-              className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
-              aria-label="수량 증가"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
+      ) : (
+        // 디카페인 / 싱글: 상품명 / 품종 / 가공방식 / 노트 / 가격 / 수량
+        <div className="hidden lg:grid lg:grid-cols-[minmax(170px,1.3fr)_minmax(110px,1fr)_minmax(110px,1fr)_minmax(160px,1.4fr)_110px_140px] lg:items-center lg:gap-4">
+          {/* 상품명 */}
+          <div className="min-w-0">
+            {soldOut && (
+              <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                Sold out
+              </span>
+            )}
+            <Link href={`/products/${product.id}`}>
+              <a
+                className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                data-testid={`link-product-${product.id}`}
+              >
+                {product.name}
+              </a>
+            </Link>
           </div>
+
+          {/* 품종 */}
+          <div className="min-w-0 text-xs text-muted-foreground">
+            {fields.variety || "—"}
+          </div>
+
+          {/* 가공방식 */}
+          <div className="min-w-0 text-xs text-muted-foreground">
+            {fields.process || "—"}
+          </div>
+
+          {/* 노트 */}
+          <div className="min-w-0 text-xs text-muted-foreground">
+            {fields.notes || "—"}
+          </div>
+
+          {/* 공급가액 */}
+          <div
+            className="text-right font-ui text-sm tabular text-foreground"
+            data-testid={`text-price-${product.id}`}
+          >
+            {won(unitPrice)}
+            {hasCustomPrice && (
+              <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
+            )}
+          </div>
+
+          {/* 수량 컨트롤 */}
+          <div className="flex justify-end">
+            <QtyControl
+              productId={product.id}
+              qty={qty}
+              soldOut={soldOut}
+              onQtyChange={onQtyChange}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ===== 모바일 / 태블릿 ===== */}
+      <div className="lg:hidden">
+        {isBlend ? (
+          // 블렌드: 상품명 + 가격 한 줄
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {soldOut && (
+                <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  Sold out
+                </span>
+              )}
+              <Link href={`/products/${product.id}`}>
+                <a className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 hover:decoration-current">
+                  {product.name}
+                </a>
+              </Link>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
+              {hasCustomPrice && (
+                <div className="text-[10px] text-teal-600">전용가</div>
+              )}
+            </div>
+          </div>
+        ) : (
+          // 디카페인 / 싱글: 카드형 (상품명+가격 / 품종 / 가공방식 / 노트)
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                {soldOut && (
+                  <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    Sold out
+                  </span>
+                )}
+                <Link href={`/products/${product.id}`}>
+                  <a className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 hover:decoration-current">
+                    {product.name}
+                  </a>
+                </Link>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
+                {hasCustomPrice && (
+                  <div className="text-[10px] text-teal-600">전용가</div>
+                )}
+              </div>
+            </div>
+
+            {/* 품종 / 가공방식 / 노트 — 줄 나눔 */}
+            <dl className="mt-2 space-y-1 text-xs">
+              {fields.variety && (
+                <div className="flex gap-2">
+                  <dt className="w-16 shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">품종</dt>
+                  <dd className="min-w-0 flex-1 text-foreground">{fields.variety}</dd>
+                </div>
+              )}
+              {fields.process && (
+                <div className="flex gap-2">
+                  <dt className="w-16 shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">가공방식</dt>
+                  <dd className="min-w-0 flex-1 text-foreground">{fields.process}</dd>
+                </div>
+              )}
+              {fields.notes && (
+                <div className="flex gap-2">
+                  <dt className="w-16 shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">노트</dt>
+                  <dd className="min-w-0 flex-1 text-muted-foreground">{fields.notes}</dd>
+                </div>
+              )}
+            </dl>
+          </div>
+        )}
+
+        {/* 수량 컨트롤 — 공통 */}
+        <div className="mt-3 flex items-center justify-end">
+          <QtyControl
+            productId={product.id}
+            qty={qty}
+            soldOut={soldOut}
+            onQtyChange={onQtyChange}
+            compact
+          />
         </div>
       </div>
     </li>
+  );
+}
+
+function QtyControl({
+  productId,
+  qty,
+  soldOut,
+  onQtyChange,
+  compact = false,
+}: {
+  productId: number;
+  qty: number;
+  soldOut: boolean;
+  onQtyChange: (qty: number) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex items-center border border-border">
+      <button
+        disabled={soldOut}
+        onClick={() => onQtyChange(qty - 1)}
+        className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
+        aria-label="수량 감소"
+        data-testid={`button-qty-minus-${productId}`}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <span
+        className={`${compact ? "w-8" : "w-9"} text-center font-ui text-sm tabular`}
+        data-testid={`text-qty-${productId}`}
+      >
+        {qty}
+      </span>
+      <button
+        disabled={soldOut}
+        onClick={() => onQtyChange(qty + 1)}
+        className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
+        aria-label="수량 증가"
+        data-testid={`button-qty-plus-${productId}`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
