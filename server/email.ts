@@ -25,6 +25,12 @@ function getResend(): Resend | null {
 const MAIL_FROM = process.env.MAIL_FROM || "onboarding@resend.dev";
 const NOTIFY_TO = process.env.NOTIFY_TO || "";
 
+// 메일 헤더 로고 (PNG — Gmail 등 모든 메일 클라이언트 호환).
+// PUBLIC_URL이 설정되어 있으면 그 도메인의 PNG를 사용.
+const PUBLIC_BASE = (process.env.PUBLIC_URL || "https://wholesale.knitcoffee.co.kr").replace(/\/+$/, "");
+const LOGO_URL = `${PUBLIC_BASE}/knit-logo-horizontal.png`;
+const LOGO_HTML = `<img src="${LOGO_URL}" alt="knit COFFEE" width="112" height="28" style="display:block;border:0;outline:none;text-decoration:none;height:28px;width:112px;" />`;
+
 // ===== 공통 유틸 =====
 function fmtKRW(n: number) {
   return n.toLocaleString("ko-KR") + "원";
@@ -141,7 +147,7 @@ export async function sendNewOrderEmail(payload: OrderEmailPayload) {
     )
     .join("");
 
-  const logoHtml = `<div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>`;
+  const logoHtml = LOGO_HTML;
 
   const html = `<!doctype html>
 <html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
@@ -226,7 +232,7 @@ export async function sendOrderProcessedEmail(payload: OrderProcessedPayload, ba
 <html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
   <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #ebebeb;overflow:hidden;">
     <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
-      <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>
+      ${LOGO_HTML}
       <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">주문 처리완료 안내</div>
     </div>
     <div style="padding:24px 28px;font-size:14px;line-height:1.8;color:#222;">
@@ -294,7 +300,7 @@ export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload, baseUr
 <html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
   <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #ebebeb;overflow:hidden;">
     <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
-      <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>
+      ${LOGO_HTML}
       <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">주문 수정 안내</div>
     </div>
     <div style="padding:24px 28px;font-size:14px;line-height:1.8;color:#222;">
@@ -339,7 +345,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) 
 <body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
   <div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #ebebeb;">
     <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
-      <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>
+      ${LOGO_HTML}
       <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">비밀번호 재설정 안내</div>
     </div>
     <div style="padding:24px 28px;font-size:14px;line-height:1.9;color:#222;">
@@ -398,7 +404,7 @@ export async function sendOrderMergedEmail(payload: OrderMergedEmailPayload) {
 <body style="margin:0;padding:0;background:#f4f4f4;">
   <div style="max-width:600px;margin:32px auto;background:#fff;border:1px solid #ddd;">
     <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
-      <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;letter-spacing:0.02em;color:#111;">knit <span style="font-family:-apple-system,Arial,sans-serif;font-size:18px;letter-spacing:0.3em;font-weight:600;">COFFEE</span></div>
+      ${LOGO_HTML}
       <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">주문 항목 추가됨</div>
     </div>
     <div style="padding:24px 28px;font-size:14px;line-height:1.8;color:#222;">
