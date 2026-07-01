@@ -29,7 +29,7 @@ export default function Account() {
     managerName: "",
     phone: "",
     bizRegNo: "",
-    taxEmail: "",
+    email: "",
     defaultAddress: "",
   });
 
@@ -40,7 +40,7 @@ export default function Account() {
         managerName: user.managerName,
         phone: user.phone,
         bizRegNo: user.bizRegNo,
-        taxEmail: user.taxEmail,
+        email: user.email ?? "",
         defaultAddress: user.defaultAddress,
       });
   }, [user]);
@@ -143,8 +143,8 @@ export default function Account() {
               <Field label="사업자등록번호">
                 <Input value={form.bizRegNo} onChange={(e) => set("bizRegNo", e.target.value)} data-testid="input-bizRegNo" />
               </Field>
-              <Field label="세금계산서 이메일">
-                <Input type="email" value={form.taxEmail} onChange={(e) => set("taxEmail", e.target.value)} data-testid="input-taxEmail" />
+              <Field label="이메일">
+                <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} data-testid="input-email" />
               </Field>
             </div>
             <Field label="기본 배송지">

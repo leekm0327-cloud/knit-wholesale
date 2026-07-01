@@ -297,7 +297,6 @@ const EMPTY_FORM = {
   email: "",
   bizRegNo: "",
   defaultAddress: "",
-  taxEmail: "",
   password: "",
 };
 
@@ -322,7 +321,6 @@ function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () =>
         email: form.email.trim(),
         bizRegNo: form.bizRegNo.trim(),
         defaultAddress: form.defaultAddress.trim(),
-        taxEmail: form.taxEmail.trim(),
         password: form.password,
       });
       return res.json();
@@ -368,9 +366,6 @@ function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () =>
             <Field label="이메일" required>
               <Input type="email" value={form.email} onChange={set("email")} placeholder="login@example.com" data-testid="input-new-email" />
             </Field>
-            <Field label="세금계산서 이메일">
-              <Input type="email" value={form.taxEmail} onChange={set("taxEmail")} placeholder="tax@example.com" data-testid="input-new-tax-email" />
-            </Field>
           </div>
           <Field label="기본 배송지">
             <Input value={form.defaultAddress} onChange={set("defaultAddress")} placeholder="배송지 주소" data-testid="input-new-default-address" />
@@ -403,7 +398,6 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
     email: "",
     bizRegNo: "",
     defaultAddress: "",
-    taxEmail: "",
   });
 
   useEffect(() => {
@@ -415,7 +409,6 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
         email: customer.email ?? "",
         bizRegNo: customer.bizRegNo ?? "",
         defaultAddress: customer.defaultAddress ?? "",
-        taxEmail: customer.taxEmail ?? "",
       });
     }
   }, [customer]);
@@ -433,7 +426,6 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
         email: form.email.trim(),
         bizRegNo: form.bizRegNo.trim(),
         defaultAddress: form.defaultAddress.trim(),
-        taxEmail: form.taxEmail.trim(),
       });
       return res.json();
     },
@@ -475,11 +467,8 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
             <Field label="사업자등록번호">
               <Input value={form.bizRegNo} onChange={set("bizRegNo")} placeholder="000-00-00000" data-testid="input-edit-biz-reg-no" />
             </Field>
-            <Field label="로그인 이메일">
+            <Field label="이메일">
               <Input type="email" value={form.email} onChange={set("email")} placeholder="login@example.com" data-testid="input-edit-email" />
-            </Field>
-            <Field label="세금계산서 이메일">
-              <Input type="email" value={form.taxEmail} onChange={set("taxEmail")} placeholder="tax@example.com" data-testid="input-edit-tax-email" />
             </Field>
           </div>
           <Field label="기본 배송지">
@@ -580,8 +569,7 @@ function CustomerDetail({ id, onClose, onOpenOrder }: { id: number | null; onClo
               <Row label="담당자" value={data.customer.managerName} />
               <Row label="연락처" value={data.customer.phone} />
               <Row label="사업자번호" value={data.customer.bizRegNo || "-"} />
-              <Row label="세금계산서" value={data.customer.taxEmail || "-"} />
-              <Row label="로그인 이메일" value={data.customer.email} />
+              <Row label="이메일" value={data.customer.email} />
             </div>
             <Row label="기본 배송지" value={data.customer.defaultAddress || "-"} />
 

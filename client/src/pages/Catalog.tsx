@@ -199,7 +199,7 @@ export default function Catalog() {
 
                 {/* 테이블 헤더 (데스크탑) — 카테고리별 컬럼 차별화 */}
                 {isBlendCategory(group.key) ? (
-                  <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(180px,1.4fr)_minmax(140px,1.2fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
+                  <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(150px,1.0fr)_minmax(180px,1.6fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
                     <div>상품명</div>
                     <div>구성</div>
                     <div>노트</div>
@@ -294,7 +294,7 @@ function ProductRow({
       {/* ===== 데스크탑 ===== */}
       {isBlend ? (
         // 블렌드: 상품명 / 구성 / 노트 / 가격 / 수량
-        <div className="hidden lg:grid lg:grid-cols-[minmax(180px,1.4fr)_minmax(140px,1.2fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
+        <div className="hidden lg:grid lg:grid-cols-[minmax(150px,1.0fr)_minmax(180px,1.6fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
           {/* 상품명 */}
           <div className="min-w-0">
             {soldOut && (
@@ -304,7 +304,7 @@ function ProductRow({
             )}
             <Link href={`/products/${product.id}`}>
               <a
-                className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
                 data-testid={`link-product-${product.id}`}
               >
                 {product.name}
@@ -355,7 +355,7 @@ function ProductRow({
             )}
             <Link href={`/products/${product.id}`}>
               <a
-                className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
                 data-testid={`link-product-${product.id}`}
               >
                 {product.name}
@@ -413,7 +413,7 @@ function ProductRow({
                 </span>
               )}
               <Link href={`/products/${product.id}`}>
-                <a className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 hover:decoration-current">
+                <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
                   {product.name}
                 </a>
               </Link>
@@ -436,7 +436,7 @@ function ProductRow({
                   </span>
                 )}
                 <Link href={`/products/${product.id}`}>
-                  <a className="block text-sm font-medium text-teal-700 dark:text-teal-400 underline decoration-transparent underline-offset-4 hover:decoration-current">
+                  <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
                     {product.name}
                   </a>
                 </Link>

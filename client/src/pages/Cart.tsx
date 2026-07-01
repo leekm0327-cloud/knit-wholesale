@@ -145,7 +145,7 @@ export default function Cart() {
                     id="note"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="예: 홀빈으로 주세요 / 오전 배송 희망 등"
+                    placeholder=""
                     rows={3}
                     data-testid="input-note"
                   />

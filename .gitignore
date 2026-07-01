@@ -36,3 +36,5 @@ data.db-journal
 # 시크릿 파일
 *.secret
 .secrets
+data.db-shm
+data.db-wal

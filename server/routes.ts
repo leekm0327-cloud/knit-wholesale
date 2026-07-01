@@ -256,12 +256,17 @@ export async function registerRoutes(
       "managerName",
       "phone",
       "bizRegNo",
-      "taxEmail",
+      "email",
       "defaultAddress",
       "paymentMethod",
     ];
     const patch: any = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
+    // email을 변경하는 경우 taxEmail도 동시 업데이트 (이메일 완전 통합 #43)
+    if (typeof patch.email === "string") {
+      patch.email = patch.email.trim();
+      patch.taxEmail = patch.email;
+    }
     const updated = await storage.updateCustomer(req.session.userId!, patch);
     if (!updated) return res.status(404).json({ message: "사용자 없음" });
     res.json(toPublic(updated));
@@ -621,7 +626,7 @@ export async function registerRoutes(
 
   // 거래처 생성 (Owner+Manager)
   app.post("/api/admin/customers", requireAdmin, async (req, res) => {
-    const { email, businessName, managerName, phone, bizRegNo, taxEmail, defaultAddress, paymentMethod } = req.body;
+    const { email, businessName, managerName, phone, bizRegNo, defaultAddress, paymentMethod } = req.body;
     let { password } = req.body;
     if (!email || !businessName || !managerName || !phone)
       return res.status(400).json({ message: "필수 입력값이 없습니다." });
@@ -646,7 +651,7 @@ export async function registerRoutes(
       managerName,
       phone,
       bizRegNo: bizRegNo ?? "",
-      taxEmail: taxEmail ?? "",
+      taxEmail: email ?? "", // #43 이메일 통합: taxEmail = email
       defaultAddress: defaultAddress ?? "",
       paymentMethod: paymentMethod ?? "transfer",
     });
@@ -679,9 +684,14 @@ export async function registerRoutes(
   app.patch("/api/admin/customers/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     // password 는 절대 이 라우트에서 받지 않음
-    const allowed = ["businessName", "ownerName", "managerName", "phone", "bizRegNo", "taxEmail", "defaultAddress", "paymentMethod"];
+    const allowed = ["businessName", "ownerName", "managerName", "phone", "bizRegNo", "email", "defaultAddress", "paymentMethod"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body && k !== "password") patch[k] = req.body[k];
+    // email 변경 시 taxEmail도 동시 업데이트 (이메일 완전 통합 #43)
+    if (typeof patch.email === "string") {
+      patch.email = patch.email.trim();
+      patch.taxEmail = patch.email;
+    }
     // 상호명 변경 시 중복 체크
     if (patch.businessName) {
       const dup = await storage.getCustomerByBusinessName(patch.businessName);
@@ -858,7 +868,7 @@ export async function registerRoutes(
           orderId: updated.id,
           orderNo: updated.orderNo,
           businessName: cust.businessName,
-          taxEmail: cust.taxEmail,
+          taxEmail: cust.taxEmail || cust.email,
         }, baseUrl).catch((e) => console.error("[email] 주문 수정 메일 실패:", e));
       }
     }
@@ -887,7 +897,7 @@ export async function registerRoutes(
             orderId: updated.id,
             orderNo: updated.orderNo,
             businessName: customer.businessName,
-            taxEmail: customer.taxEmail,
+            taxEmail: customer.taxEmail || customer.email,
             items: JSON.parse(updated.items),
           }, baseUrl).catch((e) => console.error("[email] 처리완료 메일 실패:", e));
         }
