@@ -228,6 +228,8 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export const loginSchema = z.object({
   businessName: z.string().min(1, "상호명을 입력해 주세요."),
   password: z.string().min(1, "비밀번호를 입력해 주세요."),
+  // #45: 로그인 상태 유지 (체크 시 30일 쿠키, 해제 시 세션 쿠키). 기본값 true
+  rememberMe: z.boolean().optional().default(true),
 });
 
 // 관리자 로그인: 이메일 + 비밀번호

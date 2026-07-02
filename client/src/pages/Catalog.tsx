@@ -501,9 +501,27 @@ function QtyControl({
   onQtyChange: (qty: number) => void;
   compact?: boolean;
 }) {
+  // 입력 중에는 빈 문자열도 허용하기 위해 로컴 문자열 state 유지
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = draft ?? (qty > 0 ? String(qty) : "");
+
+  function commitDraft(raw: string) {
+    // 숫자 이외 문자 제거
+    const digits = raw.replace(/[^0-9]/g, "");
+    if (digits === "") {
+      // 비우면 미선택(0)으로 처리
+      onQtyChange(0);
+      return;
+    }
+    const n = parseInt(digits, 10);
+    // 하한 1, 상한 없음
+    onQtyChange(Math.max(1, n));
+  }
+
   return (
     <div className="flex items-center border border-border">
       <button
+        type="button"
         disabled={soldOut}
         onClick={() => onQtyChange(qty - 1)}
         className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
@@ -512,13 +530,33 @@ function QtyControl({
       >
         <Minus className="h-3.5 w-3.5" />
       </button>
-      <span
-        className={`${compact ? "w-8" : "w-9"} text-center font-ui text-sm tabular`}
-        data-testid={`text-qty-${productId}`}
-      >
-        {qty}
-      </span>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        disabled={soldOut}
+        value={display}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9]/g, "");
+          setDraft(v);
+        }}
+        onFocus={(e) => {
+          setDraft(display);
+          e.currentTarget.select();
+        }}
+        onBlur={(e) => {
+          commitDraft(e.target.value);
+          setDraft(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        aria-label="수량 입력"
+        className={`${compact ? "w-9" : "w-11"} border-x border-border bg-transparent py-1.5 text-center font-ui text-sm tabular text-foreground outline-none focus:bg-muted/40 disabled:opacity-40`}
+        data-testid={`input-qty-${productId}`}
+      />
       <button
+        type="button"
         disabled={soldOut}
         onClick={() => onQtyChange(qty + 1)}
         className="px-2 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"

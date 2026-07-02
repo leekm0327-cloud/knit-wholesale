@@ -208,6 +208,14 @@ export async function registerRoutes(
     req.session.userId = customer.id;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
+    // #45: 로그인 상태 유지. 체크(true=기본) → 30일 쿠키, 해제 → 세션 쿠키(브라우저 종료 시 만료)
+    if (parsed.data.rememberMe) {
+      req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
+    } else {
+      // express-session은 expires=false이면 세션 쿠키(브라우저 종료 시 만료)로 설정. 타입 상 Date만 허용하므로 캐스팅.
+      (req.session.cookie as any).expires = false;
+      req.session.cookie.maxAge = undefined as any;
+    }
     req.session.save((err) => {
       if (err) return res.status(500).json({ message: "세션 저장 실패" });
       res.json(toPublic(customer));

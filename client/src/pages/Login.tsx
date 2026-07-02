@@ -4,6 +4,7 @@ import { StackedLogo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -15,13 +16,14 @@ export default function Login() {
   const { toast } = useToast();
   const [businessName, setBusinessName] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true); // #45: 기본 체크(ON)
   const [loading, setLoading] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/login", { businessName, password });
+      const res = await apiRequest("POST", "/api/auth/login", { businessName, password, rememberMe });
       const user = await res.json();
       // staleTime:Infinity 환경에서 invalidate만으로는 refetch가 보장되지 않음.
       // 응답으로 받은 user를 캐시에 직접 박아넣어 ProtectedRoute가 즉시 통과되도록 함.
@@ -85,6 +87,21 @@ export default function Login() {
                 비밀번호를 잊으셨나요?
               </Link>
             </div>
+          </div>
+          {/* #45: 로그인 상태 유지 (기본 체크) */}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="rememberMe"
+              checked={rememberMe}
+              onCheckedChange={(v) => setRememberMe(v === true)}
+              data-testid="checkbox-remember-me"
+            />
+            <Label
+              htmlFor="rememberMe"
+              className="cursor-pointer text-sm font-normal text-muted-foreground"
+            >
+              로그인 상태 유지
+            </Label>
           </div>
           <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
