@@ -590,7 +590,10 @@ export class DatabaseStorage implements IStorage {
     const allPayments = await this.listAllPayments();
 
     return allCustomers.map((c) => {
-      const myOrders = allOrders.filter((o) => o.customerId === c.id);
+      // 취소된 주문은 청구/미수금 계산에서 제외 (거래가 성립하지 않았으므로)
+      const myOrders = allOrders.filter(
+        (o) => o.customerId === c.id && o.status !== "cancelled",
+      );
       const myPayments = allPayments.filter((p) => p.customerId === c.id);
       const totalOrdered = myOrders.reduce((s, o) => s + o.totalAmount, 0);
       const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
@@ -629,13 +632,16 @@ export class DatabaseStorage implements IStorage {
     let running = 0;
     const rowsAsc: LedgerRow[] = raws.map((r) => {
       if (r.kind === "order") {
-        running += r.o.totalAmount;
+        // 취소된 주문은 원장에 표시는 하되 잔액(청구)에는 반영하지 않음
+        const isCancelled = r.o.status === "cancelled";
+        const debit = isCancelled ? 0 : r.o.totalAmount;
+        running += debit;
         return {
           kind: "order",
           id: r.o.id,
           orderNo: r.o.orderNo,
           date: r.ts,
-          debit: r.o.totalAmount,
+          debit,
           credit: 0,
           balance: running,
           memo: r.o.note,
@@ -657,7 +663,10 @@ export class DatabaseStorage implements IStorage {
     });
     const rows = rowsAsc.slice().reverse();
 
-    const totalOrdered = myOrders.reduce((s, o) => s + o.totalAmount, 0);
+    // 취소 주문 제외 후 누적 청구 합산
+    const totalOrdered = myOrders
+      .filter((o) => o.status !== "cancelled")
+      .reduce((s, o) => s + o.totalAmount, 0);
     const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
     return {
       balance: {

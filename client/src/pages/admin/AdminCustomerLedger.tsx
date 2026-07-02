@@ -130,6 +130,12 @@ export default function AdminCustomerLedger() {
                                     미처리
                                   </Badge>
                                 )}
+                                {/* 취소 주문은 청구액에 미반영임을 표시 */}
+                                {r.status === "cancelled" && (
+                                  <Badge variant="secondary" className="text-[10px] text-muted-foreground">
+                                    취소 · 청구제외
+                                  </Badge>
+                                )}
                               </div>
                             ) : (
                               <div className="flex items-center gap-2">
