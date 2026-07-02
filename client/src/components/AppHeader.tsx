@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Wordmark } from "./Logo";
+import { AccountSwitcher } from "./AccountSwitcher";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle } from "lucide-react";
@@ -103,8 +104,12 @@ export function AppHeader() {
       </div>
 
       {user && (
-        <div className="border-t border-border px-5 py-1.5 text-center font-ui text-[11px] tracking-wide text-muted-foreground sm:px-10">
-          <span className="font-semibold text-foreground">{user.businessName}</span> · {user.managerName}님으로 로그인됨
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-border px-5 py-1.5 text-center font-ui text-[11px] tracking-wide text-muted-foreground sm:px-10">
+          <span>
+            <span className="font-semibold text-foreground">{user.businessName}</span> · {user.managerName}님으로 로그인됨
+          </span>
+          {/* #3 멀티 계정 전환 (저장된 계정이 2개 이상일 때만 노출) */}
+          <AccountSwitcher />
         </div>
       )}
     </header>

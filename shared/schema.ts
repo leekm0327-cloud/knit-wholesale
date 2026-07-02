@@ -61,6 +61,15 @@ export const customerPrices = sqliteTable("customer_prices", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+// ===== 즐겨찾기 (거래처별 상품 즐겨찾기) =====
+// 거래처가 별표한 상품. 카탈로그에서 즐겨찾기 품목을 최상단에 노출.
+export const favorites = sqliteTable("favorites", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(),
+  productId: integer("product_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
 // ===== 게시판 =====
 export const posts = sqliteTable("posts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -311,6 +320,8 @@ export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type CustomerPrice = typeof customerPrices.$inferSelect;
 // API 응답용 — 상품에 거래처별 가격 적용 여부표시
 export type ProductWithPrice = Product & { effectivePrice: number; hasCustomPrice: boolean };
+
+export type Favorite = typeof favorites.$inferSelect;
 
 export type Post = typeof posts.$inferSelect;
 export type Comment = typeof comments.$inferSelect;

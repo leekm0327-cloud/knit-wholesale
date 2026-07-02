@@ -24,8 +24,9 @@ import { OrderItemsEditor } from "@/components/OrderItemsEditor";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
+import { orderToKakaoText } from "@/lib/kakaoFormat";
 import type { Order } from "@shared/schema";
-import { ArrowLeft, Printer, Loader2, CheckCircle2, RotateCcw, Link2, ScrollText, Pencil, XCircle } from "lucide-react";
+import { ArrowLeft, Printer, Loader2, CheckCircle2, RotateCcw, Link2, ScrollText, Pencil, XCircle, Copy } from "lucide-react";
 
 export default function AdminOrderDetail() {
   const [, params] = useRoute("/admin/orders/:id");
@@ -45,6 +46,37 @@ export default function AdminOrderDetail() {
   const [editing, setEditing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // #4 카톡 복사 실패(클립보드 권한 없음) 시 수동 복사용 다이얼로그
+  const [kakaoFallback, setKakaoFallback] = useState<string | null>(null);
+
+  // #4 주문 내용을 카카오톡 발주 형식으로 클립보드에 복사
+  async function copyKakao(o: Order, opts: { silent?: boolean } = {}) {
+    const text = orderToKakaoText(o);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // 비보안 컨텍스트 폴백: 임시 textarea로 execCommand 복사 시도
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (!ok) throw new Error("execCommand 실패");
+      }
+      toast({ title: "카톡 발주 형식 복사 완료", description: "공장 카카오톡에 붙여넣기 하세요." });
+    } catch {
+      // 복사 실패 시 수동 복사용 다이얼로그 노출
+      setKakaoFallback(text);
+      if (!opts.silent) {
+        toast({ title: "자동 복사 실패", description: "표시된 내용을 수동으로 복사해 주세요.", variant: "destructive" });
+      }
+    }
+  }
 
   async function doCancel() {
     if (!id) return;
@@ -157,7 +189,12 @@ export default function AdminOrderDetail() {
               <div className="mb-4 flex flex-wrap gap-2">
                 <Button
                   variant={order.status === "pending" ? "default" : "outline"}
-                  onClick={() => patch({ status: order.status === "pending" ? "done" : "pending" }, "상태 변경됨")}
+                  onClick={async () => {
+                    const goingToDone = order.status === "pending";
+                    await patch({ status: goingToDone ? "done" : "pending" }, "상태 변경됨");
+                    // #4 처리완료로 변경 시 카카오톡 발주 형식 자동 복사
+                    if (goingToDone) await copyKakao(order, { silent: true });
+                  }}
                   disabled={saving || order.status === "cancelled"}
                   data-testid="button-toggle-status"
                 >
@@ -166,6 +203,15 @@ export default function AdminOrderDetail() {
                   ) : (
                     <><RotateCcw className="mr-1.5 h-4 w-4" /> 미처리로 되돌리기</>
                   )}
+                </Button>
+                {/* #4 카톡 발주 형식 수동 복사 */}
+                <Button
+                  variant="outline"
+                  onClick={() => copyKakao(order)}
+                  disabled={order.status === "cancelled"}
+                  data-testid="button-copy-kakao"
+                >
+                  <Copy className="mr-1.5 h-4 w-4" /> 카톡 형식 복사
                 </Button>
                 <Button
                   variant="outline"
@@ -286,6 +332,29 @@ export default function AdminOrderDetail() {
               {cancelling && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
               주문 취소
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* #4 클립보드 자동 복사 실패 시 수동 복사용 다이얼로그 */}
+      <AlertDialog open={kakaoFallback !== null} onOpenChange={(o) => !o && setKakaoFallback(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>카톡 발주 형식</AlertDialogTitle>
+            <AlertDialogDescription>
+              자동 복사가 차단되었습니다. 아래 내용을 선택해 직접 복사해 주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            readOnly
+            value={kakaoFallback ?? ""}
+            rows={8}
+            className="font-mono text-xs"
+            onFocus={(e) => e.currentTarget.select()}
+            data-testid="textarea-kakao-fallback"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-kakao-fallback-close">닫기</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -19,10 +19,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useCart } from "@/lib/cart";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
-import type { Order } from "@shared/schema";
-import { ArrowLeft, Pencil, XCircle, FileText, Loader2 } from "lucide-react";
+import type { Order, OrderItem, Product } from "@shared/schema";
+import { ArrowLeft, Pencil, XCircle, FileText, Loader2, RotateCcw } from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "접수",
@@ -41,9 +42,51 @@ export default function OrderDetail() {
     enabled: !!id,
   });
 
+  // #2 이전 주문 다시 담기 — 현재 상품 정보(가격/품절) 기준으로 담기 위해 상품 목록 조회
+  const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const { add } = useCart();
+
   const [editing, setEditing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  // #2 이전 주문 품목을 장바구니에 다시 담기
+  function reorder() {
+    if (!order) return;
+    let items: OrderItem[] = [];
+    try {
+      items = JSON.parse(order.items) as OrderItem[];
+    } catch {
+      toast({ title: "불러오기 실패", description: "주문 품목을 읽을 수 없습니다.", variant: "destructive" });
+      return;
+    }
+    const productMap = new Map((products ?? []).map((p) => [p.id, p]));
+    let added = 0;
+    const skipped: string[] = [];
+    for (const it of items) {
+      const prod = productMap.get(it.productId);
+      // 현재 판매 중인 상품만 담기 (품절/삭제된 상품은 제외)
+      if (!prod || prod.available === 0) {
+        skipped.push(it.name);
+        continue;
+      }
+      // 가격은 현재 적용가(effectivePrice) 기준으로 담음
+      const unitPrice = (prod as any).effectivePrice ?? prod.price;
+      add({ productId: prod.id, name: prod.name, category: prod.category, unitPrice }, it.qty);
+      added += 1;
+    }
+    if (added === 0) {
+      toast({ title: "담을 수 있는 품목이 없습니다", description: "주문 품목이 모두 품절이거나 판매 종료되었습니다.", variant: "destructive" });
+      return;
+    }
+    toast({
+      title: "장바구니에 담았습니다",
+      description:
+        `${added}개 품목을 다시 담았습니다.` +
+        (skipped.length > 0 ? ` (품절/종료 제외: ${skipped.join(", ")})` : ""),
+    });
+    navigate("/cart");
+  }
 
   async function doCancel() {
     if (!id) return;
@@ -74,13 +117,22 @@ export default function OrderDetail() {
             <ArrowLeft className="h-4 w-4" /> 주문 내역
           </button>
           {order && (
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/invoice/${order.id}`)}
-              data-testid="button-view-invoice"
-            >
-              <FileText className="mr-1.5 h-4 w-4" /> 거래명세서 보기
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={reorder}
+                data-testid="button-reorder"
+              >
+                <RotateCcw className="mr-1.5 h-4 w-4" /> 이 주문 다시 담기
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/invoice/${order.id}`)}
+                data-testid="button-view-invoice"
+              >
+                <FileText className="mr-1.5 h-4 w-4" /> 거래명세서 보기
+              </Button>
+            </div>
           )}
         </div>
 

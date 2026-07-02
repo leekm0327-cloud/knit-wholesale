@@ -301,11 +301,14 @@ export async function registerRoutes(
     const role = req.session.role;
     if (!userId || role === "admin") {
       return res.json(
-        list.map((p) => ({ ...p, effectivePrice: p.price, hasCustomPrice: false })),
+        list.map((p) => ({ ...p, effectivePrice: p.price, hasCustomPrice: false, isFavorite: false })),
       );
     }
     const overrides = await storage.listCustomerPrices(userId);
     const overrideMap = new Map(overrides.map((o) => [o.productId, o.price]));
+    // #1 즐겨찾기 플래그
+    const favs = await storage.listFavorites(userId);
+    const favSet = new Set(favs.map((f) => f.productId));
     res.json(
       list.map((p) => {
         const custom = overrideMap.get(p.id);
@@ -313,9 +316,33 @@ export async function registerRoutes(
           ...p,
           effectivePrice: custom !== undefined ? custom : p.price,
           hasCustomPrice: custom !== undefined,
+          isFavorite: favSet.has(p.id),
         };
       }),
     );
+  });
+
+  // ===== 즐겨찾기 (#1) =====
+  // 내 즐겨찾기 품목 ID 목록
+  app.get("/api/favorites", requireAuth, async (req, res) => {
+    const favs = await storage.listFavorites(req.session.userId!);
+    res.json(favs.map((f) => f.productId));
+  });
+  // 즐겨찾기 추가
+  app.post("/api/favorites/:productId", requireAuth, async (req, res) => {
+    const productId = Number(req.params.productId);
+    if (!Number.isFinite(productId)) return res.status(400).json({ message: "잘못된 상품 ID" });
+    const product = await storage.getProduct(productId);
+    if (!product) return res.status(404).json({ message: "상품을 찾을 수 없습니다." });
+    await storage.addFavorite(req.session.userId!, productId);
+    res.json({ ok: true });
+  });
+  // 즐겨찾기 해제
+  app.delete("/api/favorites/:productId", requireAuth, async (req, res) => {
+    const productId = Number(req.params.productId);
+    if (!Number.isFinite(productId)) return res.status(400).json({ message: "잘못된 상품 ID" });
+    await storage.removeFavorite(req.session.userId!, productId);
+    res.json({ ok: true });
   });
 
   app.get("/api/products/:id", requireAuth, async (req, res) => {

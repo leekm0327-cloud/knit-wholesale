@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
+import { saveAccount } from "@/lib/savedAccounts";
 import { Loader2 } from "lucide-react";
 
 export default function Login() {
@@ -29,6 +30,10 @@ export default function Login() {
       // 응답으로 받은 user를 캐시에 직접 박아넣어 ProtectedRoute가 즉시 통과되도록 함.
       queryClient.setQueryData(["/api/auth/me"], user);
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
+      // #3 멀티 계정: 로그인 성공 시 이 기기에 계정 저장 (거래처 계정만, 관리자 제외)
+      if (user && user.role !== "admin") {
+        saveAccount({ businessName, password, managerName: user.managerName });
+      }
       navigate("/catalog");
     } catch (err: any) {
       toast({ title: "로그인 실패", description: errMsg(err), variant: "destructive" });

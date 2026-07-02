@@ -7,8 +7,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import { won } from "@/lib/format";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product } from "@shared/schema";
-import { Plus, Minus, ShoppingCart } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Star } from "lucide-react";
 
 // 카테고리 순서
 const CATEGORY_ORDER = [
@@ -69,6 +70,26 @@ export default function Catalog() {
     setQtyMap((prev) => ({ ...prev, [productId]: Math.max(0, qty) }));
   }
 
+  // #1 즐겨찾기 토글 — 낙관적 업데이트 후 서버 반영
+  async function toggleFavorite(product: Product) {
+    const nowFav = !(product as any).isFavorite;
+    // 낙관적 업데이트: 캐시의 isFavorite 값을 먼저 바꿈
+    queryClient.setQueryData<Product[]>(["/api/products"], (old) =>
+      (old ?? []).map((p) => (p.id === product.id ? ({ ...p, isFavorite: nowFav } as any) : p)),
+    );
+    try {
+      if (nowFav) {
+        await apiRequest("POST", `/api/favorites/${product.id}`, {});
+      } else {
+        await apiRequest("DELETE", `/api/favorites/${product.id}`);
+      }
+    } catch {
+      // 실패 시 롤백
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "즐겨찾기 처리 실패", description: "잠시 후 다시 시도해 주세요.", variant: "destructive" });
+    }
+  }
+
   // 카테고리별 그룹핑
   const grouped = useMemo(() => {
     const all = products ?? [];
@@ -76,6 +97,11 @@ export default function Catalog() {
       ...cat,
       items: all.filter((p) => p.category === cat.key),
     })).filter((g) => g.items.length > 0);
+  }, [products]);
+
+  // #1 즐겨찾기 품목 (카테고리 무관, sortOrder 순 유지)
+  const favoriteItems = useMemo(() => {
+    return (products ?? []).filter((p) => (p as any).isFavorite);
   }, [products]);
 
   // 앵커 카테고리
@@ -151,11 +177,21 @@ export default function Catalog() {
         </div>
 
         {/* 미니멀 앵커 바 */}
-        {!isLoading && anchorCats.length > 1 && (
+        {!isLoading && (anchorCats.length > 1 || favoriteItems.length > 0) && (
           <div
             className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-1"
             data-testid="anchor-bar"
           >
+            {favoriteItems.length > 0 && (
+              <button
+                onClick={() => scrollToSection("favorites")}
+                data-testid="anchor-favorites"
+                className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-600 transition-colors hover:text-amber-500"
+              >
+                <Star className="h-3 w-3 fill-current" />
+                즐겨찾기
+              </button>
+            )}
             {anchorCats.map((cat) => (
               <button
                 key={cat.key}
@@ -181,6 +217,34 @@ export default function Catalog() {
           </div>
         ) : (
           <div>
+            {/* #1 즐겨찾기 섹션 — 최상단 고정 */}
+            {favoriteItems.length > 0 && (
+              <section
+                ref={(el) => { sectionRefs.current["favorites"] = el; }}
+                className="mb-10"
+                data-testid="section-favorites"
+              >
+                <h2
+                  className="mb-2 flex items-center gap-1.5 text-sm font-semibold tracking-tight text-foreground"
+                  data-testid="section-title-favorites"
+                >
+                  <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                  즐겨찾기
+                </h2>
+                <div className="mb-2 h-px bg-border" />
+                <ul className="divide-y divide-border">
+                  {favoriteItems.map((p) => (
+                    <ProductRow
+                      key={`fav-${p.id}`}
+                      product={p}
+                      qty={qtyMap[p.id] ?? 0}
+                      onQtyChange={(q) => setQty(p.id, q)}
+                      onToggleFavorite={() => toggleFavorite(p)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            )}
             {grouped.map((group, gi) => (
               <section
                 key={group.key}
@@ -224,6 +288,7 @@ export default function Catalog() {
                       product={p}
                       qty={qtyMap[p.id] ?? 0}
                       onQtyChange={(q) => setQty(p.id, q)}
+                      onToggleFavorite={() => toggleFavorite(p)}
                     />
                   ))}
                 </ul>
@@ -271,18 +336,49 @@ export default function Catalog() {
   );
 }
 
+// #1 즐겨찾기 별표 토글 버튼
+function StarButton({
+  productId,
+  isFavorite,
+  onToggle,
+}: {
+  productId: number;
+  isFavorite: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+      aria-pressed={isFavorite}
+      data-testid={`button-favorite-${productId}`}
+      className={`shrink-0 rounded p-0.5 transition-colors ${
+        isFavorite
+          ? "text-amber-400 hover:text-amber-500"
+          : "text-muted-foreground/40 hover:text-amber-400"
+      }`}
+    >
+      <Star className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+    </button>
+  );
+}
+
 function ProductRow({
   product,
   qty,
   onQtyChange,
+  onToggleFavorite,
 }: {
   product: Product;
   qty: number;
   onQtyChange: (qty: number) => void;
+  onToggleFavorite: () => void;
 }) {
   const soldOut = product.available === 0;
   const unitPrice = (product as any).effectivePrice ?? product.price;
   const hasCustomPrice = Boolean((product as any).hasCustomPrice);
+  const isFavorite = Boolean((product as any).isFavorite);
   const fields = getProductFields(product);
   const isBlend = isBlendCategory(product.category);
 
@@ -302,14 +398,17 @@ function ProductRow({
                 Sold out
               </span>
             )}
-            <Link href={`/products/${product.id}`}>
-              <a
-                className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
-                data-testid={`link-product-${product.id}`}
-              >
-                {product.name}
-              </a>
-            </Link>
+            <div className="flex items-center gap-1.5">
+              <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
+              <Link href={`/products/${product.id}`}>
+                <a
+                  className="block min-w-0 text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                  data-testid={`link-product-${product.id}`}
+                >
+                  {product.name}
+                </a>
+              </Link>
+            </div>
           </div>
 
           {/* 구성 */}
@@ -353,14 +452,17 @@ function ProductRow({
                 Sold out
               </span>
             )}
-            <Link href={`/products/${product.id}`}>
-              <a
-                className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
-                data-testid={`link-product-${product.id}`}
-              >
-                {product.name}
-              </a>
-            </Link>
+            <div className="flex items-center gap-1.5">
+              <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
+              <Link href={`/products/${product.id}`}>
+                <a
+                  className="block min-w-0 text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+                  data-testid={`link-product-${product.id}`}
+                >
+                  {product.name}
+                </a>
+              </Link>
+            </div>
           </div>
 
           {/* 품종 */}
@@ -406,17 +508,20 @@ function ProductRow({
         {isBlend ? (
           // 블렌드: 상품명 + 가격 한 줄
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {soldOut && (
-                <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Sold out
-                </span>
-              )}
-              <Link href={`/products/${product.id}`}>
-                <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
-                  {product.name}
-                </a>
-              </Link>
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
+              <div className="min-w-0">
+                {soldOut && (
+                  <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    Sold out
+                  </span>
+                )}
+                <Link href={`/products/${product.id}`}>
+                  <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
+                    {product.name}
+                  </a>
+                </Link>
+              </div>
             </div>
             <div className="shrink-0 text-right">
               <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
@@ -429,17 +534,20 @@ function ProductRow({
           // 디카페인 / 싱글: 카드형 (상품명+가격 / 품종 / 가공방식 / 노트)
           <div>
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                {soldOut && (
-                  <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Sold out
-                  </span>
-                )}
-                <Link href={`/products/${product.id}`}>
-                  <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
-                    {product.name}
-                  </a>
-                </Link>
+              <div className="flex min-w-0 flex-1 items-start gap-1.5">
+                <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
+                <div className="min-w-0">
+                  {soldOut && (
+                    <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      Sold out
+                    </span>
+                  )}
+                  <Link href={`/products/${product.id}`}>
+                    <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
+                      {product.name}
+                    </a>
+                  </Link>
+                </div>
               </div>
               <div className="shrink-0 text-right">
                 <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>

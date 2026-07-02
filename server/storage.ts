@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -17,6 +17,7 @@ import type {
   PostWithMeta,
   PostCategory,
   CustomerPrice,
+  Favorite,
   ActivityLog,
   LogActivityInput,
   PasswordResetToken,
@@ -105,6 +106,14 @@ CREATE TABLE IF NOT EXISTS customer_prices (
   UNIQUE(customer_id, product_id)
 );
 CREATE INDEX IF NOT EXISTS idx_customer_prices_customer ON customer_prices(customer_id);
+CREATE TABLE IF NOT EXISTS favorites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(customer_id, product_id)
+);
+CREATE INDEX IF NOT EXISTS idx_favorites_customer ON favorites(customer_id);
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_no TEXT NOT NULL UNIQUE,
@@ -407,6 +416,10 @@ export interface IStorage {
   getCustomerPrice(customerId: number, productId: number): Promise<CustomerPrice | undefined>;
   upsertCustomerPrice(customerId: number, productId: number, price: number): Promise<CustomerPrice>;
   deleteCustomerPrice(customerId: number, productId: number): Promise<void>;
+  // 즐겨찾기
+  listFavorites(customerId: number): Promise<Favorite[]>;
+  addFavorite(customerId: number, productId: number): Promise<Favorite>;
+  removeFavorite(customerId: number, productId: number): Promise<void>;
   // 활동 로그 (#10)
   logActivity(input: LogActivityInput): Promise<ActivityLog>;
   listActivityLogs(filter?: { action?: string; actorEmail?: string; targetType?: string; from?: number; to?: number; page?: number; limit?: number }): Promise<{ logs: ActivityLog[]; total: number }>;
@@ -840,6 +853,34 @@ export class DatabaseStorage implements IStorage {
           eq(customerPrices.productId, productId),
         ),
       )
+      .run();
+  }
+
+  // ===== 즐겨찾기 =====
+  async listFavorites(customerId: number) {
+    return db
+      .select()
+      .from(favorites)
+      .where(eq(favorites.customerId, customerId))
+      .all();
+  }
+  async addFavorite(customerId: number, productId: number) {
+    // 이미 있으면 기존 레코드 반환 (UNIQUE 제약으로 중복 방지)
+    const existing = db
+      .select()
+      .from(favorites)
+      .where(and(eq(favorites.customerId, customerId), eq(favorites.productId, productId)))
+      .get();
+    if (existing) return existing;
+    return db
+      .insert(favorites)
+      .values({ customerId, productId, createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async removeFavorite(customerId: number, productId: number) {
+    db.delete(favorites)
+      .where(and(eq(favorites.customerId, customerId), eq(favorites.productId, productId)))
       .run();
   }
 
