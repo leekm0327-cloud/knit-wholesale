@@ -118,6 +118,11 @@ export default function Login() {
           아직 거래처 등록 전이신가요?{" "}
           <Link href="/register" data-testid="link-register" className="font-semibold text-foreground underline underline-offset-2">거래처 가입</Link>
         </div>
+        {/* #3 멀티 계정 안내: 여러 지점을 운영하는 사장님을 위한 설명 */}
+        <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground/80">
+          여러 지점을 운영하시나요? 각 지점 상호로 한 번씩 로그인해 두면,
+          이후 상단 ‘계정 전환’ 메뉴에서 로그아웃 없이 계정을 바꿀 수 있습니다.
+        </p>
       </Card>
 
       <p className="mt-7 text-center font-ui text-[11px] uppercase tracking-[0.12em] text-muted-foreground">

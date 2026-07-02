@@ -108,7 +108,7 @@ export function AppHeader() {
           <span>
             <span className="font-semibold text-foreground">{user.businessName}</span> · {user.managerName}님으로 로그인됨
           </span>
-          {/* #3 멀티 계정 전환 (저장된 계정이 2개 이상일 때만 노출) */}
+          {/* #3 멀티 계정 전환 (로그인 상태면 항상 표시, 계정 추가/전환 진입점) */}
           <AccountSwitcher />
         </div>
       )}

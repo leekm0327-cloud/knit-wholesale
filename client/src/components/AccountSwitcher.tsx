@@ -32,11 +32,13 @@ export function AccountSwitcher() {
     setAccounts(getSavedAccounts());
   }
 
-  // 저장된 계정이 1개 이하이면 전환 UI를 굳이 노출하지 않음
-  if (!user || accounts.length <= 1) {
-    // 그래도 다른 계정 추가로 로그인할 수 있는 진입점은 아래 헤더에서 제공하므로 여기선 숨김
+  // 로그인 상태가 아니면 노출하지 않음.
+  // 계정이 1개여도 '다른 계정 추가 로그인' 진입점을 제공하기 위해 항상 표시함.
+  if (!user) {
     return null;
   }
+
+  const multiple = accounts.length > 1;
 
   async function switchTo(businessName: string, password: string) {
     if (businessName === user?.businessName) return;
@@ -85,12 +87,14 @@ export function AccountSwitcher() {
           ) : (
             <ChevronsUpDown className="h-3 w-3 text-muted-foreground" />
           )}
-          <span className="max-w-[140px] truncate">계정 전환</span>
+          <span className="max-w-[140px] truncate">{multiple ? "계정 전환" : "계정 추가"}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="center" className="w-60">
         <DropdownMenuLabel className="text-xs text-muted-foreground">
-          저장된 계정 ({accounts.length})
+          {multiple
+            ? `저장된 계정 (${accounts.length})`
+            : "여러 지점을 운영하시나요?"}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {accounts.map((acc) => {
