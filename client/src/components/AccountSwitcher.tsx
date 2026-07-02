@@ -5,10 +5,10 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
-import { getSavedAccounts, removeAccount } from "@/lib/savedAccounts";
+import { getSavedAccounts, removeAccount, saveAccount } from "@/lib/savedAccounts";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,6 +44,7 @@ export function AccountSwitcher() {
     if (businessName === user?.businessName) return;
     setSwitching(true);
     try {
+      // 서버 세션을 새 계정으로 교체 (기존 세션 쿠키를 덮어씀)
       const res = await apiRequest("POST", "/api/auth/login", {
         businessName,
         password,
@@ -52,15 +53,15 @@ export function AccountSwitcher() {
       const nextUser = await res.json();
       // 이전 계정의 장바구니가 섞이지 않도록 비우기
       clearCart();
-      // 계정 관련 캐시 초기화 후 새 사용자 반영
-      queryClient.clear();
-      queryClient.setQueryData(["/api/auth/me"], nextUser);
-      await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      toast({
-        title: "계정을 전환했습니다",
-        description: `${nextUser.businessName} 계정으로 전환되었습니다.`,
-      });
-      navigate("/catalog");
+      // 최종적으로 전환할 계정을 저장(마지막 접속 계정 갱신)
+      saveAccount({ businessName, password, managerName: nextUser.managerName });
+      // React Query 캐시를 부분적으로 갱신하면 staleTime:Infinity + 관찰자 재구독
+      // 타이밍에 따라 헤더/체크 표시가 이전 계정으로 남는 경합이 발생함.
+      // 세션 쿠키는 이미 새 계정으로 바뀌었으므로, 전체 새로고침으로
+      // 모든 상태를 새 세션 기준으로 확실하게 다시 로드한다.
+      // (해시 라우팅) 카탈로그로 이동 후 전체 리로드.
+      window.location.hash = "#/catalog";
+      window.location.reload();
     } catch (err: any) {
       // 비밀번호 변경 등으로 저장된 정보가 더 이상 유효하지 않을 수 있음
       toast({
@@ -68,7 +69,6 @@ export function AccountSwitcher() {
         description: `${errMsg(err)} 저장된 로그인 정보가 만료되었을 수 있습니다.`,
         variant: "destructive",
       });
-    } finally {
       setSwitching(false);
     }
   }
