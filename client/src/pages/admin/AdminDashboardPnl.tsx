@@ -9,7 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { won, wonNum } from "@/lib/format";
-import type { DashboardSummary, DashboardGranularity } from "@shared/schema";
+import type { DashboardSummary, DashboardGranularity, Sector } from "@shared/schema";
+import { SECTORS, SECTOR_LABEL } from "@shared/schema";
 import {
   BarChart,
   Bar,
@@ -37,6 +38,12 @@ const PIE_COLORS = ["hsl(0 0% 13%)", "hsl(0 0% 40%)", "hsl(0 0% 62%)", "hsl(0 0%
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+// 부문 필터 탭 (전체 + 5개 부문)
+const SECTOR_TABS: { key: "all" | Sector; label: string }[] = [
+  { key: "all", label: "전체" },
+  ...SECTORS.map((s) => ({ key: s, label: SECTOR_LABEL[s] })),
+];
 
 // granularity 별 기본 범위 (오늘 기준)
 function defaultRange(g: DashboardGranularity): { from: string; to: string } {
@@ -70,16 +77,17 @@ export default function AdminDashboardPnl() {
   const isOwner = (user as any)?.adminRole === "owner";
 
   const [granularity, setGranularity] = useState<DashboardGranularity>("month");
+  const [sector, setSector] = useState<"all" | Sector>("all");
   const init = useMemo(() => defaultRange("month"), []);
   const [from, setFrom] = useState(init.from);
   const [to, setTo] = useState(init.to);
 
   const { data, isLoading } = useQuery<DashboardSummary>({
-    queryKey: ["/api/admin/dashboard/summary", { from, to, granularity }],
+    queryKey: ["/api/admin/dashboard/summary", { from, to, granularity, sector }],
     queryFn: async () => {
       const res = await apiRequest(
         "GET",
-        `/api/admin/dashboard/summary?from=${from}&to=${to}&granularity=${granularity}`,
+        `/api/admin/dashboard/summary?from=${from}&to=${to}&granularity=${granularity}&sector=${sector}`,
       );
       return res.json();
     },
@@ -114,6 +122,13 @@ export default function AdminDashboardPnl() {
     ? data.expenseByCategory.filter((p) => p.amount > 0).map((p) => ({ name: p.category, value: p.amount }))
     : [];
 
+  // D: 부문별 손익 비교용 (매출/지출/순이익 중 하나라도 0이 아닌 부문만)
+  const sectorChart = data
+    ? (data.sectorBreakdown ?? [])
+        .filter((b) => b.income !== 0 || b.expense !== 0 || b.net !== 0)
+        .map((b) => ({ label: SECTOR_LABEL[b.sector], income: b.income, expense: b.expense, net: b.net }))
+    : [];
+
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
@@ -145,6 +160,20 @@ export default function AdminDashboardPnl() {
               <Label className="text-xs">종료일</Label>
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" data-testid="input-to" />
             </div>
+          </div>
+          {/* D: 부문별 필터 */}
+          <div className="mt-4 flex flex-wrap gap-1 border-t pt-4">
+            {SECTOR_TABS.map((s) => (
+              <Button
+                key={s.key}
+                variant={sector === s.key ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSector(s.key)}
+                data-testid={`button-sector-${s.key}`}
+              >
+                {s.label}
+              </Button>
+            ))}
           </div>
         </Card>
 
@@ -230,6 +259,51 @@ export default function AdminDashboardPnl() {
                     <Bar dataKey="expense" name="지출" fill="hsl(0 0% 70%)" />
                   </BarChart>
                 </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* D: 부문별 손익 비교 (필터와 무관하게 전체 부문 표시) */}
+            <Card className="mt-6 p-5">
+              <h2 className="mb-4 text-sm font-semibold text-foreground">부문별 손익 비교</h2>
+              {sectorChart.length === 0 ? (
+                <p className="py-16 text-center text-sm text-muted-foreground">데이터가 없습니다.</p>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={sectorChart}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => wonNum(v)} width={70} />
+                      <Tooltip formatter={(v: number) => won(v)} />
+                      <Legend />
+                      <Bar dataKey="income" name="매출" fill="hsl(0 0% 30%)" />
+                      <Bar dataKey="expense" name="지출" fill="hsl(0 0% 70%)" />
+                      <Bar dataKey="net" name="순이익" fill="hsl(0 0% 50%)" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="w-full min-w-[480px] text-sm">
+                      <thead className="bg-muted/40 text-xs text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium">부문</th>
+                          <th className="px-4 py-2 text-right font-medium">매출</th>
+                          <th className="px-4 py-2 text-right font-medium">지출</th>
+                          <th className="px-4 py-2 text-right font-medium">순이익</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {(data.sectorBreakdown ?? []).map((b) => (
+                          <tr key={b.sector} data-testid={`row-sector-${b.sector}`}>
+                            <td className="px-4 py-2 text-xs text-foreground">{SECTOR_LABEL[b.sector]}</td>
+                            <td className="px-4 py-2 text-right tabular">{won(b.income)}</td>
+                            <td className="px-4 py-2 text-right tabular">{won(b.expense)}</td>
+                            <td className={`px-4 py-2 text-right tabular font-semibold ${b.net < 0 ? "text-destructive" : "text-foreground"}`}>{won(b.net)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </Card>
           </>

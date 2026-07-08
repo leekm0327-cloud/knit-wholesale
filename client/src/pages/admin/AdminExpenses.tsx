@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { won, errMsg } from "@/lib/format";
-import type { Expense, FixedCostItem } from "@shared/schema";
+import type { Expense, FixedCostItem, Sector } from "@shared/schema";
+import { SECTORS, SECTOR_LABEL } from "@shared/schema";
 import { Receipt, Trash2, Loader2 } from "lucide-react";
 
 const ETC_CATEGORY = "기타";
@@ -29,6 +30,7 @@ export default function AdminExpenses() {
 
   const [expenseDate, setExpenseDate] = useState(todayStr());
   const [category, setCategory] = useState("");
+  const [sector, setSector] = useState<Sector>("common");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,6 +51,7 @@ export default function AdminExpenses() {
       await apiRequest("POST", "/api/admin/expenses", {
         expenseDate,
         category: cat,
+        sector,
         amount: Math.round(amt),
         memo,
       });
@@ -103,6 +106,19 @@ export default function AdminExpenses() {
               </select>
             </div>
             <div className="space-y-1.5">
+              <Label className="text-xs">부문 *</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={sector}
+                onChange={(e) => setSector(e.target.value as Sector)}
+                data-testid="select-expense-sector"
+              >
+                {SECTORS.map((s) => (
+                  <option key={s} value={s}>{SECTOR_LABEL[s]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
               <Label className="text-xs">지출액 *</Label>
               <Input type="number" step="1" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" data-testid="input-expense-amount" />
             </div>
@@ -142,6 +158,7 @@ export default function AdminExpenses() {
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">지출일</th>
                     <th className="px-4 py-2 text-left font-medium">항목</th>
+                    <th className="px-4 py-2 text-left font-medium">부문</th>
                     <th className="px-4 py-2 text-left font-medium">메모</th>
                     <th className="px-4 py-2 text-right font-medium">지출액</th>
                     <th className="px-4 py-2 text-right font-medium"></th>
@@ -152,6 +169,7 @@ export default function AdminExpenses() {
                     <tr key={x.id} data-testid={`row-expense-${x.id}`}>
                       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{x.expenseDate}</td>
                       <td className="px-4 py-3 text-xs text-foreground whitespace-nowrap">{x.category}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{SECTOR_LABEL[(x as any).sector as Sector] ?? "-"}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[220px]">{x.memo || "-"}</td>
                       <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(x.amount)}</td>
                       <td className="px-4 py-3 text-right">

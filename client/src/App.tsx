@@ -48,6 +48,8 @@ import AdminDashboardPnl from "@/pages/admin/AdminDashboardPnl";
 import AdminStoreSales from "@/pages/admin/AdminStoreSales";
 import AdminExpenses from "@/pages/admin/AdminExpenses";
 import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
+import AdminPersonalLedger from "@/pages/admin/AdminPersonalLedger";
+import AdminKakao from "@/pages/admin/AdminKakao";
 import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
@@ -141,6 +143,8 @@ function AppRouter() {
       <Route path="/admin/store-sales" component={AdminStoreSales} />
       <Route path="/admin/expenses" component={AdminExpenses} />
       <Route path="/admin/fixed-cost-items" component={AdminFixedCostItems} />
+      <Route path="/admin/personal-ledger" component={AdminPersonalLedger} />
+      <Route path="/admin/kakao" component={AdminKakao} />
 
       <Route component={NotFound} />
     </Switch>

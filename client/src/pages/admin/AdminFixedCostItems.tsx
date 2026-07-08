@@ -11,7 +11,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { errMsg } from "@/lib/format";
-import type { FixedCostItem } from "@shared/schema";
+import type { FixedCostItem, Sector } from "@shared/schema";
+import { SECTORS, SECTOR_LABEL } from "@shared/schema";
 import { ListChecks, Trash2, Plus, Loader2 } from "lucide-react";
 
 export default function AdminFixedCostItems() {
@@ -26,6 +27,7 @@ export default function AdminFixedCostItems() {
   });
 
   const [name, setName] = useState("");
+  const [sector, setSector] = useState<Sector>("common");
   const [busy, setBusy] = useState(false);
 
   const isOwner = (user as any)?.adminRole === "owner";
@@ -47,7 +49,7 @@ export default function AdminFixedCostItems() {
     }
     setBusy(true);
     try {
-      await apiRequest("POST", "/api/admin/fixed-cost-items", { name: name.trim() });
+      await apiRequest("POST", "/api/admin/fixed-cost-items", { name: name.trim(), sector });
       toast({ title: "항목이 추가되었습니다." });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/fixed-cost-items"] });
       setName("");
@@ -100,6 +102,19 @@ export default function AdminFixedCostItems() {
                 data-testid="input-item-name"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">부문</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={sector}
+                onChange={(e) => setSector(e.target.value as Sector)}
+                data-testid="select-item-sector"
+              >
+                {SECTORS.map((s) => (
+                  <option key={s} value={s}>{SECTOR_LABEL[s]}</option>
+                ))}
+              </select>
+            </div>
             <Button onClick={add} disabled={busy} data-testid="button-add-item">
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
               추가
@@ -129,6 +144,7 @@ export default function AdminFixedCostItems() {
                 <li key={item.id} className="flex items-center justify-between gap-3 px-5 py-3" data-testid={`row-item-${item.id}`}>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{item.name}</span>
+                    <Badge variant="outline" className="text-[10px]">{SECTOR_LABEL[(item as any).sector as Sector] ?? "공통"}</Badge>
                     {!item.active && (
                       <Badge variant="secondary" className="text-[10px]">비활성</Badge>
                     )}

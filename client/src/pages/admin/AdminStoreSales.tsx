@@ -10,8 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { won, errMsg } from "@/lib/format";
-import type { StoreSale } from "@shared/schema";
+import type { StoreSale, Sector } from "@shared/schema";
+import { SECTOR_LABEL } from "@shared/schema";
 import { Store, Trash2, Loader2 } from "lucide-react";
+
+// 매장매출 입력에서 선택 가능한 부문 (매장·온라인만)
+const STORE_SECTORS: Sector[] = ["store", "online"];
 
 function todayStr(): string {
   const d = new Date();
@@ -23,6 +27,7 @@ export default function AdminStoreSales() {
   const { data: sales, isLoading } = useQuery<StoreSale[]>({ queryKey: ["/api/admin/store-sales"] });
 
   const [saleDate, setSaleDate] = useState(todayStr());
+  const [sector, setSector] = useState<Sector>("store");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,10 +42,11 @@ export default function AdminStoreSales() {
     try {
       await apiRequest("POST", "/api/admin/store-sales", {
         saleDate,
+        sector,
         amount: Math.round(amt),
         memo,
       });
-      toast({ title: "매장매출이 저장되었습니다.", description: "같은 날짜는 덮어쓰기 됩니다." });
+      toast({ title: "매출이 저장되었습니다.", description: "같은 날짜·부문은 덮어쓰기 됩니다." });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/store-sales"] });
       setAmount("");
       setMemo("");
@@ -72,10 +78,23 @@ export default function AdminStoreSales() {
         {/* 입력 폼 */}
         <Card className="mb-6 p-5">
           <h2 className="mb-4 text-sm font-semibold text-foreground">일별 매출 등록</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs">매출일 *</Label>
               <Input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} data-testid="input-sale-date" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">부문 *</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={sector}
+                onChange={(e) => setSector(e.target.value as Sector)}
+                data-testid="select-sale-sector"
+              >
+                {STORE_SECTORS.map((s) => (
+                  <option key={s} value={s}>{SECTOR_LABEL[s]}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">매출액 *</Label>
@@ -116,6 +135,7 @@ export default function AdminStoreSales() {
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">매출일</th>
+                    <th className="px-4 py-2 text-left font-medium">부문</th>
                     <th className="px-4 py-2 text-left font-medium">메모</th>
                     <th className="px-4 py-2 text-right font-medium">매출액</th>
                     <th className="px-4 py-2 text-right font-medium"></th>
@@ -125,6 +145,7 @@ export default function AdminStoreSales() {
                   {sales.map((s) => (
                     <tr key={s.id} data-testid={`row-sale-${s.id}`}>
                       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{s.saleDate}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{SECTOR_LABEL[(s as any).sector as Sector] ?? "-"}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[220px]">{s.memo || "-"}</td>
                       <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(s.amount)}</td>
                       <td className="px-4 py-3 text-right">

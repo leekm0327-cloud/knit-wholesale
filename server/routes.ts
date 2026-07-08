@@ -4,9 +4,10 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, db, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, seedPersonalCategories, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail } from "./email";
+import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
@@ -30,6 +31,9 @@ import {
   insertStoreSaleSchema,
   insertFixedCostItemSchema,
   insertExpenseSchema,
+  insertPersonalCategorySchema,
+  insertPersonalLedgerSchema,
+  SECTORS,
   customers,
   type Customer,
   type PublicCustomer,
@@ -101,6 +105,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await seed();
   seedFixedCostItems();
+  seedPersonalCategories();
 
   // 샌드박스 iframe 쿠키 동작을 위한 설정
   app.set("trust proxy", 1);
@@ -183,8 +188,18 @@ export async function registerRoutes(
     // B-3: 사업자등록번호 형식+체크섬 검증. 유효하면 자동승인(biz_verified=1), 아니면 승인대기(0).
     const bizVerified = isValidBizRegNo(parsed.data.bizRegNo ?? "") ? 1 : 0;
     const customer = await storage.createCustomer({ ...restData, taxEmail: parsed.data.email, password: hashed, role: "customer", bizVerified });
-    // B-3: 승인 상태를 활동 로그로 기록 (외부 알림(카카오/이메일) 미연동 → 관리자 화면 목록 + 로그로 대체).
-    // TODO: 카카오 알림톡/이메일 연동 시 승인대기 고객 발생을 사장님께 실시간 통지.
+    // B-3: 승인 상태를 활동 로그로 기록.
+    // F: 승인대기 고객 발생 시 사장님 카카오톡으로 실시간 통지 (실패해도 가입 흐름은 정상 진행).
+    if (!bizVerified) {
+      try {
+        await sendKakaoMemo(
+          `[니트커피] 새 거래처 가입 신청이 있습니다.\n상호: ${customer.businessName}\n사업자번호 미검증 → 승인 대기 중입니다.`,
+          "https://wholesale.knitcoffee.co.kr/#/admin/customers",
+        );
+      } catch (e: any) {
+        console.warn("[kakao] 가입 알림 발송 실패:", e?.message ?? e);
+      }
+    }
     await storage.logActivity({
       actorUserId: customer.id,
       actorEmail: customer.email,
@@ -521,6 +536,12 @@ export async function registerRoutes(
       note: parsed.data.note ?? "",
       createdAt: order.createdAt,
     }).catch((e) => console.error("[email] 알림 메일 실패:", e));
+
+    // F: 새 도매 주문 발생 시 사장님 카카오톡 알림 (이메일 알림과 병행, 실패해도 흐름 정상 진행)
+    sendKakaoMemo(
+      `[니트커피] 새 도매 주문이 접수되었습니다.\n주문번호: ${order.orderNo}\n거래처: ${customer.businessName}\n금액: ${(supplyAmount + vat).toLocaleString("ko-KR")}원`,
+      "https://wholesale.knitcoffee.co.kr/#/admin",
+    ).catch((e) => console.warn("[kakao] 주문 알림 발송 실패:", e?.message ?? e));
 
     res.json({ ...order, merged: false, orderId: order.id });
   });
@@ -883,7 +904,11 @@ export async function registerRoutes(
       targetId: String(id),
       summary: `거래처 '${updated.businessName}' 사업자 승인(샘플 신청 허용)`,
     });
-    // TODO(외부 알림 미연동): 승인 완료 시 카카오/이메일 알림 발송. 현재는 activityLog 로 대체.
+    // F: 승인 완료 시 사장님 카카오톡 알림 (실패해도 흐름 정상 진행)
+    sendKakaoMemo(
+      `[니트커피] 거래처 사업자 승인 완료\n상호: ${updated.businessName}\n이제 정상 주문/샘플 신청이 가능합니다.`,
+      "https://wholesale.knitcoffee.co.kr/#/admin/customers",
+    ).catch((e) => console.warn("[kakao] 승인 알림 발송 실패:", e?.message ?? e));
     res.json(toPublic(updated));
   });
 
@@ -1331,7 +1356,102 @@ export async function registerRoutes(
       | "week"
       | "month"
       | "year";
-    res.json(await storage.getDashboardSummary(from, to, granularity));
+    const s = typeof req.query.sector === "string" ? req.query.sector : "all";
+    const sector = (s === "all" || (SECTORS as readonly string[]).includes(s) ? s : "all") as
+      | "all"
+      | (typeof SECTORS)[number];
+    res.json(await storage.getDashboardSummary(from, to, granularity, sector));
+  });
+
+  // ===== E: 개인 가계부 (owner 전용, 사업 재무와 완전 분리) =====
+  app.get("/api/personal-categories", requireOwner, async (_req, res) => {
+    res.json(await storage.listPersonalCategories());
+  });
+
+  app.post("/api/personal-categories", requireOwner, async (req, res) => {
+    const parsed = insertPersonalCategorySchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const cat = await storage.createPersonalCategory(parsed.data);
+    res.json(cat);
+  });
+
+  app.delete("/api/personal-categories/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await storage.deletePersonalCategory(id);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/personal-ledger", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    res.json(await storage.listPersonalLedger(from, to));
+  });
+
+  app.post("/api/personal-ledger", requireOwner, async (req, res) => {
+    const parsed = insertPersonalLedgerSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const entry = await storage.createPersonalLedger(parsed.data);
+    res.json(entry);
+  });
+
+  app.patch("/api/personal-ledger/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = insertPersonalLedgerSchema.partial().safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const entry = await storage.updatePersonalLedger(id, parsed.data);
+    if (!entry) return res.status(404).json({ message: "항목을 찾을 수 없습니다." });
+    res.json(entry);
+  });
+
+  app.delete("/api/personal-ledger/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await storage.deletePersonalLedger(id);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/personal-ledger/summary", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    res.json(await storage.getPersonalSummary(from, to));
+  });
+
+  // ===== F: 카카오톡 "나에게 보내기" 알림 연동 =====
+  // OAuth 인가 시작 — 사장님을 카카오 로그인으로 리다이렉트
+  app.get("/oauth/kakao/login", requireOwner, (_req, res) => {
+    if (!isKakaoConfigured())
+      return res.status(400).json({ message: "카카오 환경변수가 설정되지 않았습니다." });
+    res.redirect(getKakaoAuthUrl());
+  });
+
+  // OAuth 콜백 — 인가 코드로 토큰 발급 후 관리자 화면으로 이동
+  app.get("/oauth/kakao/callback", async (req, res) => {
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    if (!code) return res.redirect("/#/admin/kakao?error=no_code");
+    try {
+      await exchangeCodeForToken(code);
+      res.redirect("/#/admin/kakao?linked=1");
+    } catch (e: any) {
+      console.warn("[kakao] 콜백 토큰 발급 실패:", e?.message ?? e);
+      res.redirect("/#/admin/kakao?error=token");
+    }
+  });
+
+  app.get("/api/admin/kakao/status", requireOwner, async (_req, res) => {
+    res.json(await getKakaoStatus());
+  });
+
+  app.post("/api/admin/kakao/test", requireOwner, async (_req, res) => {
+    const ok = await sendKakaoMemo(
+      "[니트커피] 카카오톡 알림 연동 테스트입니다. 이 메시지가 보이면 정상 연동되었습니다.",
+    );
+    res.json({ ok });
   });
 
   app.patch("/api/admin/orders/:id", requireAdmin, async (req, res) => {

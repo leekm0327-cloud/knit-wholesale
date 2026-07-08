@@ -28,6 +28,8 @@ import {
   Store,
   Receipt,
   ListChecks,
+  BookUser,
+  MessageCircle,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -53,6 +55,8 @@ const NAV_BASE: NavItem[] = [
   { href: "/admin/store-sales", label: "매장매출", icon: Store },
   { href: "/admin/expenses", label: "지출 입력", icon: Receipt },
   { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
+  { href: "/admin/personal-ledger", label: "개인 가계부", icon: BookUser, ownerOnly: true },
+  { href: "/admin/kakao", label: "카카오 알림", icon: MessageCircle, ownerOnly: true },
   { href: "/admin/ecount", label: "ECOUNT 연동", icon: Link2 },
   { href: "/admin/ecount-logs", label: "ECOUNT 로그", icon: ScrollText },
   { href: "/admin/board", label: "게시판", icon: MessageSquare },

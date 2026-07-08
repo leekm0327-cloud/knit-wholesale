@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -39,7 +39,16 @@ import type {
   InsertExpense,
   DashboardSummary,
   DashboardGranularity,
+  Sector,
+  SectorPnl,
+  PersonalCategory,
+  InsertPersonalCategory,
+  PersonalLedgerEntry,
+  InsertPersonalLedger,
+  PersonalSummary,
+  KakaoTokens,
 } from "@shared/schema";
+import { SECTORS } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc, gt, and, asc, gte, lte, like } from "drizzle-orm";
@@ -265,6 +274,30 @@ CREATE TABLE IF NOT EXISTS expenses (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
+CREATE TABLE IF NOT EXISTS personal_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS personal_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  type TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL DEFAULT 0,
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_personal_ledger_date ON personal_ledger(date);
+CREATE TABLE IF NOT EXISTS kakao_tokens (
+  id INTEGER PRIMARY KEY,
+  access_token TEXT NOT NULL DEFAULT '',
+  refresh_token TEXT NOT NULL DEFAULT '',
+  access_token_expires_at INTEGER NOT NULL DEFAULT 0,
+  refresh_token_expires_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
 `);
 
 // ===== 멱등 컬럼 추가 마이그레이션 =====
@@ -281,6 +314,10 @@ for (const [table, col] of [
   // B-3: 사업자 검증/승인, 샘플 사용 여부
   ["customers", "biz_verified INTEGER NOT NULL DEFAULT 0"],
   ["customers", "sample_used INTEGER NOT NULL DEFAULT 0"],
+  // D: 재무 부문(sector) 컬럼. 기존행은 default 값으로 채워짐.
+  ["store_sales", "sector TEXT NOT NULL DEFAULT 'store'"],
+  ["expenses", "sector TEXT NOT NULL DEFAULT 'common'"],
+  ["fixed_cost_items", "sector TEXT NOT NULL DEFAULT 'common'"],
 ]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
@@ -296,6 +333,39 @@ try {
   sqlite.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_business_name ON customers(business_name);`);
 } catch (e: any) {
   console.warn("[migration] business_name unique idx", e?.message);
+}
+
+// ===== D: store_sales.sale_date UNIQUE 제약 제거 =====
+// 부문(sector)이 추가되면서 같은 날짜에 매장/온라인 매출을 각각 입력할 수 있어야 한다.
+// 기존 sale_date UNIQUE(autoindex)가 남아있으면 테이블을 재생성해 (sale_date, sector) 단위로 관리한다.
+try {
+  const idxList: any[] = sqlite.prepare(`PRAGMA index_list('store_sales')`).all();
+  const hasAutoUnique = idxList.some((i) => i.unique === 1 && /autoindex/i.test(String(i.name)));
+  if (hasAutoUnique) {
+    console.log("[migration D] store_sales.sale_date UNIQUE 감지 → 테이블 재생성으로 제약 제거");
+    sqlite.exec(`
+      PRAGMA foreign_keys=OFF;
+      BEGIN TRANSACTION;
+      CREATE TABLE store_sales_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_date TEXT NOT NULL,
+        amount INTEGER NOT NULL DEFAULT 0,
+        memo TEXT NOT NULL DEFAULT '',
+        sector TEXT NOT NULL DEFAULT 'store',
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO store_sales_new (id, sale_date, amount, memo, sector, created_at)
+        SELECT id, sale_date, amount, memo, COALESCE(sector, 'store'), created_at FROM store_sales;
+      DROP TABLE store_sales;
+      ALTER TABLE store_sales_new RENAME TO store_sales;
+      CREATE INDEX IF NOT EXISTS idx_store_sales_date ON store_sales(sale_date);
+      COMMIT;
+      PRAGMA foreign_keys=ON;
+    `);
+    console.log("[migration D] store_sales 재생성 완료 (sale_date UNIQUE 제거)");
+  }
+} catch (e: any) {
+  console.warn("[migration D] store_sales 재생성 실패", e?.message);
 }
 
 // ===== V7 #20: customers.email unique 제약 제거 (taxEmail 중복 허용) =====
@@ -539,7 +609,19 @@ export interface IStorage {
   listExpenses(from?: string, to?: string): Promise<Expense[]>;
   createExpense(e: InsertExpense): Promise<Expense>;
   deleteExpense(id: number): Promise<void>;
-  getDashboardSummary(from: string, to: string, granularity: DashboardGranularity): Promise<DashboardSummary>;
+  getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
+  // E: 개인 가계부
+  listPersonalCategories(): Promise<PersonalCategory[]>;
+  createPersonalCategory(c: InsertPersonalCategory): Promise<PersonalCategory>;
+  deletePersonalCategory(id: number): Promise<void>;
+  listPersonalLedger(from?: string, to?: string): Promise<PersonalLedgerEntry[]>;
+  createPersonalLedger(e: InsertPersonalLedger): Promise<PersonalLedgerEntry>;
+  updatePersonalLedger(id: number, patch: Partial<PersonalLedgerEntry>): Promise<PersonalLedgerEntry | undefined>;
+  deletePersonalLedger(id: number): Promise<void>;
+  getPersonalSummary(from: string, to: string): Promise<PersonalSummary>;
+  // F: 카카오 토큰
+  getKakaoTokens(): Promise<KakaoTokens | undefined>;
+  upsertKakaoTokens(patch: Partial<Omit<KakaoTokens, "id">>): Promise<KakaoTokens>;
 }
 
 // ===== 대시보드 기간 버킷 유틸 (KST 기준) =====
@@ -1058,18 +1140,23 @@ export class DatabaseStorage implements IStorage {
   }
   // 같은 날짜(sale_date)가 이미 있으면 금액/메모 갱신, 없으면 신규 삽입
   async upsertStoreSale(s: InsertStoreSale): Promise<StoreSale> {
-    const existing = db.select().from(storeSales).where(eq(storeSales.saleDate, s.saleDate)).get();
+    const sector = s.sector ?? "store";
+    const existing = db
+      .select()
+      .from(storeSales)
+      .where(and(eq(storeSales.saleDate, s.saleDate), eq(storeSales.sector, sector)))
+      .get();
     if (existing) {
       return db
         .update(storeSales)
-        .set({ amount: s.amount, memo: s.memo ?? "" })
+        .set({ amount: s.amount, memo: s.memo ?? "", sector })
         .where(eq(storeSales.id, existing.id))
         .returning()
         .get();
     }
     return db
       .insert(storeSales)
-      .values({ saleDate: s.saleDate, amount: s.amount, memo: s.memo ?? "", createdAt: Date.now() })
+      .values({ saleDate: s.saleDate, amount: s.amount, memo: s.memo ?? "", sector, createdAt: Date.now() })
       .returning()
       .get();
   }
@@ -1089,6 +1176,7 @@ export class DatabaseStorage implements IStorage {
         name: f.name,
         sortOrder: f.sortOrder ?? 0,
         active: f.active ?? 1,
+        sector: f.sector ?? "common",
         createdAt: Date.now(),
       })
       .returning()
@@ -1116,6 +1204,7 @@ export class DatabaseStorage implements IStorage {
         category: e.category,
         amount: e.amount,
         memo: e.memo ?? "",
+        sector: e.sector ?? "common",
         createdAt: Date.now(),
       })
       .returning()
@@ -1130,33 +1219,66 @@ export class DatabaseStorage implements IStorage {
     from: string,
     to: string,
     granularity: DashboardGranularity,
+    sector: "all" | Sector = "all",
   ): Promise<DashboardSummary> {
     // 날짜 문자열(YYYY-MM-DD) → KST 타임스탬프 범위 (주문 createdAt 비교용)
     const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
     const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
 
-    // 수입: 도매매출(취소 제외) + 매장매출
+    // 원천 데이터 (기간 필터 적용)
     const allOrders = await this.listOrders();
-    const wholesaleSales = allOrders
-      .filter((o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs)
-      .reduce((s, o) => s + o.totalAmount, 0);
+    const orderRows = allOrders.filter(
+      (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
+    );
     const storeSaleRows = await this.listStoreSales(from, to);
-    const storeSalesTotal = storeSaleRows.reduce((s, r) => s + r.amount, 0);
+    const allSupplierPayments = await this.listSupplierPayments();
+    const paymentRows = allSupplierPayments.filter((p) => p.paidAt >= from && p.paidAt <= to);
+    const expenseRows = await this.listExpenses(from, to);
+
+    // D: 부문별 손익 비교 (항상 전체 부문 계산)
+    const secInit = (): Record<Sector, { income: number; expense: number }> =>
+      SECTORS.reduce((acc, s) => { acc[s] = { income: 0, expense: 0 }; return acc; }, {} as Record<Sector, { income: number; expense: number }>);
+    const secAgg = secInit();
+    // 도매주문 → wholesale 수입
+    for (const o of orderRows) secAgg.wholesale.income += o.totalAmount;
+    // 매장/온라인 매출 → 행의 sector
+    for (const r of storeSaleRows) {
+      const s = (SECTORS as readonly string[]).includes(r.sector) ? (r.sector as Sector) : "store";
+      secAgg[s].income += r.amount;
+    }
+    // 공장지급 → wholesale 지출
+    for (const p of paymentRows) secAgg.wholesale.expense += p.amount;
+    // 지출 → 행의 sector
+    for (const e of expenseRows) {
+      const s = (SECTORS as readonly string[]).includes((e as any).sector) ? ((e as any).sector as Sector) : "common";
+      secAgg[s].expense += e.amount;
+    }
+    const sectorBreakdown: SectorPnl[] = SECTORS.map((s) => ({
+      sector: s,
+      income: secAgg[s].income,
+      expense: secAgg[s].expense,
+      net: secAgg[s].income - secAgg[s].expense,
+    }));
+
+    // 부문 필터에 따라 집계 대상 결정
+    const includeWholesale = sector === "all" || sector === "wholesale";
+    const filteredStoreSales = sector === "all" ? storeSaleRows : storeSaleRows.filter((r) => (r.sector || "store") === sector);
+    const filteredExpenses = sector === "all" ? expenseRows : expenseRows.filter((e) => ((e as any).sector || "common") === sector);
+
+    // 수입
+    const wholesaleSales = includeWholesale ? orderRows.reduce((s, o) => s + o.totalAmount, 0) : 0;
+    const storeSalesTotal = filteredStoreSales.reduce((s, r) => s + r.amount, 0);
     const totalIncome = wholesaleSales + storeSalesTotal;
 
-    // 지출: 공장지급(supplierPayments) + 기타지출(expenses)
-    const allSupplierPayments = await this.listSupplierPayments();
-    const supplierPaid = allSupplierPayments
-      .filter((p) => p.paidAt >= from && p.paidAt <= to)
-      .reduce((s, p) => s + p.amount, 0);
-    const expenseRows = await this.listExpenses(from, to);
-    const otherExpense = expenseRows.reduce((s, e) => s + e.amount, 0);
+    // 지출
+    const supplierPaid = includeWholesale ? paymentRows.reduce((s, p) => s + p.amount, 0) : 0;
+    const otherExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
     const totalExpense = supplierPaid + otherExpense;
 
     // 지출 항목별 비중 (공장지급 + 지출 카테고리별)
     const catMap = new Map<string, number>();
     if (supplierPaid > 0) catMap.set("공장지급", supplierPaid);
-    for (const e of expenseRows) {
+    for (const e of filteredExpenses) {
       catMap.set(e.category, (catMap.get(e.category) ?? 0) + e.amount);
     }
     const expenseByCategory = Array.from(catMap.entries())
@@ -1170,16 +1292,12 @@ export class DatabaseStorage implements IStorage {
       cur[field] += amt;
       bucketMap.set(key, cur);
     };
-    for (const o of allOrders) {
-      if (o.status === "cancelled" || o.createdAt < fromTs || o.createdAt > toTs) continue;
-      bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount);
+    if (includeWholesale) {
+      for (const o of orderRows) bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount);
+      for (const p of paymentRows) bump(bucketKey(dateFromYmd(p.paidAt), granularity), "expense", p.amount);
     }
-    for (const r of storeSaleRows) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
-    for (const p of allSupplierPayments) {
-      if (p.paidAt < from || p.paidAt > to) continue;
-      bump(bucketKey(dateFromYmd(p.paidAt), granularity), "expense", p.amount);
-    }
-    for (const e of expenseRows) bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
+    for (const r of filteredStoreSales) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
+    for (const e of filteredExpenses) bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
 
     const buckets = Array.from(bucketMap.entries())
       .map(([key, v]) => ({ key, income: v.income, expense: v.expense, net: v.income - v.expense }))
@@ -1189,6 +1307,8 @@ export class DatabaseStorage implements IStorage {
       from,
       to,
       granularity,
+      sector,
+      sectorBreakdown,
       wholesaleSales,
       storeSales: storeSalesTotal,
       totalIncome,
@@ -1199,6 +1319,82 @@ export class DatabaseStorage implements IStorage {
       expenseByCategory,
       buckets,
     };
+  }
+
+  // ===== E: 개인 가계부 =====
+  async listPersonalCategories(): Promise<PersonalCategory[]> {
+    return db.select().from(personalCategories).orderBy(asc(personalCategories.type), asc(personalCategories.id)).all();
+  }
+  async createPersonalCategory(c: InsertPersonalCategory): Promise<PersonalCategory> {
+    return db.insert(personalCategories).values({ name: c.name, type: c.type, createdAt: Date.now() }).returning().get();
+  }
+  async deletePersonalCategory(id: number): Promise<void> {
+    db.delete(personalCategories).where(eq(personalCategories.id, id)).run();
+  }
+  async listPersonalLedger(from?: string, to?: string): Promise<PersonalLedgerEntry[]> {
+    let rows = db.select().from(personalLedger).orderBy(desc(personalLedger.date), desc(personalLedger.id)).all();
+    if (from) rows = rows.filter((r) => r.date >= from);
+    if (to) rows = rows.filter((r) => r.date <= to);
+    return rows;
+  }
+  async createPersonalLedger(e: InsertPersonalLedger): Promise<PersonalLedgerEntry> {
+    return db
+      .insert(personalLedger)
+      .values({ date: e.date, type: e.type, categoryId: e.categoryId, amount: e.amount, memo: e.memo ?? "", createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async updatePersonalLedger(id: number, patch: Partial<PersonalLedgerEntry>): Promise<PersonalLedgerEntry | undefined> {
+    return db.update(personalLedger).set(patch).where(eq(personalLedger.id, id)).returning().get();
+  }
+  async deletePersonalLedger(id: number): Promise<void> {
+    db.delete(personalLedger).where(eq(personalLedger.id, id)).run();
+  }
+  async getPersonalSummary(from: string, to: string): Promise<PersonalSummary> {
+    const rows = await this.listPersonalLedger(from, to);
+    const cats = await this.listPersonalCategories();
+    const catMap = new Map(cats.map((c) => [c.id, c]));
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const byCatMap = new Map<number, number>();
+    for (const r of rows) {
+      if (r.type === "income") totalIncome += r.amount;
+      else totalExpense += r.amount;
+      byCatMap.set(r.categoryId, (byCatMap.get(r.categoryId) ?? 0) + r.amount);
+    }
+    const byCategory = Array.from(byCatMap.entries())
+      .map(([categoryId, amount]) => ({
+        categoryId,
+        name: catMap.get(categoryId)?.name ?? "(삭제된 카테고리)",
+        type: catMap.get(categoryId)?.type ?? "expense",
+        amount,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+    return { from, to, totalIncome, totalExpense, net: totalIncome - totalExpense, byCategory };
+  }
+
+  // ===== F: 카카오 토큰 (단일 행 id=1) =====
+  async getKakaoTokens(): Promise<KakaoTokens | undefined> {
+    return db.select().from(kakaoTokens).where(eq(kakaoTokens.id, 1)).get();
+  }
+  async upsertKakaoTokens(patch: Partial<Omit<KakaoTokens, "id">>): Promise<KakaoTokens> {
+    const existing = await this.getKakaoTokens();
+    const now = Date.now();
+    if (!existing) {
+      return db
+        .insert(kakaoTokens)
+        .values({
+          id: 1,
+          accessToken: patch.accessToken ?? "",
+          refreshToken: patch.refreshToken ?? "",
+          accessTokenExpiresAt: patch.accessTokenExpiresAt ?? 0,
+          refreshTokenExpiresAt: patch.refreshTokenExpiresAt ?? 0,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+    }
+    return db.update(kakaoTokens).set({ ...patch, updatedAt: now }).where(eq(kakaoTokens.id, 1)).returning().get();
   }
 
   // ===== ECOUNT 설정 (단일 레코드, id=1) =====
@@ -1578,4 +1774,16 @@ export function seedFixedCostItems() {
     db.insert(fixedCostItems).values({ name, sortOrder: i, active: 1, createdAt: now }).run();
   });
   console.log("[seed] 고정비 항목 기본 10개 생성 완료");
+}
+
+// ===== E: 개인 가계부 카테고리 기본 시드 (비어있을 때만) =====
+export function seedPersonalCategories() {
+  const existing = db.select().from(personalCategories).all();
+  if (existing.length > 0) return;
+  const now = Date.now();
+  const expenseCats = ["식비", "교통", "여가", "경조사", "주거", "의료", "기타"];
+  const incomeCats = ["급여", "기타수입"];
+  for (const name of expenseCats) db.insert(personalCategories).values({ name, type: "expense", createdAt: now }).run();
+  for (const name of incomeCats) db.insert(personalCategories).values({ name, type: "income", createdAt: now }).run();
+  console.log("[seed] 개인 가계부 카테고리 기본 생성 완료");
 }

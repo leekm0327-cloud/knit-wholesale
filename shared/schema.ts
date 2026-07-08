@@ -225,6 +225,8 @@ export const storeSales = sqliteTable("store_sales", {
   saleDate: text("sale_date").notNull().unique(), // 매출일 YYYY-MM-DD (고유)
   amount: integer("amount").notNull().default(0), // 당일 매장매출 (원)
   memo: text("memo").notNull().default(""),
+  // D: 재무 부문. 매장매출 기본 store, 온라인 매출은 online 선택.
+  sector: text("sector").notNull().default("store"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -234,6 +236,8 @@ export const fixedCostItems = sqliteTable("fixed_cost_items", {
   name: text("name").notNull(), // 항목명 (예: 임대료)
   sortOrder: integer("sort_order").notNull().default(0),
   active: integer("active").notNull().default(1), // 1 사용 / 0 숨김
+  // D: 재무 부문 (고정비도 부문 지정)
+  sector: text("sector").notNull().default("common"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -244,7 +248,37 @@ export const expenses = sqliteTable("expenses", {
   category: text("category").notNull(), // 고정비 항목명 or '기타'
   amount: integer("amount").notNull().default(0), // 지출액 (원)
   memo: text("memo").notNull().default(""),
+  // D: 재무 부문 (입력 시 선택)
+  sector: text("sector").notNull().default("common"),
   createdAt: integer("created_at").notNull(),
+});
+
+// ===== E: 개인 가계부 (owner 전용, 사업 재무와 완전 분리) =====
+export const personalCategories = sqliteTable("personal_categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // income | expense
+  createdAt: integer("created_at").notNull(),
+});
+
+export const personalLedger = sqliteTable("personal_ledger", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  date: text("date").notNull(), // YYYY-MM-DD
+  type: text("type").notNull(), // income | expense
+  categoryId: integer("category_id").notNull(),
+  amount: integer("amount").notNull().default(0), // 원
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ===== F: 카카오 "나에게 보내기" 토큰 (단일 행, id=1) =====
+export const kakaoTokens = sqliteTable("kakao_tokens", {
+  id: integer("id").primaryKey(), // 고정 1
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  accessTokenExpiresAt: integer("access_token_expires_at").notNull().default(0), // epoch ms
+  refreshTokenExpiresAt: integer("refresh_token_expires_at").notNull().default(0),
+  updatedAt: integer("updated_at").notNull().default(0),
 });
 
 // ===== 활동 로그 (#10) =====
@@ -567,12 +601,26 @@ export type PurchaseQtyAgg = {
   totalAmount: number;
 };
 
+// ===== D: 재무 부문(sector) =====
+// 5개 고정 부문. store(매장)/wholesale(홀세일)/online(온라인)/atelier(아뜰리에)/common(공통)
+export const SECTORS = ["store", "wholesale", "online", "atelier", "common"] as const;
+export type Sector = (typeof SECTORS)[number];
+export const sectorSchema = z.enum(SECTORS);
+export const SECTOR_LABEL: Record<Sector, string> = {
+  store: "매장",
+  wholesale: "홀세일",
+  online: "온라인",
+  atelier: "아뜰리에",
+  common: "공통",
+};
+
 // ===== 경영 대시보드 (C) 타입/스키마 =====
 export type StoreSale = typeof storeSales.$inferSelect;
 export const insertStoreSaleSchema = z.object({
   saleDate: z.string().min(1, "매출일을 선택해 주세요."),
   amount: z.number().int().min(0, "매출액을 입력해 주세요."),
   memo: z.string().optional().default(""),
+  sector: sectorSchema.optional().default("store"),
 });
 export type InsertStoreSale = z.infer<typeof insertStoreSaleSchema>;
 
@@ -581,6 +629,7 @@ export const insertFixedCostItemSchema = z.object({
   name: z.string().min(1, "항목명을 입력해 주세요."),
   sortOrder: z.number().int().optional().default(0),
   active: z.number().int().min(0).max(1).optional().default(1),
+  sector: sectorSchema.optional().default("common"),
 });
 export type InsertFixedCostItem = z.infer<typeof insertFixedCostItemSchema>;
 
@@ -590,8 +639,42 @@ export const insertExpenseSchema = z.object({
   category: z.string().min(1, "지출 항목을 선택해 주세요."),
   amount: z.number().int().min(0, "지출액을 입력해 주세요."),
   memo: z.string().optional().default(""),
+  sector: sectorSchema.optional().default("common"),
 });
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+
+// ===== E: 개인 가계부 타입/스키마 =====
+export type PersonalCategory = typeof personalCategories.$inferSelect;
+export const insertPersonalCategorySchema = z.object({
+  name: z.string().min(1, "카테고리명을 입력해 주세요."),
+  type: z.enum(["income", "expense"]),
+});
+export type InsertPersonalCategory = z.infer<typeof insertPersonalCategorySchema>;
+
+export type PersonalLedgerEntry = typeof personalLedger.$inferSelect;
+export const insertPersonalLedgerSchema = z.object({
+  date: z.string().min(1, "날짜를 선택해 주세요."),
+  type: z.enum(["income", "expense"]),
+  categoryId: z.number().int().min(1, "카테고리를 선택해 주세요."),
+  amount: z.number().int().min(0, "금액을 입력해 주세요."),
+  memo: z.string().optional().default(""),
+});
+export type InsertPersonalLedger = z.infer<typeof insertPersonalLedgerSchema>;
+
+export type PersonalSummary = {
+  from: string;
+  to: string;
+  totalIncome: number;
+  totalExpense: number;
+  net: number;
+  byCategory: { categoryId: number; name: string; type: string; amount: number }[];
+};
+
+// ===== F: 카카오 토큰 타입 =====
+export type KakaoTokens = typeof kakaoTokens.$inferSelect;
+
+// D: 부문별 손익 한 줄
+export type SectorPnl = { sector: Sector; income: number; expense: number; net: number };
 
 // 대시보드 기간 그루핑 단위
 export type DashboardGranularity = "day" | "week" | "month" | "year";
@@ -601,6 +684,9 @@ export type DashboardSummary = {
   from: string;
   to: string;
   granularity: DashboardGranularity;
+  // D: 적용된 부문 필터 ("all" | Sector) 및 부문별 손익 비교
+  sector: "all" | Sector;
+  sectorBreakdown: SectorPnl[];
   // 수입
   wholesaleSales: number; // 도매매출 (취소 제외 주문 합)
   storeSales: number; // 매장매출 합
