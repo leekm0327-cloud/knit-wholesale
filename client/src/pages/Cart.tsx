@@ -24,8 +24,22 @@ export default function Cart() {
   const vat = Math.round(supplyAmount * 0.1);
   const total = supplyAmount + vat;
 
+  // A-4: 원두(블렌드/디카페인/싱글) 수량 합 최소 5kg(5개) 검증
+  const beanQty = items
+    .filter((i) => ["blend", "decaf", "single"].includes(i.category))
+    .reduce((s, i) => s + i.qty, 0);
+  const belowMin = beanQty > 0 && beanQty < 5;
+
   async function submitOrder() {
     if (items.length === 0) return;
+    if (belowMin) {
+      toast({
+        title: "주문 불가",
+        description: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLoading(true);
     try {
       const res = await apiRequest("POST", "/api/orders", {
@@ -202,11 +216,16 @@ export default function Cart() {
                     퀵 요청이 선택되었습니다.
                   </div>
                 )}
+                {belowMin && (
+                  <div className="rounded-none border border-destructive/60 bg-destructive/5 px-3 py-2 text-xs text-destructive" data-testid="text-min-order-warning">
+                    원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQty}개.
+                  </div>
+                )}
                 <Button
                   className="w-full"
                   size="lg"
                   onClick={submitOrder}
-                  disabled={loading}
+                  disabled={loading || belowMin}
                   data-testid="button-submit-order"
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

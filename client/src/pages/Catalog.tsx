@@ -32,8 +32,9 @@ function getProductFields(product: Product): ProductFields {
     const json = JSON.parse(product.detailJson);
     const template = product.detailTemplate || (product.category === "blend" ? "blend" : "single");
 
-    // 노트 = flavorNotes + roastLevel (둘 다 있으면 · 로 연결)
+    // 노트 = 맛노트 + flavorNotes + roastLevel (있는 것끼리 · 로 연결)
     const noteParts: string[] = [];
+    if (json.tastingNotes) noteParts.push(String(json.tastingNotes));
     if (json.flavorNotes) noteParts.push(String(json.flavorNotes));
     if (json.roastLevel) noteParts.push(String(json.roastLevel));
     const notes = noteParts.length > 0 ? noteParts.join(" · ") : undefined;

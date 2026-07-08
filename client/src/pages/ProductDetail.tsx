@@ -254,6 +254,48 @@ function Field({ label, value }: { label: string; value?: string }) {
   );
 }
 
+// 산미/바디: 1~5 점수를 채워진/빈 점으로 표시. 값이 없거나 범위를 벗어나면 표시 안 함.
+function RatingField({ label, value }: { label: string; value?: string }) {
+  const n = Number(value);
+  if (!value || !Number.isFinite(n) || n < 1 || n > 5) return null;
+  return (
+    <div className="grid grid-cols-[140px_1fr] items-baseline gap-4 border-b border-border py-3">
+      <dt className="font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</dt>
+      <dd className="flex items-center gap-1.5" data-testid={`field-${label}`}>
+        <span className="flex gap-1">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <span
+              key={i}
+              className={`h-2 w-2 rounded-full ${i <= n ? "bg-foreground" : "bg-border"}`}
+            />
+          ))}
+        </span>
+        <span className="text-xs text-muted-foreground tabular">{n} / 5</span>
+      </dd>
+    </div>
+  );
+}
+
+// B-1 강화 필드를 dl 안에 렌더 (양식 공통)
+function EnrichedFields({ detail }: { detail: ProductDetail }) {
+  const d = detail as ProductDetail & {
+    tastingNotes?: string;
+    acidity?: string;
+    body?: string;
+    brewMethods?: string;
+    originProcess?: string;
+  };
+  return (
+    <>
+      <Field label="맛노트" value={d.tastingNotes} />
+      <RatingField label="산미" value={d.acidity} />
+      <RatingField label="바디" value={d.body} />
+      <Field label="추천 추출" value={d.brewMethods} />
+      <Field label="원산지·가공" value={d.originProcess} />
+    </>
+  );
+}
+
 function DetailFields({
   template,
   detail,
@@ -288,6 +330,7 @@ function DetailFields({
           <Field label="향미 노트" value={d.flavorNotes} />
           <Field label="로스팅 레벨" value={d.roastLevel} />
           <Field label="추천 사용처" value={d.recommendedUse} />
+          <EnrichedFields detail={d} />
         </dl>
         {d.description && d.description.trim() && (
           <div className="mt-6 border-t border-border pt-6">
@@ -312,6 +355,7 @@ function DetailFields({
         <Field label="고도" value={d.altitude} />
         <Field label="향미 노트" value={d.flavorNotes} />
         <Field label="로스팅 레벨" value={d.roastLevel} />
+        <EnrichedFields detail={d} />
       </dl>
       {d.description && d.description.trim() && (
         <div className="mt-6 border-t border-border pt-6">

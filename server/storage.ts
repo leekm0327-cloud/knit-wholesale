@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -21,6 +21,24 @@ import type {
   ActivityLog,
   LogActivityInput,
   PasswordResetToken,
+  Supplier,
+  InsertSupplier,
+  Purchase,
+  InsertPurchase,
+  SupplierPayment,
+  InsertSupplierPayment,
+  SupplierBalance,
+  SupplierLedgerRow,
+  PurchaseQtyAgg,
+  PurchaseItem,
+  StoreSale,
+  InsertStoreSale,
+  FixedCostItem,
+  InsertFixedCostItem,
+  Expense,
+  InsertExpense,
+  DashboardSummary,
+  DashboardGranularity,
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
@@ -195,6 +213,58 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_prt_token ON password_reset_tokens(token);
+CREATE TABLE IF NOT EXISTS suppliers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  contact TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS purchases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER NOT NULL,
+  purchase_no TEXT NOT NULL UNIQUE,
+  purchase_date TEXT NOT NULL,
+  items TEXT NOT NULL,
+  total_amount INTEGER NOT NULL,
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_id INTEGER NOT NULL,
+  amount INTEGER NOT NULL,
+  paid_at TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT 'transfer',
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id);
+CREATE TABLE IF NOT EXISTS store_sales (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sale_date TEXT NOT NULL UNIQUE,
+  amount INTEGER NOT NULL DEFAULT 0,
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fixed_cost_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  expense_date TEXT NOT NULL,
+  category TEXT NOT NULL,
+  amount INTEGER NOT NULL DEFAULT 0,
+  memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date);
 `);
 
 // ===== 멱등 컬럼 추가 마이그레이션 =====
@@ -205,6 +275,12 @@ for (const [table, col] of [
   ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
   ["orders", "cancelled_at INTEGER"],
   ["orders", "cancelled_by INTEGER"],
+  ["orders", "auto_purchase_id INTEGER"],
+  // B-2: 샘플 주문 여부
+  ["orders", "is_sample INTEGER NOT NULL DEFAULT 0"],
+  // B-3: 사업자 검증/승인, 샘플 사용 여부
+  ["customers", "biz_verified INTEGER NOT NULL DEFAULT 0"],
+  ["customers", "sample_used INTEGER NOT NULL DEFAULT 0"],
 ]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
@@ -375,8 +451,8 @@ export interface IStorage {
   deleteProduct(id: number): Promise<void>;
   // orders
   createOrder(
-    o: Omit<Order, "id" | "cancelledAt" | "cancelledBy"> &
-      Partial<Pick<Order, "cancelledAt" | "cancelledBy">>,
+    o: Omit<Order, "id" | "cancelledAt" | "cancelledBy" | "autoPurchaseId"> &
+      Partial<Pick<Order, "cancelledAt" | "cancelledBy" | "autoPurchaseId">>,
   ): Promise<Order>;
   getOrder(id: number): Promise<Order | undefined>;
   getOrderByNo(orderNo: string): Promise<Order | undefined>;
@@ -435,6 +511,64 @@ export interface IStorage {
     paidAmount: number;
     unpaidAmount: number;
   }>;
+  // OEM 공급처/발주/지급
+  listSuppliers(): Promise<Supplier[]>;
+  getSupplier(id: number): Promise<Supplier | undefined>;
+  createSupplier(s: InsertSupplier): Promise<Supplier>;
+  updateSupplier(id: number, patch: Partial<Supplier>): Promise<Supplier | undefined>;
+  deleteSupplier(id: number): Promise<void>;
+  listPurchases(supplierId?: number): Promise<Purchase[]>;
+  getPurchase(id: number): Promise<Purchase | undefined>;
+  createPurchase(p: InsertPurchase & { totalAmount: number; items: PurchaseItem[] }): Promise<Purchase>;
+  deletePurchase(id: number): Promise<void>;
+  listSupplierPayments(supplierId?: number): Promise<SupplierPayment[]>;
+  createSupplierPayment(p: InsertSupplierPayment): Promise<SupplierPayment>;
+  deleteSupplierPayment(id: number): Promise<void>;
+  getSupplierBalances(): Promise<SupplierBalance[]>;
+  getSupplierLedger(supplierId: number): Promise<{ balance: SupplierBalance | null; rows: SupplierLedgerRow[]; qtyAgg: PurchaseQtyAgg[] }>;
+  getPrimarySupplier(): Promise<Supplier | undefined>; // 클라리멘토(자동발주 대상) — 가장 먼저 생성된 공급처
+  lastPurchaseUnitPrice(supplierId: number, key: { productId?: number | null; name: string }): Promise<number | null>; // 매입단가 기억
+  // 경영 대시보드 (C): 매장매출 / 고정비 항목 / 지출 / 손익 요약
+  listStoreSales(from?: string, to?: string): Promise<StoreSale[]>;
+  upsertStoreSale(s: InsertStoreSale): Promise<StoreSale>;
+  deleteStoreSale(id: number): Promise<void>;
+  listFixedCostItems(includeInactive?: boolean): Promise<FixedCostItem[]>;
+  createFixedCostItem(f: InsertFixedCostItem): Promise<FixedCostItem>;
+  updateFixedCostItem(id: number, patch: Partial<FixedCostItem>): Promise<FixedCostItem | undefined>;
+  deleteFixedCostItem(id: number): Promise<void>;
+  listExpenses(from?: string, to?: string): Promise<Expense[]>;
+  createExpense(e: InsertExpense): Promise<Expense>;
+  deleteExpense(id: number): Promise<void>;
+  getDashboardSummary(from: string, to: string, granularity: DashboardGranularity): Promise<DashboardSummary>;
+}
+
+// ===== 대시보드 기간 버킷 유틸 (KST 기준) =====
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+function dateFromYmd(ymd: string): Date {
+  return new Date(`${ymd}T00:00:00+09:00`);
+}
+// KST 캘린더 값 (서버 타임존과 무관하게 UTC 시프트로 계산)
+function kstUtc(date: Date): Date {
+  const k = new Date(date.getTime() + KST_OFFSET_MS);
+  return new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate()));
+}
+function bucketKey(date: Date, g: DashboardGranularity): string {
+  const k = kstUtc(date);
+  const y = k.getUTCFullYear();
+  const mm = String(k.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(k.getUTCDate()).padStart(2, "0");
+  if (g === "day") return `${y}-${mm}-${dd}`;
+  if (g === "month") return `${y}-${mm}`;
+  if (g === "year") return `${y}`;
+  // week: ISO-8601 주차
+  const target = new Date(k.getTime());
+  const dayNr = (target.getUTCDay() + 6) % 7; // 월=0
+  target.setUTCDate(target.getUTCDate() - dayNr + 3); // 해당 주 목요일
+  const firstThursday = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
+  const firstDayNr = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNr + 3);
+  const week = 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 24 * 3600 * 1000));
+  return `${target.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -453,7 +587,7 @@ export class DatabaseStorage implements IStorage {
   async getCustomerByBusinessName(name: string) {
     return db.select().from(customers).where(eq(customers.businessName, name)).get();
   }
-  async createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string }) {
+  async createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string; bizVerified?: number }) {
     return db
       .insert(customers)
       .values({
@@ -468,6 +602,7 @@ export class DatabaseStorage implements IStorage {
         taxEmail: c.taxEmail ?? "",
         defaultAddress: c.defaultAddress ?? "",
         paymentMethod: c.paymentMethod ?? "transfer",
+        bizVerified: c.bizVerified ?? 0,
         createdAt: Date.now(),
       })
       .returning()
@@ -513,12 +648,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createOrder(
-    o: Omit<Order, "id" | "cancelledAt" | "cancelledBy"> &
-      Partial<Pick<Order, "cancelledAt" | "cancelledBy">>,
+    o: Omit<Order, "id" | "cancelledAt" | "cancelledBy" | "autoPurchaseId" | "isSample"> &
+      Partial<Pick<Order, "cancelledAt" | "cancelledBy" | "autoPurchaseId" | "isSample">>,
   ) {
     return db
       .insert(orders)
-      .values({ cancelledAt: null, cancelledBy: null, ...o })
+      .values({ cancelledAt: null, cancelledBy: null, autoPurchaseId: null, isSample: 0, ...o })
       .returning()
       .get();
   }
@@ -683,6 +818,389 @@ export class DatabaseStorage implements IStorage {
       rows,
     };
   }
+  // ===== OEM 공급처 / 발주 / 지급 =====
+  async listSuppliers(): Promise<Supplier[]> {
+    return db.select().from(suppliers).orderBy(asc(suppliers.id)).all();
+  }
+  async getSupplier(id: number): Promise<Supplier | undefined> {
+    return db.select().from(suppliers).where(eq(suppliers.id, id)).get();
+  }
+  async createSupplier(s: InsertSupplier): Promise<Supplier> {
+    return db
+      .insert(suppliers)
+      .values({
+        name: s.name,
+        contact: s.contact ?? "",
+        phone: s.phone ?? "",
+        memo: s.memo ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async updateSupplier(id: number, patch: Partial<Supplier>): Promise<Supplier | undefined> {
+    return db.update(suppliers).set(patch).where(eq(suppliers.id, id)).returning().get();
+  }
+  async deleteSupplier(id: number): Promise<void> {
+    db.delete(suppliers).where(eq(suppliers.id, id)).run();
+  }
+
+  // 발주번호 생성: PO-YYMMDD-XXXX (당일 순번 4자리)
+  private genPurchaseNo(): string {
+    const d = new Date();
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const prefix = `PO-${yy}${mm}${dd}-`;
+    const todays = db.select().from(purchases).where(like(purchases.purchaseNo, `${prefix}%`)).all();
+    let maxSeq = 0;
+    for (const p of todays) {
+      const seq = Number(p.purchaseNo.slice(prefix.length));
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
+  }
+
+  async listPurchases(supplierId?: number): Promise<Purchase[]> {
+    const q = db.select().from(purchases);
+    const rows = supplierId
+      ? q.where(eq(purchases.supplierId, supplierId)).orderBy(desc(purchases.createdAt)).all()
+      : q.orderBy(desc(purchases.createdAt)).all();
+    return rows;
+  }
+  async getPurchase(id: number): Promise<Purchase | undefined> {
+    return db.select().from(purchases).where(eq(purchases.id, id)).get();
+  }
+  async createPurchase(p: InsertPurchase & { totalAmount: number; items: PurchaseItem[] }): Promise<Purchase> {
+    return db
+      .insert(purchases)
+      .values({
+        supplierId: p.supplierId,
+        purchaseNo: this.genPurchaseNo(),
+        purchaseDate: p.purchaseDate,
+        items: JSON.stringify(p.items),
+        totalAmount: p.totalAmount,
+        memo: p.memo ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async deletePurchase(id: number): Promise<void> {
+    db.delete(purchases).where(eq(purchases.id, id)).run();
+  }
+
+  async listSupplierPayments(supplierId?: number): Promise<SupplierPayment[]> {
+    const q = db.select().from(supplierPayments);
+    return supplierId
+      ? q.where(eq(supplierPayments.supplierId, supplierId)).orderBy(desc(supplierPayments.paidAt), desc(supplierPayments.id)).all()
+      : q.orderBy(desc(supplierPayments.paidAt), desc(supplierPayments.id)).all();
+  }
+  async createSupplierPayment(p: InsertSupplierPayment): Promise<SupplierPayment> {
+    return db
+      .insert(supplierPayments)
+      .values({
+        supplierId: p.supplierId,
+        amount: p.amount,
+        paidAt: p.paidAt,
+        method: p.method ?? "transfer",
+        memo: p.memo ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async deleteSupplierPayment(id: number): Promise<void> {
+    db.delete(supplierPayments).where(eq(supplierPayments.id, id)).run();
+  }
+
+  async getSupplierBalances(): Promise<SupplierBalance[]> {
+    const allSuppliers = await this.listSuppliers();
+    const allPurchases = await this.listPurchases();
+    const allPayments = await this.listSupplierPayments();
+
+    return allSuppliers.map((s) => {
+      const myPurchases = allPurchases.filter((p) => p.supplierId === s.id);
+      const myPayments = allPayments.filter((p) => p.supplierId === s.id);
+      const totalPurchased = myPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
+      const totalPaid = myPayments.reduce((sum, p) => sum + p.amount, 0);
+      return {
+        supplierId: s.id,
+        name: s.name,
+        contact: s.contact,
+        phone: s.phone,
+        totalPurchased,
+        totalPaid,
+        balance: totalPurchased - totalPaid,
+        lastPurchaseAt: myPurchases[0]?.createdAt ?? null,
+        lastPaidAt: myPayments[0]?.paidAt ?? null,
+      };
+    });
+  }
+
+  async getSupplierLedger(supplierId: number) {
+    const supplier = await this.getSupplier(supplierId);
+    if (!supplier)
+      return { balance: null as SupplierBalance | null, rows: [] as SupplierLedgerRow[], qtyAgg: [] as PurchaseQtyAgg[] };
+    const myPurchases = await this.listPurchases(supplierId);
+    const myPayments = await this.listSupplierPayments(supplierId);
+
+    type RawRow =
+      | { kind: "purchase"; ts: number; p: Purchase }
+      | { kind: "payment"; ts: number; sp: SupplierPayment };
+    const raws: RawRow[] = [
+      ...myPurchases.map((p) => ({ kind: "purchase" as const, ts: p.createdAt, p })),
+      ...myPayments.map((sp) => ({
+        kind: "payment" as const,
+        ts: new Date(sp.paidAt + "T00:00:00+09:00").getTime() || sp.createdAt,
+        sp,
+      })),
+    ].sort((a, b) => a.ts - b.ts);
+
+    let running = 0;
+    const rowsAsc: SupplierLedgerRow[] = raws.map((r) => {
+      if (r.kind === "purchase") {
+        running += r.p.totalAmount;
+        return {
+          kind: "purchase",
+          id: r.p.id,
+          purchaseNo: r.p.purchaseNo,
+          date: r.ts,
+          debit: r.p.totalAmount,
+          credit: 0,
+          balance: running,
+          memo: r.p.memo,
+        };
+      } else {
+        running -= r.sp.amount;
+        return {
+          kind: "payment",
+          id: r.sp.id,
+          date: r.ts,
+          debit: 0,
+          credit: r.sp.amount,
+          balance: running,
+          method: r.sp.method,
+          memo: r.sp.memo,
+        };
+      }
+    });
+    const rows = rowsAsc.slice().reverse();
+
+    // 품목별 누계 수량·금액 집계 (품목명 기준)
+    const aggMap = new Map<string, PurchaseQtyAgg>();
+    for (const p of myPurchases) {
+      let items: PurchaseItem[] = [];
+      try {
+        items = JSON.parse(p.items);
+      } catch { /* noop */ }
+      for (const it of items) {
+        const key = it.name;
+        const cur = aggMap.get(key) ?? { key, name: it.name, totalQty: 0, totalAmount: 0 };
+        cur.totalQty += it.qty;
+        cur.totalAmount += it.amount;
+        aggMap.set(key, cur);
+      }
+    }
+    const qtyAgg = Array.from(aggMap.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+
+    const totalPurchased = myPurchases.reduce((s, p) => s + p.totalAmount, 0);
+    const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
+    return {
+      balance: {
+        supplierId: supplier.id,
+        name: supplier.name,
+        contact: supplier.contact,
+        phone: supplier.phone,
+        totalPurchased,
+        totalPaid,
+        balance: totalPurchased - totalPaid,
+        lastPurchaseAt: myPurchases[0]?.createdAt ?? null,
+        lastPaidAt: myPayments[0]?.paidAt ?? null,
+      } as SupplierBalance,
+      rows,
+      qtyAgg,
+    };
+  }
+
+  async getPrimarySupplier(): Promise<Supplier | undefined> {
+    return db.select().from(suppliers).orderBy(asc(suppliers.id)).get();
+  }
+
+  async lastPurchaseUnitPrice(
+    supplierId: number,
+    key: { productId?: number | null; name: string },
+  ): Promise<number | null> {
+    const myPurchases = await this.listPurchases(supplierId); // 최신순
+    for (const p of myPurchases) {
+      let items: PurchaseItem[] = [];
+      try {
+        items = JSON.parse(p.items);
+      } catch { /* noop */ }
+      for (const it of items) {
+        const matchByProduct =
+          key.productId != null && it.productId != null && it.productId === key.productId;
+        const matchByName = it.name === key.name;
+        if (matchByProduct || (key.productId == null && matchByName)) {
+          return it.unitPrice;
+        }
+      }
+    }
+    return null;
+  }
+
+  // ===== 경영 대시보드 (C): 매장매출 =====
+  async listStoreSales(from?: string, to?: string): Promise<StoreSale[]> {
+    let rows = db.select().from(storeSales).orderBy(desc(storeSales.saleDate)).all();
+    if (from) rows = rows.filter((r) => r.saleDate >= from);
+    if (to) rows = rows.filter((r) => r.saleDate <= to);
+    return rows;
+  }
+  // 같은 날짜(sale_date)가 이미 있으면 금액/메모 갱신, 없으면 신규 삽입
+  async upsertStoreSale(s: InsertStoreSale): Promise<StoreSale> {
+    const existing = db.select().from(storeSales).where(eq(storeSales.saleDate, s.saleDate)).get();
+    if (existing) {
+      return db
+        .update(storeSales)
+        .set({ amount: s.amount, memo: s.memo ?? "" })
+        .where(eq(storeSales.id, existing.id))
+        .returning()
+        .get();
+    }
+    return db
+      .insert(storeSales)
+      .values({ saleDate: s.saleDate, amount: s.amount, memo: s.memo ?? "", createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async deleteStoreSale(id: number): Promise<void> {
+    db.delete(storeSales).where(eq(storeSales.id, id)).run();
+  }
+
+  // ===== 경영 대시보드 (C): 고정비 항목 =====
+  async listFixedCostItems(includeInactive = false): Promise<FixedCostItem[]> {
+    const rows = db.select().from(fixedCostItems).orderBy(asc(fixedCostItems.sortOrder), asc(fixedCostItems.id)).all();
+    return includeInactive ? rows : rows.filter((r) => r.active === 1);
+  }
+  async createFixedCostItem(f: InsertFixedCostItem): Promise<FixedCostItem> {
+    return db
+      .insert(fixedCostItems)
+      .values({
+        name: f.name,
+        sortOrder: f.sortOrder ?? 0,
+        active: f.active ?? 1,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async updateFixedCostItem(id: number, patch: Partial<FixedCostItem>): Promise<FixedCostItem | undefined> {
+    return db.update(fixedCostItems).set(patch).where(eq(fixedCostItems.id, id)).returning().get();
+  }
+  async deleteFixedCostItem(id: number): Promise<void> {
+    db.delete(fixedCostItems).where(eq(fixedCostItems.id, id)).run();
+  }
+
+  // ===== 경영 대시보드 (C): 지출 =====
+  async listExpenses(from?: string, to?: string): Promise<Expense[]> {
+    let rows = db.select().from(expenses).orderBy(desc(expenses.expenseDate), desc(expenses.id)).all();
+    if (from) rows = rows.filter((r) => r.expenseDate >= from);
+    if (to) rows = rows.filter((r) => r.expenseDate <= to);
+    return rows;
+  }
+  async createExpense(e: InsertExpense): Promise<Expense> {
+    return db
+      .insert(expenses)
+      .values({
+        expenseDate: e.expenseDate,
+        category: e.category,
+        amount: e.amount,
+        memo: e.memo ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async deleteExpense(id: number): Promise<void> {
+    db.delete(expenses).where(eq(expenses.id, id)).run();
+  }
+
+  // ===== 경영 대시보드 (C): 손익 요약 =====
+  async getDashboardSummary(
+    from: string,
+    to: string,
+    granularity: DashboardGranularity,
+  ): Promise<DashboardSummary> {
+    // 날짜 문자열(YYYY-MM-DD) → KST 타임스탬프 범위 (주문 createdAt 비교용)
+    const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
+    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
+
+    // 수입: 도매매출(취소 제외) + 매장매출
+    const allOrders = await this.listOrders();
+    const wholesaleSales = allOrders
+      .filter((o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs)
+      .reduce((s, o) => s + o.totalAmount, 0);
+    const storeSaleRows = await this.listStoreSales(from, to);
+    const storeSalesTotal = storeSaleRows.reduce((s, r) => s + r.amount, 0);
+    const totalIncome = wholesaleSales + storeSalesTotal;
+
+    // 지출: 공장지급(supplierPayments) + 기타지출(expenses)
+    const allSupplierPayments = await this.listSupplierPayments();
+    const supplierPaid = allSupplierPayments
+      .filter((p) => p.paidAt >= from && p.paidAt <= to)
+      .reduce((s, p) => s + p.amount, 0);
+    const expenseRows = await this.listExpenses(from, to);
+    const otherExpense = expenseRows.reduce((s, e) => s + e.amount, 0);
+    const totalExpense = supplierPaid + otherExpense;
+
+    // 지출 항목별 비중 (공장지급 + 지출 카테고리별)
+    const catMap = new Map<string, number>();
+    if (supplierPaid > 0) catMap.set("공장지급", supplierPaid);
+    for (const e of expenseRows) {
+      catMap.set(e.category, (catMap.get(e.category) ?? 0) + e.amount);
+    }
+    const expenseByCategory = Array.from(catMap.entries())
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // 기간 버킷 추이
+    const bucketMap = new Map<string, { income: number; expense: number }>();
+    const bump = (key: string, field: "income" | "expense", amt: number) => {
+      const cur = bucketMap.get(key) ?? { income: 0, expense: 0 };
+      cur[field] += amt;
+      bucketMap.set(key, cur);
+    };
+    for (const o of allOrders) {
+      if (o.status === "cancelled" || o.createdAt < fromTs || o.createdAt > toTs) continue;
+      bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount);
+    }
+    for (const r of storeSaleRows) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
+    for (const p of allSupplierPayments) {
+      if (p.paidAt < from || p.paidAt > to) continue;
+      bump(bucketKey(dateFromYmd(p.paidAt), granularity), "expense", p.amount);
+    }
+    for (const e of expenseRows) bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
+
+    const buckets = Array.from(bucketMap.entries())
+      .map(([key, v]) => ({ key, income: v.income, expense: v.expense, net: v.income - v.expense }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+    return {
+      from,
+      to,
+      granularity,
+      wholesaleSales,
+      storeSales: storeSalesTotal,
+      totalIncome,
+      supplierPaid,
+      otherExpense,
+      totalExpense,
+      netProfit: totalIncome - totalExpense,
+      expenseByCategory,
+      buckets,
+    };
+  }
+
   // ===== ECOUNT 설정 (단일 레코드, id=1) =====
   async getEcountSettings(): Promise<EcountSettings | undefined> {
     return db.select().from(ecountSettings).where(eq(ecountSettings.id, 1)).get();
@@ -1037,4 +1555,27 @@ export async function seed() {
   });
 
   console.log("[seed] 초기 데이터 생성 완료 (관리자 1개만)");
+}
+
+// ===== 고정비 항목 기본 시드 (C): 비어있을 때만 기본 10개 삽입 =====
+export function seedFixedCostItems() {
+  const existing = db.select().from(fixedCostItems).all();
+  if (existing.length > 0) return;
+  const defaults = [
+    "임대료",
+    "인건비",
+    "공과금",
+    "통신비",
+    "원부자재",
+    "장비 리스·할부",
+    "POS 이용료",
+    "보험료",
+    "마케팅·콘텐츠",
+    "기타",
+  ];
+  const now = Date.now();
+  defaults.forEach((name, i) => {
+    db.insert(fixedCostItems).values({ name, sortOrder: i, active: 1, createdAt: now }).run();
+  });
+  console.log("[seed] 고정비 항목 기본 10개 생성 완료");
 }

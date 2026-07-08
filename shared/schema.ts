@@ -27,6 +27,10 @@ export const customers = sqliteTable("customers", {
   taxEmail: text("tax_email").notNull().default(""), // 세금계산서 이메일
   defaultAddress: text("default_address").notNull().default(""), // 기본 배송지
   paymentMethod: text("payment_method").notNull().default("transfer"), // transfer | card | deferred
+  // B-3: 사업자번호 검증/승인 여부 (1=승인, 0=승인대기). 샘플 신청 가능 조건.
+  bizVerified: integer("biz_verified").notNull().default(0),
+  // B-3: 샘플 사용 여부 (1=이미 샘플 주문함). 승인 고객당 1회 제한.
+  sampleUsed: integer("sample_used").notNull().default(0),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -113,11 +117,14 @@ export const orders = sqliteTable("orders", {
   desiredDate: text("desired_date").notNull().default(""), // 희망 납품일
   note: text("note").notNull().default(""), // 요청사항
   status: text("status").notNull().default("pending"), // pending | done | cancelled
+  isSample: integer("is_sample").notNull().default(0), // B-2: 샘플 주문 여부 (1=샘플, 무료·5kg검증 제외)
   trackingNo: text("tracking_no").notNull().default(""), // 송장번호
   adminMemo: text("admin_memo").notNull().default(""), // 관리자 메모
   quickRequest: integer("quick_request").notNull().default(0), // 퀵 요청 여부 (#6)
   cancelledAt: integer("cancelled_at"), // 취소 시각 (nullable)
   cancelledBy: integer("cancelled_by"), // 취소한 사용자 customer.id (관리자/거래처, nullable)
+  // 처리완료(done) 전환 시 클라리멘토 자동발주로 생성된 purchase.id (중복 자동발주 방지, nullable)
+  autoPurchaseId: integer("auto_purchase_id"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -168,6 +175,74 @@ export const payments = sqliteTable("payments", {
   amount: integer("amount").notNull(), // 입금액 (원)
   paidAt: text("paid_at").notNull(), // 입금일 YYYY-MM-DD
   method: text("method").notNull().default("transfer"), // transfer | cash | card | other
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ===== OEM 공급처(매입처) =====
+// 클라리멘토 등 원두를 OEM 생산/납품받는 공장. 대부분 소수(1곳)지만 확장 가능하게 테이블화.
+export const suppliers = sqliteTable("suppliers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(), // 공급처 상호 (예: 클라리멘토)
+  contact: text("contact").notNull().default(""), // 담당자명
+  phone: text("phone").notNull().default(""), // 연락처
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ===== 발주(매입) =====
+// 공급처에 원두를 발주한 내역. 저장 시 공장에 대한 채무(외상매입금)가 증가한다.
+// items JSON 배열: [{productId(nullable), name, qty, unitPrice, amount}]
+//  - 기존 제품을 고르면 productId 채움, 직접 입력 품목이면 productId=null
+//  - 매입단가(unitPrice)는 판매가와 별개로 직접 입력
+export const purchases = sqliteTable("purchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  supplierId: integer("supplier_id").notNull(),
+  purchaseNo: text("purchase_no").notNull().unique(), // 발주번호 PO-YYMMDD-XXXX
+  purchaseDate: text("purchase_date").notNull(), // 발주일 YYYY-MM-DD
+  items: text("items").notNull(), // 품목 라인 JSON 배열
+  totalAmount: integer("total_amount").notNull(), // 발주 합계 금액 (원)
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ===== 공급처 지급(공장에 송금) =====
+// 공장에 지급한 내역. 저장 시 채무가 감소한다. (거래처 입금(payments)의 매입 버전)
+export const supplierPayments = sqliteTable("supplier_payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  supplierId: integer("supplier_id").notNull(),
+  amount: integer("amount").notNull(), // 지급액 (원)
+  paidAt: text("paid_at").notNull(), // 지급일 YYYY-MM-DD
+  method: text("method").notNull().default("transfer"), // transfer | cash | card | other
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ===== 경영 대시보드 (C): 매장매출 / 고정비 항목 / 지출 =====
+// 매장(오프라인) 일별 매출. 같은 날짜는 하나만 유지(upsert).
+export const storeSales = sqliteTable("store_sales", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  saleDate: text("sale_date").notNull().unique(), // 매출일 YYYY-MM-DD (고유)
+  amount: integer("amount").notNull().default(0), // 당일 매장매출 (원)
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+// 고정비 항목 정의 (지출 입력 시 카테고리 선택지)
+export const fixedCostItems = sqliteTable("fixed_cost_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(), // 항목명 (예: 임대료)
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active").notNull().default(1), // 1 사용 / 0 숨김
+  createdAt: integer("created_at").notNull(),
+});
+
+// 지출 기록 (고정비 항목 or '기타')
+export const expenses = sqliteTable("expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  expenseDate: text("expense_date").notNull(), // 지출일 YYYY-MM-DD
+  category: text("category").notNull(), // 고정비 항목명 or '기타'
+  amount: integer("amount").notNull().default(0), // 지출액 (원)
   memo: text("memo").notNull().default(""),
   createdAt: integer("created_at").notNull(),
 });
@@ -362,6 +437,12 @@ export const productDetailBlendSchema = z.object({
   roastLevel: z.string().optional().default(""),
   recommendedUse: z.string().optional().default(""),
   description: z.string().optional().default(""),
+  // B-1: 원두 상세정보 강화 (문자열로 저장, acidity/body는 "1"~"5")
+  tastingNotes: z.string().optional().default(""),
+  acidity: z.string().optional().default(""),
+  body: z.string().optional().default(""),
+  brewMethods: z.string().optional().default(""),
+  originProcess: z.string().optional().default(""),
 });
 
 export const productDetailSingleSchema = z.object({
@@ -376,6 +457,12 @@ export const productDetailSingleSchema = z.object({
   flavorNotes: z.string().optional().default(""),
   roastLevel: z.string().optional().default(""),
   description: z.string().optional().default(""),
+  // B-1: 원두 상세정보 강화 (문자열로 저장, acidity/body는 "1"~"5")
+  tastingNotes: z.string().optional().default(""),
+  acidity: z.string().optional().default(""),
+  body: z.string().optional().default(""),
+  brewMethods: z.string().optional().default(""),
+  originProcess: z.string().optional().default(""),
 });
 
 export const productDetailSchema = z.discriminatedUnion("template", [
@@ -396,6 +483,144 @@ export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+
+// ===== OEM 공장 채무: 공급처 / 발주 / 지급 =====
+export type Supplier = typeof suppliers.$inferSelect;
+export const insertSupplierSchema = z.object({
+  name: z.string().min(1, "공급처 상호를 입력해 주세요."),
+  contact: z.string().optional().default(""),
+  phone: z.string().optional().default(""),
+  memo: z.string().optional().default(""),
+});
+export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
+
+// 발주 품목 라인 (기존 제품 선택 또는 직접 입력)
+export const purchaseItemSchema = z.object({
+  productId: z.number().int().positive().nullable().optional(),
+  name: z.string().min(1, "품목명을 입력해 주세요."),
+  qty: z.number().positive("수량을 입력해 주세요."),
+  unitPrice: z.number().int().min(0, "매입단가를 입력해 주세요."),
+  amount: z.number().int().min(0),
+});
+export type PurchaseItem = z.infer<typeof purchaseItemSchema>;
+
+export type Purchase = typeof purchases.$inferSelect;
+export const insertPurchaseSchema = z.object({
+  supplierId: z.number().int().positive("공급처를 선택해 주세요."),
+  purchaseDate: z.string().min(1, "발주일을 선택해 주세요."),
+  items: z.array(purchaseItemSchema).min(1, "품목을 1개 이상 추가해 주세요."),
+  memo: z.string().optional().default(""),
+});
+export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
+
+export type SupplierPayment = typeof supplierPayments.$inferSelect;
+export const insertSupplierPaymentSchema = z.object({
+  supplierId: z.number().int().positive(),
+  amount: z.number().int().positive("지급액을 입력해 주세요."),
+  paidAt: z.string().min(1, "지급일을 선택해 주세요."),
+  method: z.enum(["transfer", "cash", "card", "other"]).default("transfer"),
+  memo: z.string().optional().default(""),
+});
+export type InsertSupplierPayment = z.infer<typeof insertSupplierPaymentSchema>;
+
+// 공장 채무 현황 (공급처별 요약)
+export type SupplierBalance = {
+  supplierId: number;
+  name: string;
+  contact: string;
+  phone: string;
+  totalPurchased: number; // 누적 발주액
+  totalPaid: number; // 누적 지급액
+  balance: number; // 채무 = totalPurchased - totalPaid
+  lastPurchaseAt: number | null;
+  lastPaidAt: string | null;
+};
+
+// 공장 채무 원장 행 (발주 또는 지급)
+export type SupplierLedgerRow =
+  | {
+      kind: "purchase";
+      id: number;
+      purchaseNo: string;
+      date: number;
+      debit: number; // 발주액 (채무 증가, +)
+      credit: 0;
+      balance: number;
+      memo: string;
+    }
+  | {
+      kind: "payment";
+      id: number;
+      date: number;
+      debit: 0;
+      credit: number; // 지급액 (채무 감소, -)
+      balance: number;
+      method: string;
+      memo: string;
+    };
+
+// 발주량 집계 (품목별 누계)
+export type PurchaseQtyAgg = {
+  key: string; // 품목명 (기준)
+  name: string;
+  totalQty: number;
+  totalAmount: number;
+};
+
+// ===== 경영 대시보드 (C) 타입/스키마 =====
+export type StoreSale = typeof storeSales.$inferSelect;
+export const insertStoreSaleSchema = z.object({
+  saleDate: z.string().min(1, "매출일을 선택해 주세요."),
+  amount: z.number().int().min(0, "매출액을 입력해 주세요."),
+  memo: z.string().optional().default(""),
+});
+export type InsertStoreSale = z.infer<typeof insertStoreSaleSchema>;
+
+export type FixedCostItem = typeof fixedCostItems.$inferSelect;
+export const insertFixedCostItemSchema = z.object({
+  name: z.string().min(1, "항목명을 입력해 주세요."),
+  sortOrder: z.number().int().optional().default(0),
+  active: z.number().int().min(0).max(1).optional().default(1),
+});
+export type InsertFixedCostItem = z.infer<typeof insertFixedCostItemSchema>;
+
+export type Expense = typeof expenses.$inferSelect;
+export const insertExpenseSchema = z.object({
+  expenseDate: z.string().min(1, "지출일을 선택해 주세요."),
+  category: z.string().min(1, "지출 항목을 선택해 주세요."),
+  amount: z.number().int().min(0, "지출액을 입력해 주세요."),
+  memo: z.string().optional().default(""),
+});
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+
+// 대시보드 기간 그루핑 단위
+export type DashboardGranularity = "day" | "week" | "month" | "year";
+
+// 기간별 손익 집계 결과
+export type DashboardSummary = {
+  from: string;
+  to: string;
+  granularity: DashboardGranularity;
+  // 수입
+  wholesaleSales: number; // 도매매출 (취소 제외 주문 합)
+  storeSales: number; // 매장매출 합
+  totalIncome: number;
+  // 지출
+  supplierPaid: number; // 공장지급 합
+  otherExpense: number; // 기타지출(고정비 포함) 합
+  totalExpense: number;
+  // 손익
+  netProfit: number; // 수입 - 지출
+  // 지출 항목별 비중 (category → amount)
+  expenseByCategory: { category: string; amount: number }[];
+  // 기간 버킷 추이
+  buckets: {
+    key: string; // 버킷 라벨 (예: 2026-07-08, 2026-W28, 2026-07, 2026)
+    income: number;
+    expense: number;
+    net: number;
+  }[];
+};
 
 export type EcountSettings = typeof ecountSettings.$inferSelect;
 export const ecountSettingsInputSchema = z.object({

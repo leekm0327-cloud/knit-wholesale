@@ -78,6 +78,26 @@ export default function AdminCustomers() {
     }
   }
 
+  // B-3: 샘플(사업자) 수동 승인
+  const [approvingId, setApprovingId] = useState<number | null>(null);
+  async function handleApprove(id: number) {
+    setApprovingId(id);
+    try {
+      await apiRequest("PATCH", `/api/admin/customers/${id}/approve-sample`, {});
+      qc.invalidateQueries({ queryKey: ["/api/admin/customers"] });
+    } catch (e: any) {
+      alert("승인 실패: " + (e?.message ?? ""));
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  // B-3: 승인 대기(사업자 미검증) 거래처 목록
+  const pendingApproval = useMemo(
+    () => (customers ?? []).filter((c) => c.bizVerified !== 1),
+    [customers],
+  );
+
   const SortBtn = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
     <button
       onClick={() => toggleSort(k)}
@@ -101,6 +121,48 @@ export default function AdminCustomers() {
             <Plus className="mr-1.5 h-4 w-4" /> 거래처 등록
           </Button>
         </div>
+
+        {/* B-3: 샘플 승인 대기 목록 (사업자 미검증 거래처) */}
+        {pendingApproval.length > 0 && (
+          <Card className="mb-5 border-amber-300 bg-amber-50/60 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">
+                샘플 승인 대기 {pendingApproval.length}건
+              </span>
+              <span className="text-xs text-amber-700">사업자등록번호 자동검증에 실패한 거래처입니다. 확인 후 수동 승인하세요.</span>
+            </div>
+            <div className="space-y-2">
+              {pendingApproval.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-background px-3 py-2"
+                  data-testid={`row-pending-${c.id}`}
+                >
+                  <div className="min-w-0">
+                    <button
+                      onClick={() => setDetailId(c.id)}
+                      className="text-sm font-semibold text-foreground hover:underline"
+                    >
+                      {c.businessName}
+                    </button>
+                    <div className="text-xs text-muted-foreground">
+                      {c.managerName} · {c.phone} · 사업자 {c.bizRegNo || "미입력"}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleApprove(c.id)}
+                    disabled={approvingId === c.id}
+                    data-testid={`button-approve-sample-${c.id}`}
+                  >
+                    {approvingId === c.id && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                    승인
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* 검색창 */}
         <div className="mb-4">
@@ -155,13 +217,16 @@ export default function AdminCustomers() {
                         data-testid={`row-customer-${c.id}`}
                       >
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => setDetailId(c.id)}
-                            className="text-sm font-semibold text-foreground hover:underline underline-offset-2"
-                            data-testid={`link-customer-${c.id}`}
-                          >
-                            {c.businessName}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setDetailId(c.id)}
+                              className="text-sm font-semibold text-foreground hover:underline underline-offset-2"
+                              data-testid={`link-customer-${c.id}`}
+                            >
+                              {c.businessName}
+                            </button>
+                            <ApprovalBadge verified={c.bizVerified === 1} />
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           <div className="text-xs">{c.managerName}</div>
@@ -218,8 +283,9 @@ export default function AdminCustomers() {
                     onClick={() => setDetailId(c.id)}
                     data-testid={`card-customer-${c.id}`}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-foreground">{c.businessName}</span>
+                      <ApprovalBadge verified={c.bizVerified === 1} />
                     </div>
                     <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                       <div>담당자 {c.managerName} · {c.phone}</div>
@@ -534,6 +600,19 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
       {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
       비밀번호 재설정 메일 보내기
     </button>
+  );
+}
+
+// B-3: 사업자 승인 상태 배지
+function ApprovalBadge({ verified }: { verified: boolean }) {
+  return verified ? (
+    <span className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+      승인
+    </span>
+  ) : (
+    <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+      승인대기
+    </span>
   );
 }
 

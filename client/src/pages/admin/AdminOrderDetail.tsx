@@ -46,6 +46,8 @@ export default function AdminOrderDetail() {
   const [editing, setEditing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // A-3: 처리완료 처리 시 공장(클라리멘토) 자동발주 여부 (기본 ON)
+  const [autoPurchase, setAutoPurchase] = useState(true);
   // #4 카톡 복사 실패(클립보드 권한 없음) 시 수동 복사용 다이얼로그
   const [kakaoFallback, setKakaoFallback] = useState<string | null>(null);
 
@@ -176,6 +178,11 @@ export default function AdminOrderDetail() {
                       ⚡ 퀵 요청
                     </Badge>
                   )}
+                  {(order as any).isSample === 1 && (
+                    <Badge className="bg-emerald-600 text-white hover:bg-emerald-600" data-testid="badge-sample">
+                      샘플
+                    </Badge>
+                  )}
                   {order.status === "cancelled" ? (
                     <Badge className="bg-gray-200 text-gray-500 hover:bg-gray-200">취소됨</Badge>
                   ) : order.status === "done" ? (
@@ -191,7 +198,12 @@ export default function AdminOrderDetail() {
                   variant={order.status === "pending" ? "default" : "outline"}
                   onClick={async () => {
                     const goingToDone = order.status === "pending";
-                    await patch({ status: goingToDone ? "done" : "pending" }, "상태 변경됨");
+                    await patch(
+                      goingToDone
+                        ? { status: "done", skipAutoPurchase: !autoPurchase }
+                        : { status: "pending" },
+                      "상태 변경됨",
+                    );
                     // #4 처리완료로 변경 시 카카오톡 발주 형식 자동 복사
                     if (goingToDone) await copyKakao(order, { silent: true });
                   }}
@@ -230,6 +242,25 @@ export default function AdminOrderDetail() {
                   <XCircle className="mr-1.5 h-4 w-4" /> 주문 취소
                 </Button>
               </div>
+
+              {/* A-3: 처리완료 처리 시 공장 자동발주 옵션 (미처리 주문에만 노출) */}
+              {order.status === "pending" && (
+                <div className="mb-4 space-y-1">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={autoPurchase}
+                      onChange={(e) => setAutoPurchase(e.target.checked)}
+                      className="h-4 w-4 accent-foreground"
+                      data-testid="checkbox-auto-purchase"
+                    />
+                    처리완료 처리 시 공장 자동발주
+                  </label>
+                  <p className="pl-6 text-[11px] leading-relaxed text-muted-foreground">
+                    체크 시 이 주문의 원두 품목이 대표 공급처(클라리멘토)에 자동으로 발주 등록되어 공장 채무에 반영됩니다.
+                  </p>
+                </div>
+              )}
 
               {editing && (
                 <div className="mb-4">

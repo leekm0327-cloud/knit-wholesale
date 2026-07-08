@@ -35,6 +35,7 @@ export default function AdminOrders() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [quickOnly, setQuickOnly] = useState(false);
+  const [sampleOnly, setSampleOnly] = useState(false);
 
   async function toggleStatus(o: Order) {
     const next = o.status === "pending" ? "done" : "pending";
@@ -50,6 +51,8 @@ export default function AdminOrders() {
     return orders.filter((o) => {
       // 퀵 요청만 보기
       if (quickOnly && o.quickRequest !== 1) return false;
+      // 샘플 주문만 보기
+      if (sampleOnly && o.isSample !== 1) return false;
       // 검색: 주문번호 + 상품명 + 거래처명
       if (q) {
         const inOrderNo = o.orderNo.toLowerCase().includes(q);
@@ -87,7 +90,7 @@ export default function AdminOrders() {
       }
       return true;
     });
-  }, [orders, query, statusFilter, dateRange, fromDate, toDate, quickOnly]);
+  }, [orders, query, statusFilter, dateRange, fromDate, toDate, quickOnly, sampleOnly]);
 
   return (
     <AdminLayout>
@@ -155,6 +158,14 @@ export default function AdminOrders() {
             />
             퀵 요청만 보기
           </label>
+          <label className="flex cursor-pointer items-center gap-2 pl-1 text-sm text-muted-foreground">
+            <Checkbox
+              checked={sampleOnly}
+              onCheckedChange={(v) => setSampleOnly(v === true)}
+              data-testid="checkbox-sample-only"
+            />
+            샘플 주문만 보기
+          </label>
         </div>
 
         <Card className="overflow-hidden">
@@ -193,6 +204,9 @@ export default function AdminOrders() {
                           <span className="truncate text-sm text-muted-foreground">{snap.businessName}</span>
                           {o.quickRequest === 1 && (
                             <Badge variant="outline" className="shrink-0 border-foreground text-[10px] text-foreground">퀵</Badge>
+                          )}
+                          {o.isSample === 1 && (
+                            <Badge className="shrink-0 bg-emerald-600 text-[10px] text-white hover:bg-emerald-600">샘플</Badge>
                           )}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">

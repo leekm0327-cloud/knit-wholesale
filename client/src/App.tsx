@@ -18,6 +18,7 @@ import Catalog from "@/pages/Catalog";
 import ProductDetail from "@/pages/ProductDetail";
 import Board from "@/pages/Board";
 import Cart from "@/pages/Cart";
+import SampleRequest from "@/pages/SampleRequest";
 import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Account from "@/pages/Account";
@@ -38,6 +39,15 @@ import AdminBackup from "@/pages/admin/AdminBackup";
 import AdminManagers from "@/pages/admin/AdminManagers";
 import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
 import AdminTransactions from "@/pages/admin/AdminTransactions";
+import AdminSuppliers from "@/pages/admin/AdminSuppliers";
+import AdminPurchases from "@/pages/admin/AdminPurchases";
+import AdminSupplierPayments from "@/pages/admin/AdminSupplierPayments";
+import AdminSupplierBalances from "@/pages/admin/AdminSupplierBalances";
+import AdminSupplierLedger from "@/pages/admin/AdminSupplierLedger";
+import AdminDashboardPnl from "@/pages/admin/AdminDashboardPnl";
+import AdminStoreSales from "@/pages/admin/AdminStoreSales";
+import AdminExpenses from "@/pages/admin/AdminExpenses";
+import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
 import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
@@ -87,6 +97,9 @@ function AppRouter() {
       <Route path="/cart">
         <RequireCustomer><Cart /></RequireCustomer>
       </Route>
+      <Route path="/sample">
+        <RequireCustomer><SampleRequest /></RequireCustomer>
+      </Route>
       <Route path="/orders">
         <RequireCustomer><Orders /></RequireCustomer>
       </Route>
@@ -119,6 +132,15 @@ function AppRouter() {
       <Route path="/admin/managers" component={AdminManagers} />
       <Route path="/admin/activity-logs" component={AdminActivityLogs} />
       <Route path="/admin/transactions" component={AdminTransactions} />
+      <Route path="/admin/suppliers/:id/ledger" component={AdminSupplierLedger} />
+      <Route path="/admin/suppliers" component={AdminSuppliers} />
+      <Route path="/admin/purchases" component={AdminPurchases} />
+      <Route path="/admin/supplier-payments" component={AdminSupplierPayments} />
+      <Route path="/admin/supplier-balances" component={AdminSupplierBalances} />
+      <Route path="/admin/dashboard-pnl" component={AdminDashboardPnl} />
+      <Route path="/admin/store-sales" component={AdminStoreSales} />
+      <Route path="/admin/expenses" component={AdminExpenses} />
+      <Route path="/admin/fixed-cost-items" component={AdminFixedCostItems} />
 
       <Route component={NotFound} />
     </Switch>

@@ -20,6 +20,12 @@ export type DetailFields = {
   flavorNotes: string;
   roastLevel: string;
   description: string;
+  // B-1: 원두 상세정보 강화
+  tastingNotes: string;
+  acidity: string;
+  body: string;
+  brewMethods: string;
+  originProcess: string;
 };
 
 export const emptyDetailFields: DetailFields = {
@@ -35,7 +41,15 @@ export const emptyDetailFields: DetailFields = {
   flavorNotes: "",
   roastLevel: "",
   description: "",
+  tastingNotes: "",
+  acidity: "",
+  body: "",
+  brewMethods: "",
+  originProcess: "",
 };
+
+// 산미/바디 1~5 선택 옵션
+export const RATING_OPTIONS = ["1", "2", "3", "4", "5"] as const;
 
 type Props = {
   template: "blend" | "single";
@@ -213,6 +227,66 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
           onChange={(e) => setDetail("roastLevel", e.target.value)}
           placeholder="예: 미디엄 라이트"
           data-testid="input-detail-roast-level"
+        />
+      </div>
+
+      {/* B-1: 원두 상세정보 강화 */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">맛노트</Label>
+        <Input
+          value={detail.tastingNotes}
+          onChange={(e) => setDetail("tastingNotes", e.target.value)}
+          placeholder="예: 밀크 초콜릿, 캐러멜, 은은한 견과류"
+          data-testid="input-detail-tasting-notes"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs">산미 (1~5)</Label>
+          <Select value={detail.acidity || undefined} onValueChange={(v) => setDetail("acidity", v)}>
+            <SelectTrigger className="h-9 text-xs" data-testid="select-detail-acidity">
+              <SelectValue placeholder="선택 안 함" />
+            </SelectTrigger>
+            <SelectContent>
+              {RATING_OPTIONS.map((n) => (
+                <SelectItem key={n} value={n}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">바디 (1~5)</Label>
+          <Select value={detail.body || undefined} onValueChange={(v) => setDetail("body", v)}>
+            <SelectTrigger className="h-9 text-xs" data-testid="select-detail-body">
+              <SelectValue placeholder="선택 안 함" />
+            </SelectTrigger>
+            <SelectContent>
+              {RATING_OPTIONS.map((n) => (
+                <SelectItem key={n} value={n}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">추천 추출</Label>
+        <Input
+          value={detail.brewMethods}
+          onChange={(e) => setDetail("brewMethods", e.target.value)}
+          placeholder="예: 에스프레소, 핸드드립, 콜드브루"
+          data-testid="input-detail-brew-methods"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs">원산지 · 가공</Label>
+        <Input
+          value={detail.originProcess}
+          onChange={(e) => setDetail("originProcess", e.target.value)}
+          placeholder="예: 콜롬비아 우일라 / 워시드"
+          data-testid="input-detail-origin-process"
         />
       </div>
 

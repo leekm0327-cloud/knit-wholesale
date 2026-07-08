@@ -133,6 +133,14 @@ export default function AdminProducts() {
       // detailJson 직렬화 (template에 따라 관련 필드만 포함)
       const tpl = form.detailTemplate;
       const d = form.detail;
+      // B-1: 강화 필드(맛노트/산미/바디/추천추출/원산지·가공)는 양식 공통으로 포함
+      const enriched = {
+        tastingNotes: d.tastingNotes,
+        acidity: d.acidity,
+        body: d.body,
+        brewMethods: d.brewMethods,
+        originProcess: d.originProcess,
+      };
       const detailObj =
         tpl === "blend"
           ? {
@@ -143,6 +151,7 @@ export default function AdminProducts() {
               roastLevel: d.roastLevel,
               recommendedUse: d.recommendedUse,
               description: d.description,
+              ...enriched,
             }
           : {
               template: "single" as const,
@@ -156,6 +165,7 @@ export default function AdminProducts() {
               flavorNotes: d.flavorNotes,
               roastLevel: d.roastLevel,
               description: d.description,
+              ...enriched,
             };
       const payload = {
         name: form.name,

@@ -4,7 +4,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, db, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail } from "./email";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
@@ -23,10 +23,19 @@ import {
   ecountSettingsInputSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  insertSupplierSchema,
+  insertPurchaseSchema,
+  insertSupplierPaymentSchema,
+  purchaseItemSchema,
+  insertStoreSaleSchema,
+  insertFixedCostItemSchema,
+  insertExpenseSchema,
   customers,
   type Customer,
   type PublicCustomer,
+  type PurchaseItem,
 } from "@shared/schema";
+import { isValidBizRegNo } from "@shared/bizRegNo";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 
@@ -91,6 +100,7 @@ export async function registerRoutes(
   app: Express,
 ): Promise<Server> {
   await seed();
+  seedFixedCostItems();
 
   // 샌드박스 iframe 쿠키 동작을 위한 설정
   app.set("trust proxy", 1);
@@ -170,7 +180,22 @@ export async function registerRoutes(
     const hashed = bcrypt.hashSync(parsed.data.password, 10);
     // #24: taxEmail을 email과 동일하게 세팅
     const { passwordConfirm: _pc, ...restData } = parsed.data;
-    const customer = await storage.createCustomer({ ...restData, taxEmail: parsed.data.email, password: hashed, role: "customer" });
+    // B-3: 사업자등록번호 형식+체크섬 검증. 유효하면 자동승인(biz_verified=1), 아니면 승인대기(0).
+    const bizVerified = isValidBizRegNo(parsed.data.bizRegNo ?? "") ? 1 : 0;
+    const customer = await storage.createCustomer({ ...restData, taxEmail: parsed.data.email, password: hashed, role: "customer", bizVerified });
+    // B-3: 승인 상태를 활동 로그로 기록 (외부 알림(카카오/이메일) 미연동 → 관리자 화면 목록 + 로그로 대체).
+    // TODO: 카카오 알림톡/이메일 연동 시 승인대기 고객 발생을 사장님께 실시간 통지.
+    await storage.logActivity({
+      actorUserId: customer.id,
+      actorEmail: customer.email,
+      actorRole: "customer",
+      action: "customer_register",
+      targetType: "customer",
+      targetId: String(customer.id),
+      summary: bizVerified
+        ? `신규 거래처 가입(사업자번호 검증 통과, 자동승인): ${customer.businessName}`
+        : `신규 거래처 가입(사업자번호 미검증, 승인대기): ${customer.businessName}`,
+    });
     req.session.userId = customer.id;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
@@ -376,11 +401,21 @@ export async function registerRoutes(
     const overrideMap = new Map(overrides.map((o) => [o.productId, o.price]));
     const rawItems = parsed.data.items;
     const newItems: any[] = [];
+    // A-4: 원두 카테고리(blend/decaf/single) 수량 합 (최소 5kg 검증용)
+    let beanQtyTotal = 0;
     for (const it of rawItems) {
       const prod = await storage.getProduct(it.productId);
       if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${it.productId}` });
       const unitPrice = overrideMap.get(it.productId) ?? prod.price;
-      newItems.push({ ...it, productName: prod.name, unitPrice, amount: unitPrice * it.qty });
+      if (["blend", "decaf", "single"].includes(prod.category)) beanQtyTotal += it.qty;
+      newItems.push({ ...it, category: prod.category, productName: prod.name, unitPrice, amount: unitPrice * it.qty });
+    }
+
+    // A-4: 도매 원두 최소 5kg(수량 5개) 검증. 샘플 주문(isSample)이면 스킵.
+    //  주의: is_sample 컬럼은 B에서 추가 예정 — 아직 없을 수 있으므로 truthy일 때만 스킵(방어적).
+    const isSample = (parsed.data as any).isSample;
+    if (!isSample && beanQtyTotal > 0 && beanQtyTotal < 5) {
+      return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
     }
 
     // ===== V7 #23B: 같은 날(KST) pending 주문 누적 =====
@@ -488,6 +523,91 @@ export async function registerRoutes(
     }).catch((e) => console.error("[email] 알림 메일 실패:", e));
 
     res.json({ ...order, merged: false, orderId: order.id });
+  });
+
+  // ===== B-2: 샘플 신청 =====
+  // 샘플 신청 자격 조회. eligible=true면 신청 가능.
+  app.get("/api/sample/eligibility", requireAuth, async (req, res) => {
+    const customer = await storage.getCustomer(req.session.userId!);
+    if (!customer) return res.status(401).json({ message: "사용자 없음" });
+    const bizVerified = customer.bizVerified === 1;
+    // 이미 샘플 주문이 있는지 확인 (sampleUsed 플래그 + 실제 주문 이중 확인)
+    const myOrders = await storage.listOrdersByCustomer(customer.id);
+    const alreadyUsed = customer.sampleUsed === 1 || myOrders.some((o) => o.isSample === 1);
+    let reason = "";
+    if (!bizVerified) reason = "사업자 승인 후 샘플 신청이 가능합니다.";
+    else if (alreadyUsed) reason = "이미 샘플을 신청하셨습니다. 샘플은 1회만 제공됩니다.";
+    res.json({ eligible: bizVerified && !alreadyUsed, bizVerified, alreadyUsed, reason });
+  });
+
+  // 샘플 신청 — 원두 최대 2종, 각 1kg 고정, 무료(total 0). 승인+미사용 고객만.
+  app.post("/api/sample/request", requireAuth, async (req, res) => {
+    const customer = await storage.getCustomer(req.session.userId!);
+    if (!customer) return res.status(401).json({ message: "사용자 없음" });
+    if (customer.bizVerified !== 1)
+      return res.status(403).json({ message: "사업자 승인 후 샘플 신청이 가능합니다." });
+
+    const myOrders = await storage.listOrdersByCustomer(customer.id);
+    if (customer.sampleUsed === 1 || myOrders.some((o) => o.isSample === 1))
+      return res.status(400).json({ message: "이미 샘플을 신청하셨습니다. 샘플은 1회만 제공됩니다." });
+
+    const productIds: unknown = req.body?.productIds;
+    if (!Array.isArray(productIds) || productIds.length < 1)
+      return res.status(400).json({ message: "샘플 받을 원두를 1종 이상 선택해 주세요." });
+    if (productIds.length > 2)
+      return res.status(400).json({ message: "샘플은 최대 2종까지 신청할 수 있습니다." });
+
+    // 중복 제거 및 원두 카테고리 검증
+    const uniqueIds = Array.from(new Set(productIds.map((x) => Number(x))));
+    const items: any[] = [];
+    for (const pid of uniqueIds) {
+      const prod = await storage.getProduct(pid);
+      if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${pid}` });
+      if (!["blend", "decaf", "single"].includes(prod.category))
+        return res.status(400).json({ message: "샘플은 원두 상품만 신청할 수 있습니다." });
+      // 각 1kg(수량 1) 고정, 무료(단가 0)
+      items.push({ productId: prod.id, name: prod.name, category: prod.category, unitPrice: 0, qty: 1, amount: 0 });
+    }
+
+    const order = await storage.createOrder({
+      orderNo: genOrderNo(),
+      customerId: customer.id,
+      customerSnapshot: JSON.stringify({
+        businessName: customer.businessName,
+        managerName: customer.managerName,
+        phone: customer.phone,
+        bizRegNo: customer.bizRegNo,
+        taxEmail: customer.taxEmail,
+        defaultAddress: customer.defaultAddress,
+        paymentMethod: customer.paymentMethod,
+      }),
+      items: JSON.stringify(items),
+      supplyAmount: 0,
+      vat: 0,
+      totalAmount: 0,
+      desiredDate: "",
+      note: "샘플 신청",
+      status: "pending",
+      isSample: 1,
+      trackingNo: "",
+      adminMemo: "",
+      quickRequest: 0,
+      createdAt: Date.now(),
+    });
+
+    // 승인 고객당 1회 제한 → sampleUsed 플래그 세팅
+    await storage.updateCustomer(customer.id, { sampleUsed: 1 });
+
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "sample_request",
+      targetType: "order",
+      targetId: String(order.id),
+      summary: `샘플 신청: ${customer.businessName} (${items.map((i) => i.name).join(", ")})`,
+    });
+
+    res.json({ ...order, orderId: order.id });
   });
 
   // 거래처 본인 주문 목록
@@ -747,6 +867,26 @@ export async function registerRoutes(
     res.json(toPublic(updated));
   });
 
+  // B-3: 샘플(사업자) 수동 승인 — biz_verified=1 로 세팅. 직원도 가능(requireAdmin).
+  app.patch("/api/admin/customers/:id/approve-sample", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const customer = await storage.getCustomer(id);
+    if (!customer) return res.status(404).json({ message: "거래처 없음" });
+    const updated = await storage.updateCustomer(id, { bizVerified: 1 });
+    if (!updated) return res.status(404).json({ message: "거래처 없음" });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "customer.approve_sample",
+      targetType: "customer",
+      targetId: String(id),
+      summary: `거래처 '${updated.businessName}' 사업자 승인(샘플 신청 허용)`,
+    });
+    // TODO(외부 알림 미연동): 승인 완료 시 카카오/이메일 알림 발송. 현재는 activityLog 로 대체.
+    res.json(toPublic(updated));
+  });
+
   // 거래처 삭제
   app.delete("/api/admin/customers/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
@@ -851,6 +991,349 @@ export async function registerRoutes(
     res.json({ ...ledger, payments: customerPayments });
   });
 
+  // ===== OEM 공장 채무: 공급처 / 발주 / 지급 (모두 requireAdmin — 직원도 입력 가능) =====
+  app.get("/api/admin/suppliers", requireAdmin, async (_req, res) => {
+    res.json(await storage.listSuppliers());
+  });
+
+  app.post("/api/admin/suppliers", requireAdmin, async (req, res) => {
+    const parsed = insertSupplierSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const supplier = await storage.createSupplier(parsed.data);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "supplier.create",
+      targetType: "supplier",
+      targetId: String(supplier.id),
+      summary: `공급처 '${supplier.name}' 등록`,
+    });
+    res.json(supplier);
+  });
+
+  app.patch("/api/admin/suppliers/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const allowed = ["name", "contact", "phone", "memo"];
+    const patch: any = {};
+    for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
+    const updated = await storage.updateSupplier(id, patch);
+    if (!updated) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "supplier.update",
+      targetType: "supplier",
+      targetId: String(id),
+      summary: `공급처 '${updated.name}' 수정`,
+    });
+    res.json(updated);
+  });
+
+  app.delete("/api/admin/suppliers/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const supplier = await storage.getSupplier(id);
+    if (!supplier) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
+    const actor = await getActor(req);
+    await storage.deleteSupplier(id);
+    await storage.logActivity({
+      ...actor,
+      action: "supplier.delete",
+      targetType: "supplier",
+      targetId: String(id),
+      summary: `공급처 '${supplier.name}' 삭제`,
+    });
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/purchases", requireAdmin, async (req, res) => {
+    const supplierId = req.query.supplierId ? Number(req.query.supplierId) : undefined;
+    res.json(await storage.listPurchases(Number.isFinite(supplierId!) ? supplierId : undefined));
+  });
+
+  // 매입단가 자동채움용
+  app.get("/api/admin/purchases/last-price", requireAdmin, async (req, res) => {
+    const supplierId = Number(req.query.supplierId);
+    const productId = req.query.productId ? Number(req.query.productId) : null;
+    const name = typeof req.query.name === "string" ? req.query.name : "";
+    if (!Number.isFinite(supplierId)) return res.status(400).json({ message: "공급처 ID가 필요합니다." });
+    const unitPrice = await storage.lastPurchaseUnitPrice(supplierId, {
+      productId: productId != null && Number.isFinite(productId) ? productId : null,
+      name,
+    });
+    res.json({ unitPrice });
+  });
+
+  app.post("/api/admin/purchases", requireAdmin, async (req, res) => {
+    const parsed = insertPurchaseSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const supplier = await storage.getSupplier(parsed.data.supplierId);
+    if (!supplier) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
+    // amount는 신뢰하지 않고 서버에서 재계산
+    const items: PurchaseItem[] = parsed.data.items.map((it) => ({
+      productId: it.productId ?? null,
+      name: it.name,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      amount: Math.round(it.qty * it.unitPrice),
+    }));
+    const totalAmount = items.reduce((s, i) => s + i.amount, 0);
+    const purchase = await storage.createPurchase({
+      supplierId: parsed.data.supplierId,
+      purchaseDate: parsed.data.purchaseDate,
+      memo: parsed.data.memo ?? "",
+      items,
+      totalAmount,
+    });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "purchase.create",
+      targetType: "purchase",
+      targetId: String(purchase.id),
+      summary: `${supplier.name} 발주 ${purchase.purchaseNo} 등록 (${totalAmount}원)`,
+    });
+    res.json(purchase);
+  });
+
+  app.delete("/api/admin/purchases/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const purchase = await storage.getPurchase(id);
+    if (!purchase) return res.status(404).json({ message: "발주 내역을 찾을 수 없습니다." });
+    const actor = await getActor(req);
+    await storage.deletePurchase(id);
+    await storage.logActivity({
+      ...actor,
+      action: "purchase.delete",
+      targetType: "purchase",
+      targetId: String(id),
+      summary: `발주 ${purchase.purchaseNo} 삭제`,
+    });
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/supplier-payments", requireAdmin, async (req, res) => {
+    const supplierId = req.query.supplierId ? Number(req.query.supplierId) : undefined;
+    res.json(await storage.listSupplierPayments(Number.isFinite(supplierId!) ? supplierId : undefined));
+  });
+
+  app.post("/api/admin/supplier-payments", requireAdmin, async (req, res) => {
+    const parsed = insertSupplierPaymentSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const supplier = await storage.getSupplier(parsed.data.supplierId);
+    if (!supplier) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
+    const payment = await storage.createSupplierPayment(parsed.data);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "supplier_payment.create",
+      targetType: "supplier",
+      targetId: String(supplier.id),
+      summary: `${supplier.name} 지급 ${parsed.data.amount}원 등록`,
+    });
+    res.json(payment);
+  });
+
+  app.delete("/api/admin/supplier-payments/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const actor = await getActor(req);
+    await storage.deleteSupplierPayment(id);
+    await storage.logActivity({
+      ...actor,
+      action: "supplier_payment.delete",
+      targetType: "supplier_payment",
+      targetId: String(id),
+      summary: `공장 지급 내역 #${id} 삭제`,
+    });
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/supplier-balances", requireAdmin, async (_req, res) => {
+    const balances = await storage.getSupplierBalances();
+    const totalOutstanding = balances.reduce((s, b) => s + Math.max(0, b.balance), 0);
+    const totalPurchased = balances.reduce((s, b) => s + b.totalPurchased, 0);
+    const totalPaid = balances.reduce((s, b) => s + b.totalPaid, 0);
+    // 이번 달(KST) 발주/지급 집계
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const allPurchases = await storage.listPurchases();
+    const allPayments = await storage.listSupplierPayments();
+    const monthPurchased = allPurchases
+      .filter((p) => p.createdAt >= monthStart)
+      .reduce((s, p) => s + p.totalAmount, 0);
+    const monthPaid = allPayments
+      .filter((p) => (p.paidAt ?? "").slice(0, 7) === ym)
+      .reduce((s, p) => s + p.amount, 0);
+    res.json({
+      totalOutstanding,
+      totalPurchased,
+      totalPaid,
+      monthPurchased,
+      monthPaid,
+      balances: balances.sort((a, b) => b.balance - a.balance),
+    });
+  });
+
+  app.get("/api/admin/suppliers/:id/ledger", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const ledger = await storage.getSupplierLedger(id);
+    if (!ledger.balance) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
+    const supplierPaymentRows = await storage.listSupplierPayments(id);
+    res.json({ ...ledger, payments: supplierPaymentRows });
+  });
+
+  // ===== 경영 대시보드 (C) =====
+  // 매장매출 (직원도 입력 가능 — requireAdmin)
+  app.get("/api/admin/store-sales", requireAdmin, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    res.json(await storage.listStoreSales(from, to));
+  });
+
+  app.post("/api/admin/store-sales", requireAdmin, async (req, res) => {
+    const parsed = insertStoreSaleSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const sale = await storage.upsertStoreSale(parsed.data);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "store_sale.upsert",
+      targetType: "store_sale",
+      targetId: String(sale.id),
+      summary: `매장매출 ${sale.saleDate} ${sale.amount}원 등록/수정`,
+    });
+    res.json(sale);
+  });
+
+  app.delete("/api/admin/store-sales/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const actor = await getActor(req);
+    await storage.deleteStoreSale(id);
+    await storage.logActivity({
+      ...actor,
+      action: "store_sale.delete",
+      targetType: "store_sale",
+      targetId: String(id),
+      summary: `매장매출 #${id} 삭제`,
+    });
+    res.json({ ok: true });
+  });
+
+  // 고정비 항목: 조회는 requireAdmin, 정의(쓰기)는 requireOwner
+  app.get("/api/admin/fixed-cost-items", requireAdmin, async (req, res) => {
+    const includeInactive = req.query.includeInactive === "true";
+    res.json(await storage.listFixedCostItems(includeInactive));
+  });
+
+  app.post("/api/admin/fixed-cost-items", requireOwner, async (req, res) => {
+    const parsed = insertFixedCostItemSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const item = await storage.createFixedCostItem(parsed.data);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "fixed_cost_item.create",
+      targetType: "fixed_cost_item",
+      targetId: String(item.id),
+      summary: `고정비 항목 '${item.name}' 추가`,
+    });
+    res.json(item);
+  });
+
+  app.patch("/api/admin/fixed-cost-items/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    const patch: any = {};
+    if (typeof req.body.name === "string") patch.name = req.body.name;
+    if (typeof req.body.sortOrder === "number") patch.sortOrder = req.body.sortOrder;
+    if (typeof req.body.active === "number") patch.active = req.body.active;
+    const item = await storage.updateFixedCostItem(id, patch);
+    if (!item) return res.status(404).json({ message: "항목을 찾을 수 없습니다." });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "fixed_cost_item.update",
+      targetType: "fixed_cost_item",
+      targetId: String(id),
+      summary: `고정비 항목 '${item.name}' 수정`,
+    });
+    res.json(item);
+  });
+
+  app.delete("/api/admin/fixed-cost-items/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const actor = await getActor(req);
+    await storage.deleteFixedCostItem(id);
+    await storage.logActivity({
+      ...actor,
+      action: "fixed_cost_item.delete",
+      targetType: "fixed_cost_item",
+      targetId: String(id),
+      summary: `고정비 항목 #${id} 삭제`,
+    });
+    res.json({ ok: true });
+  });
+
+  // 지출 (직원도 입력 가능 — requireAdmin)
+  app.get("/api/admin/expenses", requireAdmin, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    res.json(await storage.listExpenses(from, to));
+  });
+
+  app.post("/api/admin/expenses", requireAdmin, async (req, res) => {
+    const parsed = insertExpenseSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const expense = await storage.createExpense(parsed.data);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "expense.create",
+      targetType: "expense",
+      targetId: String(expense.id),
+      summary: `지출 ${expense.category} ${expense.amount}원 등록`,
+    });
+    res.json(expense);
+  });
+
+  app.delete("/api/admin/expenses/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const actor = await getActor(req);
+    await storage.deleteExpense(id);
+    await storage.logActivity({
+      ...actor,
+      action: "expense.delete",
+      targetType: "expense",
+      targetId: String(id),
+      summary: `지출 #${id} 삭제`,
+    });
+    res.json({ ok: true });
+  });
+
+  // 손익 대시보드 요약 — 사장님(owner) 전용
+  app.get("/api/admin/dashboard/summary", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    const g = typeof req.query.granularity === "string" ? req.query.granularity : "day";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    const granularity = (["day", "week", "month", "year"].includes(g) ? g : "day") as
+      | "day"
+      | "week"
+      | "month"
+      | "year";
+    res.json(await storage.getDashboardSummary(from, to, granularity));
+  });
+
   app.patch("/api/admin/orders/:id", requireAdmin, async (req, res) => {
     const allowed = ["status", "trackingNo", "adminMemo", "desiredDate", "note", "quickRequest"];
     const patch: any = {};
@@ -935,6 +1418,60 @@ export async function registerRoutes(
             taxEmail: customer.taxEmail || customer.email,
             items: JSON.parse(updated.items),
           }, baseUrl).catch((e) => console.error("[email] 처리완료 메일 실패:", e));
+        }
+
+        // A-3: pending → done 전환 시 클라리멘토(대표 공급처)에 원두 자동발주 등록
+        //  - skipAutoPurchase=true 이면 생략, 이미 자동발주된 주문(autoPurchaseId 존재)이면 재생성 안 함
+        const skipAutoPurchase = req.body.skipAutoPurchase === true;
+        if (!skipAutoPurchase && order.status === "pending" && !updated.autoPurchaseId) {
+          try {
+            const supplier = await storage.getPrimarySupplier();
+            if (supplier) {
+              let orderItems: any[] = [];
+              try { orderItems = JSON.parse(updated.items); } catch { /* noop */ }
+              const beanItems = orderItems.filter((it) =>
+                ["blend", "decaf", "single"].includes(it.category),
+              );
+              if (beanItems.length > 0) {
+                const purchaseItems: PurchaseItem[] = [];
+                for (const it of beanItems) {
+                  const productId = typeof it.productId === "number" ? it.productId : null;
+                  const name = it.productName ?? it.name ?? "";
+                  const lastPrice = await storage.lastPurchaseUnitPrice(supplier.id, { productId, name });
+                  const unitPrice = lastPrice ?? 0;
+                  const qty = it.qty;
+                  purchaseItems.push({
+                    productId,
+                    name,
+                    qty,
+                    unitPrice,
+                    amount: Math.round(qty * unitPrice),
+                  });
+                }
+                const totalAmount = purchaseItems.reduce((s, i) => s + i.amount, 0);
+                const today = new Date();
+                const purchaseDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                const purchase = await storage.createPurchase({
+                  supplierId: supplier.id,
+                  purchaseDate,
+                  items: purchaseItems,
+                  totalAmount,
+                  memo: `거래처주문 ${updated.orderNo} 자동발주`,
+                });
+                await storage.updateOrder(updated.id, { autoPurchaseId: purchase.id });
+                const actor = await getActor(req);
+                await storage.logActivity({
+                  ...actor,
+                  action: "purchase.auto_create",
+                  targetType: "purchase",
+                  targetId: String(purchase.id),
+                  summary: `주문 #${updated.orderNo} 처리완료 → ${supplier.name} 자동발주 ${purchase.purchaseNo}`,
+                });
+              }
+            }
+          } catch (e) {
+            console.error("[auto-purchase] 자동발주 실패:", e);
+          }
         }
       }
     }

@@ -3,7 +3,7 @@ import { Wordmark } from "./Logo";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
-import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle } from "lucide-react";
+import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift } from "lucide-react";
 
 export function AppHeader() {
   const { user, logout } = useAuth();
@@ -35,6 +35,14 @@ export function AppHeader() {
           >
             <span className="hidden sm:inline">Orders</span>
             <ClipboardList className="h-4 w-4 sm:hidden" />
+          </button>
+          <button
+            onClick={() => navigate("/sample")}
+            data-testid="link-sample"
+            className={navLink(location === "/sample")}
+          >
+            <span className="hidden sm:inline">Sample</span>
+            <Gift className="h-4 w-4 sm:hidden" />
           </button>
           <button
             onClick={() => navigate("/board")}
