@@ -23,13 +23,16 @@ declare module "http" {
 
 app.use(
   express.json({
+    // 소식/게시판/상품 이미지를 base64로 본문에 담아 보내므로 기본 100KB로는 부족.
+    // 이미지 1장당 최대 5MB(base64 인코딩 시 약 6.7MB) + 여러 장을 고려해 넉넉히 설정.
+    limit: "50mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
