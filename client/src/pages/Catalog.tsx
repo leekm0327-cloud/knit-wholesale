@@ -169,35 +169,11 @@ export default function Catalog() {
       <AppHeader />
 
       <main className="mx-auto max-w-[1200px] px-5 pb-56 pt-8 sm:px-8 sm:pb-60 sm:pt-10">
-        {/* 인트로 헤더 */}
-        <div className="mb-6 border-b border-border pb-6">
-          <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">For wholesale partners</p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-            원두 발주
-          </h1>
-          <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
-            수량을 입력하고 담아 주세요. 단가는 공급가액 기준이며, 부가세 10%가 별도로 가산됩니다.
-          </p>
-        </div>
-
-        {/* 출고 안내 박스 */}
-        <div
-          className="mb-8 border-l-2 border-teal-600 bg-muted/40 px-4 py-3"
-          data-testid="shipping-notice"
-        >
-          <p className="text-xs leading-relaxed text-foreground">
-            평일 기준, <span className="font-semibold">12:00 이전 주문</span>은 택배(대한통운)로 당일 출고되며, 주문량에 따라 지연될 수 있습니다.
-          </p>
-        </div>
-
-        {/* ③ 니트커피 소식 — 소식이 하나도 없으면 섹션 자체를 숨김 */}
+        {/* ③ NEWS — 소식이 하나도 없으면 섹션 자체를 숨김. 최상단 노출 */}
         {topNews.length > 0 && (
           <section className="mb-10" data-testid="section-catalog-news">
             <div className="mb-3 flex items-end justify-between">
-              <div>
-                <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">News</p>
-                <h2 className="font-display text-lg font-bold tracking-tight text-foreground">니트커피 소식</h2>
-              </div>
+              <h2 className="font-display text-lg font-bold uppercase tracking-[0.08em] text-foreground">NEWS</h2>
               <Link href="/news" className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline" data-testid="link-news-more">
                 더보기 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -228,6 +204,27 @@ export default function Catalog() {
             </div>
           </section>
         )}
+
+        {/* 인트로 헤더 */}
+        <div className="mb-6 border-b border-border pb-6">
+          <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">For wholesale partners</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+            원두 발주
+          </h1>
+          <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
+            수량을 입력하고 담아 주세요. 단가는 공급가액 기준이며, 부가세 10%가 별도로 가산됩니다.
+          </p>
+        </div>
+
+        {/* 출고 안내 박스 */}
+        <div
+          className="mb-8 border-l-2 border-teal-600 bg-muted/40 px-4 py-3"
+          data-testid="shipping-notice"
+        >
+          <p className="text-xs leading-relaxed text-foreground">
+            평일 기준, <span className="font-semibold">12:00 이전 주문</span>은 택배(대한통운)로 당일 출고되며, 주문량에 따라 지연될 수 있습니다.
+          </p>
+        </div>
 
         {/* 미니멀 앵커 바 */}
         {!isLoading && (anchorCats.length > 1 || favoriteItems.length > 0) && (
