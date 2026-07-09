@@ -9,7 +9,17 @@ import { useCart } from "@/lib/cart";
 import { won } from "@/lib/format";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product } from "@shared/schema";
-import { Plus, Minus, ShoppingCart, Star } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Star, ArrowRight } from "lucide-react";
+import { fmtDate } from "@/lib/format";
+
+// ③ 소식 카드 요약 타입
+type NewsSummary = {
+  id: number;
+  title: string;
+  coverImage: string;
+  pinned: number;
+  publishedAt: number;
+};
 
 // 카테고리 순서
 const CATEGORY_ORDER = [
@@ -62,6 +72,9 @@ function isBlendCategory(category: string): boolean {
 
 export default function Catalog() {
   const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  // ③ 니트커피 소식 (발행분). 최신 4개만 상단 카드로 노출.
+  const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });
+  const topNews = (newsList ?? []).slice(0, 4);
   const [qtyMap, setQtyMap] = useState<Record<number, number>>({});
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const { add } = useCart();
@@ -176,6 +189,45 @@ export default function Catalog() {
             평일 기준, <span className="font-semibold">12:00 이전 주문</span>은 택배(대한통운)로 당일 출고되며, 주문량에 따라 지연될 수 있습니다.
           </p>
         </div>
+
+        {/* ③ 니트커피 소식 — 소식이 하나도 없으면 섹션 자체를 숨김 */}
+        {topNews.length > 0 && (
+          <section className="mb-10" data-testid="section-catalog-news">
+            <div className="mb-3 flex items-end justify-between">
+              <div>
+                <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">News</p>
+                <h2 className="font-display text-lg font-bold tracking-tight text-foreground">니트커피 소식</h2>
+              </div>
+              <Link href="/news" className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline" data-testid="link-news-more">
+                더보기 <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {topNews.map((n) => (
+                <Link
+                  key={n.id}
+                  href={`/news/${n.id}`}
+                  className="group overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-md"
+                  data-testid={`card-news-${n.id}`}
+                >
+                  <div className="aspect-[3/2] w-full overflow-hidden bg-muted">
+                    {n.coverImage ? (
+                      <img src={n.coverImage} alt={n.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">니트커피</div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{n.title}</h3>
+                    {n.publishedAt ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{fmtDate(n.publishedAt)}</p>
+                    ) : null}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* 미니멀 앵커 바 */}
         {!isLoading && (anchorCats.length > 1 || favoriteItems.length > 0) && (

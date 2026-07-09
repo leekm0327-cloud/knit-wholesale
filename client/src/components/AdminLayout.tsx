@@ -30,6 +30,7 @@ import {
   ListChecks,
   BookUser,
   MessageCircle,
+  Newspaper,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -60,6 +61,7 @@ const NAV_BASE: NavItem[] = [
   { href: "/admin/ecount", label: "ECOUNT 연동", icon: Link2 },
   { href: "/admin/ecount-logs", label: "ECOUNT 로그", icon: ScrollText },
   { href: "/admin/board", label: "게시판", icon: MessageSquare },
+  { href: "/admin/news", label: "소식", icon: Newspaper },
   { href: "/admin/managers", label: "매니저", icon: Users, ownerOnly: true },
   { href: "/admin/activity-logs", label: "활동 로그", icon: Activity },
   { href: "/admin/backup", label: "백업", icon: Archive, ownerOnly: true },

@@ -18,6 +18,9 @@ import {
   adminLoginSchema,
   changePasswordSchema,
   createOrderSchema,
+  adminCreateOrderSchema,
+  createNewsSchema,
+  updateNewsSchema,
   updateOrderItemsSchema,
   insertProductSchema,
   insertPaymentSchema,
@@ -544,6 +547,65 @@ export async function registerRoutes(
     ).catch((e) => console.warn("[kakao] 주문 알림 발송 실패:", e?.message ?? e));
 
     res.json({ ...order, merged: false, orderId: order.id });
+  });
+
+  // ② 관리자 대리 주문 생성 (requireAdmin: owner + manager)
+  //  - 거래처(customerId)를 지정해 관리자가 대신 주문 생성. 거래처 등록단가(customerPrices) 자동 적용.
+  //  - 신규 주문과 동일하게 'pending'(접수)로 생성. 처리완료→자동발주 훅은 여기서 연동하지 않음(수동 전환 시 동작).
+  //  - 고객 세션 기반 POST /api/orders 흐름은 건드리지 않는 별도 엔드포인트.
+  app.post("/api/admin/orders", requireAdmin, async (req, res) => {
+    const parsed = adminCreateOrderSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const customer = await storage.getCustomer(parsed.data.customerId);
+    if (!customer) return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+
+    // 거래처 등록단가로 금액 재계산 (기존 서버 로직 재사용, 중복 구현 금지)
+    const recomputed = await recomputeOrderItems(customer.id, parsed.data.items);
+    if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
+
+    // A-4: 도매 원두(blend/decaf/single) 최소 5kg(수량 5개) 검증
+    const beanQtyTotal = recomputed.items
+      .filter((i: any) => ["blend", "decaf", "single"].includes(i.category))
+      .reduce((s: number, i: any) => s + i.qty, 0);
+    if (beanQtyTotal > 0 && beanQtyTotal < 5)
+      return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
+
+    const order = await storage.createOrder({
+      orderNo: genOrderNo(),
+      customerId: customer.id,
+      customerSnapshot: JSON.stringify({
+        businessName: customer.businessName,
+        managerName: customer.managerName,
+        phone: customer.phone,
+        bizRegNo: customer.bizRegNo,
+        taxEmail: customer.taxEmail,
+        defaultAddress: customer.defaultAddress,
+        paymentMethod: customer.paymentMethod,
+      }),
+      items: JSON.stringify(recomputed.items),
+      supplyAmount: recomputed.supplyAmount,
+      vat: recomputed.vat,
+      totalAmount: recomputed.totalAmount,
+      desiredDate: parsed.data.desiredDate ?? "",
+      note: parsed.data.note ?? "",
+      status: "pending",
+      trackingNo: "",
+      adminMemo: "",
+      quickRequest: parsed.data.quickRequest ? 1 : 0,
+      createdAt: Date.now(),
+    });
+
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "order.admin_create",
+      targetType: "order",
+      targetId: String(order.id),
+      summary: `관리자 대리 주문 생성 (거래처: ${customer.businessName})`,
+    });
+
+    res.json({ ...order, orderId: order.id });
   });
 
   // ===== B-2: 샘플 신청 =====
@@ -1431,16 +1493,18 @@ export async function registerRoutes(
   });
 
   // OAuth 콜백 — 인가 코드로 토큰 발급 후 관리자 화면으로 이동
+  // 주의: wouter useHashLocation은 해시경로에 쿼리스트링이 붙으면 라우트 매칭에 실패(404)하므로
+  // 성공·실패 모두 쿼리 없이 `/#/admin/kakao` 로만 리다이렉트한다. 연동 상태는 화면에서 status 재조회로 표시.
   app.get("/oauth/kakao/callback", async (req, res) => {
     const code = typeof req.query.code === "string" ? req.query.code : "";
-    if (!code) return res.redirect("/#/admin/kakao?error=no_code");
-    try {
-      await exchangeCodeForToken(code);
-      res.redirect("/#/admin/kakao?linked=1");
-    } catch (e: any) {
-      console.warn("[kakao] 콜백 토큰 발급 실패:", e?.message ?? e);
-      res.redirect("/#/admin/kakao?error=token");
+    if (code) {
+      try {
+        await exchangeCodeForToken(code);
+      } catch (e: any) {
+        console.warn("[kakao] 콜백 토큰 발급 실패:", e?.message ?? e);
+      }
     }
+    res.redirect("/#/admin/kakao");
   });
 
   app.get("/api/admin/kakao/status", requireOwner, async (_req, res) => {
@@ -2049,6 +2113,108 @@ export async function registerRoutes(
     );
 
     res.json({ message: "재설정 메일을 발송했습니다." });
+  });
+
+  // ===== ③ 니트커피 소식 (블로그형) =====
+  // 거래처용: 발행(published)된 소식만 노출
+  app.get("/api/news", requireAuth, async (_req, res) => {
+    const list = await storage.listNews({ publishedOnly: true });
+    // 카드용 요약 (본문 blocks 제외)
+    res.json(
+      list.map((n) => ({
+        id: n.id,
+        title: n.title,
+        coverImage: n.coverImage,
+        pinned: n.pinned,
+        publishedAt: n.publishedAt,
+      })),
+    );
+  });
+  app.get("/api/news/:id", requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const item = await storage.getNews(id);
+    if (!item || item.status !== "published")
+      return res.status(404).json({ message: "소식을 찾을 수 없습니다." });
+    await storage.incrementNewsView(id);
+    res.json({ ...item, blocks: JSON.parse(item.blocks || "[]") });
+  });
+
+  // 관리자용: 전체(draft 포함) CRUD
+  app.get("/api/admin/news", requireAdmin, async (_req, res) => {
+    const list = await storage.listNews();
+    res.json(list.map((n) => ({ ...n, blocks: JSON.parse(n.blocks || "[]") })));
+  });
+  app.post("/api/admin/news", requireAdmin, async (req, res) => {
+    const parsed = createNewsSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const { title, coverImage, blocks, status, pinned } = parsed.data;
+    const item = await storage.createNews({
+      title,
+      coverImage: coverImage ?? "",
+      blocks: JSON.stringify(blocks ?? []),
+      status,
+      pinned: pinned ? 1 : 0,
+      publishedAt: status === "published" ? Date.now() : 0,
+    });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "news.create",
+      targetType: "news",
+      targetId: String(item.id),
+      summary: `소식 작성 (${item.title})`,
+    });
+    res.json({ ...item, blocks: JSON.parse(item.blocks || "[]") });
+  });
+  app.patch("/api/admin/news/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const existing = await storage.getNews(id);
+    if (!existing) return res.status(404).json({ message: "소식을 찾을 수 없습니다." });
+    const parsed = updateNewsSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const patch: any = {};
+    if (parsed.data.title !== undefined) patch.title = parsed.data.title;
+    if (parsed.data.coverImage !== undefined) patch.coverImage = parsed.data.coverImage;
+    if (parsed.data.blocks !== undefined) patch.blocks = JSON.stringify(parsed.data.blocks);
+    if (parsed.data.pinned !== undefined) patch.pinned = parsed.data.pinned ? 1 : 0;
+    if (parsed.data.status !== undefined) {
+      patch.status = parsed.data.status;
+      // 초안→발행 전환 시점에만 발행시각 기록. 이미 발행된 건은 유지.
+      if (parsed.data.status === "published" && existing.status !== "published") {
+        patch.publishedAt = Date.now();
+      }
+      if (parsed.data.status === "draft") patch.publishedAt = 0;
+    }
+    const item = await storage.updateNews(id, patch);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "news.update",
+      targetType: "news",
+      targetId: String(id),
+      summary: `소식 수정 (${item?.title ?? id})`,
+    });
+    res.json(item ? { ...item, blocks: JSON.parse(item.blocks || "[]") } : {});
+  });
+  app.delete("/api/admin/news/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const existing = await storage.getNews(id);
+    if (!existing) return res.status(404).json({ message: "소식을 찾을 수 없습니다." });
+    await storage.deleteNews(id);
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "news.delete",
+      targetType: "news",
+      targetId: String(id),
+      summary: `소식 삭제 (${existing.title})`,
+    });
+    res.json({ ok: true });
   });
 
   // ===== Board (게시판) =====

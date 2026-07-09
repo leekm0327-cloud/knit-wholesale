@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -26,25 +25,12 @@ export default function AdminKakao() {
   const isOwner = (user as any)?.adminRole === "owner";
   const [testing, setTesting] = useState(false);
 
+  // 콜백 복귀 시 화면이 마운트되며 아래 쿼리로 최신 연동 상태를 다시 조회한다.
+  // (서버 콜백은 쿼리 없이 `/#/admin/kakao` 로만 리다이렉트하므로 별도 파라미터 파싱 불필요)
   const { data: status, isLoading } = useQuery<KakaoStatus>({
     queryKey: ["/api/admin/kakao/status"],
     enabled: isOwner,
   });
-
-  // 콜백 리다이렉트 결과(#/admin/kakao?linked=1 또는 ?error=...) 처리
-  useEffect(() => {
-    const hash = window.location.hash; // 예: #/admin/kakao?linked=1
-    const qIndex = hash.indexOf("?");
-    if (qIndex === -1) return;
-    const params = new URLSearchParams(hash.slice(qIndex + 1));
-    if (params.get("linked") === "1") {
-      toast({ title: "카카오톡 연동 완료", description: "이제 알림이 사장님 카카오톡으로 발송됩니다." });
-    } else if (params.get("error")) {
-      toast({ variant: "destructive", title: "카카오 연동 실패", description: "다시 시도해 주세요." });
-    }
-    // 쿼리 제거 (히스토리 정리)
-    window.history.replaceState(null, "", hash.slice(0, qIndex));
-  }, [toast]);
 
   if (!isOwner) {
     return (

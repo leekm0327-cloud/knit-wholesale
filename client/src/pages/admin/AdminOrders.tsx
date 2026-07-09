@@ -18,7 +18,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { won, fmtDate } from "@/lib/format";
 import type { Order, OrderItem } from "@shared/schema";
-import { CheckCircle2, RotateCcw } from "lucide-react";
+import { CheckCircle2, RotateCcw, Plus } from "lucide-react";
 
 const DAY = 1000 * 60 * 60 * 24;
 
@@ -95,9 +95,15 @@ export default function AdminOrders() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6">
-          <div className="eyebrow">Orders</div>
-          <h1 className="font-display mt-1 text-xl font-semibold text-foreground">주문 관리</h1>
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="eyebrow">Orders</div>
+            <h1 className="font-display mt-1 text-xl font-semibold text-foreground">주문 관리</h1>
+          </div>
+          <Button onClick={() => navigate("/admin/orders/new")} data-testid="button-admin-order-new">
+            <Plus className="mr-1.5 h-4 w-4" />
+            대리 주문 입력
+          </Button>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">

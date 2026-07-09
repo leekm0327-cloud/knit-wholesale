@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -16,6 +16,7 @@ import type {
   Comment,
   PostWithMeta,
   PostCategory,
+  News,
   CustomerPrice,
   Favorite,
   ActivityLog,
@@ -298,6 +299,19 @@ CREATE TABLE IF NOT EXISTS kakao_tokens (
   refresh_token_expires_at INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS news (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  cover_image TEXT NOT NULL DEFAULT '',
+  blocks TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'draft',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  published_at INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_news_status ON news(status, pinned DESC, published_at DESC);
 `);
 
 // ===== 멱등 컬럼 추가 마이그레이션 =====
@@ -553,6 +567,13 @@ export interface IStorage {
   updatePost(id: number, patch: Partial<Post>): Promise<Post | undefined>;
   deletePost(id: number): Promise<void>;
   incrementPostView(id: number): Promise<void>;
+  // ③ 소식(news)
+  listNews(opts?: { publishedOnly?: boolean }): Promise<News[]>;
+  getNews(id: number): Promise<News | undefined>;
+  createNews(n: Omit<News, "id" | "createdAt" | "updatedAt" | "viewCount">): Promise<News>;
+  updateNews(id: number, patch: Partial<News>): Promise<News | undefined>;
+  deleteNews(id: number): Promise<void>;
+  incrementNewsView(id: number): Promise<void>;
   // comments
   listComments(postId: number): Promise<Comment[]>;
   createComment(c: Omit<Comment, "id" | "createdAt">): Promise<Comment>;
@@ -1516,6 +1537,39 @@ export class DatabaseStorage implements IStorage {
   }
   async incrementPostView(id: number) {
     sqlite.prepare("UPDATE posts SET view_count = view_count + 1 WHERE id = ?").run(id);
+  }
+
+  // ===== ③ 소식(news) =====
+  async listNews(opts?: { publishedOnly?: boolean }): Promise<News[]> {
+    const q = opts?.publishedOnly
+      ? db.select().from(news).where(eq(news.status, "published"))
+      : db.select().from(news);
+    return q.orderBy(desc(news.pinned), desc(news.publishedAt), desc(news.createdAt)).all();
+  }
+  async getNews(id: number) {
+    return db.select().from(news).where(eq(news.id, id)).get();
+  }
+  async createNews(n: Omit<News, "id" | "createdAt" | "updatedAt" | "viewCount">): Promise<News> {
+    const now = Date.now();
+    return db
+      .insert(news)
+      .values({ ...n, viewCount: 0, createdAt: now, updatedAt: now })
+      .returning()
+      .get();
+  }
+  async updateNews(id: number, patch: Partial<News>): Promise<News | undefined> {
+    return db
+      .update(news)
+      .set({ ...patch, updatedAt: Date.now() })
+      .where(eq(news.id, id))
+      .returning()
+      .get();
+  }
+  async deleteNews(id: number) {
+    db.delete(news).where(eq(news.id, id)).run();
+  }
+  async incrementNewsView(id: number) {
+    sqlite.prepare("UPDATE news SET view_count = view_count + 1 WHERE id = ?").run(id);
   }
   async listComments(postId: number): Promise<Comment[]> {
     return db.select().from(comments).where(eq(comments.postId, postId)).orderBy(asc(comments.createdAt)).all();

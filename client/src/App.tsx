@@ -17,6 +17,8 @@ import ResetPassword from "@/pages/ResetPassword";
 import Catalog from "@/pages/Catalog";
 import ProductDetail from "@/pages/ProductDetail";
 import Board from "@/pages/Board";
+import News from "@/pages/News";
+import NewsDetail from "@/pages/NewsDetail";
 import Cart from "@/pages/Cart";
 import SampleRequest from "@/pages/SampleRequest";
 import Orders from "@/pages/Orders";
@@ -27,6 +29,7 @@ import Help from "@/pages/Help";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import Dashboard from "@/pages/admin/Dashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
+import AdminOrderNew from "@/pages/admin/AdminOrderNew";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
 import AdminBalances from "@/pages/admin/AdminBalances";
@@ -35,6 +38,7 @@ import AdminOrderDetail from "@/pages/admin/AdminOrderDetail";
 import AdminEcount from "@/pages/admin/AdminEcount";
 import AdminEcountLogs from "@/pages/admin/AdminEcountLogs";
 import AdminBoard from "@/pages/admin/AdminBoard";
+import AdminNews from "@/pages/admin/AdminNews";
 import AdminBackup from "@/pages/admin/AdminBackup";
 import AdminManagers from "@/pages/admin/AdminManagers";
 import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
@@ -96,6 +100,12 @@ function AppRouter() {
       <Route path="/board">
         <RequireCustomer><Board /></RequireCustomer>
       </Route>
+      <Route path="/news">
+        <RequireCustomer><News /></RequireCustomer>
+      </Route>
+      <Route path="/news/:id">
+        <RequireCustomer><NewsDetail /></RequireCustomer>
+      </Route>
       <Route path="/cart">
         <RequireCustomer><Cart /></RequireCustomer>
       </Route>
@@ -122,6 +132,7 @@ function AppRouter() {
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin" component={Dashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
+      <Route path="/admin/orders/new" component={AdminOrderNew} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/customers" component={AdminCustomers} />
       <Route path="/admin/customers/:id/ledger" component={AdminCustomerLedger} />
@@ -130,6 +141,7 @@ function AppRouter() {
       <Route path="/admin/ecount" component={AdminEcount} />
       <Route path="/admin/ecount-logs" component={AdminEcountLogs} />
       <Route path="/admin/board" component={AdminBoard} />
+      <Route path="/admin/news" component={AdminNews} />
       <Route path="/admin/backup" component={AdminBackup} />
       <Route path="/admin/managers" component={AdminManagers} />
       <Route path="/admin/activity-logs" component={AdminActivityLogs} />

@@ -281,6 +281,21 @@ export const kakaoTokens = sqliteTable("kakao_tokens", {
   updatedAt: integer("updated_at").notNull().default(0),
 });
 
+// ===== ③ 니트커피 소식 (블로그형 매거진) =====
+// 기존 게시판(posts)과 완전 별개. 관리자가 발행하는 콘텐츠, 로그인 거래처 모두 열람.
+export const news = sqliteTable("news", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  coverImage: text("cover_image").notNull().default(""), // 대표 커버 (base64 data URL, 없을 수 있음)
+  blocks: text("blocks").notNull().default("[]"), // 본문 블록 배열 JSON: {type:"paragraph",text} | {type:"image",src}
+  status: text("status").notNull().default("draft"), // draft | published
+  pinned: integer("pinned").notNull().default(0), // 상단고정
+  viewCount: integer("view_count").notNull().default(0),
+  publishedAt: integer("published_at").notNull().default(0), // 발행 시각(epoch ms). draft면 0
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 // ===== 활동 로그 (#10) =====
 export const activityLogs = sqliteTable("activity_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -401,6 +416,12 @@ export const createOrderSchema = z.object({
   quickRequest: z.boolean().optional().default(false),
 });
 
+// ② 관리자 대리 주문 생성 페이로드 (requireAdmin) — 거래처 지정
+export const adminCreateOrderSchema = createOrderSchema.extend({
+  customerId: z.number().int().min(1, "거래처를 선택해 주세요."),
+});
+export type AdminCreateOrderInput = z.infer<typeof adminCreateOrderSchema>;
+
 // 주문 수정(품목 변경) 페이로드 — 거래처/관리자 공용
 export const updateOrderItemsSchema = z.object({
   items: z.array(z.object({
@@ -435,6 +456,38 @@ export type Favorite = typeof favorites.$inferSelect;
 export type Post = typeof posts.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type PostWithMeta = Post & { commentCount: number };
+
+// ===== ③ 소식(news) 타입 & 입력 스키마 =====
+export type News = typeof news.$inferSelect;
+
+// 본문 블록: 문단 또는 이미지
+export const newsBlockSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("paragraph"), text: z.string() }),
+  z.object({ type: z.literal("image"), src: z.string() }),
+]);
+export type NewsBlock = z.infer<typeof newsBlockSchema>;
+
+export const NEWS_STATUSES = ["draft", "published"] as const;
+
+// 생성: blocks는 배열로 받아 서버에서 JSON 직렬화
+export const createNewsSchema = z.object({
+  title: z.string().min(1, "제목을 입력해 주세요."),
+  coverImage: z.string().optional().default(""),
+  blocks: z.array(newsBlockSchema).default([]),
+  status: z.enum(NEWS_STATUSES).default("draft"),
+  pinned: z.boolean().optional().default(false),
+});
+export type CreateNewsInput = z.infer<typeof createNewsSchema>;
+
+// 수정: 모든 필드 선택적
+export const updateNewsSchema = z.object({
+  title: z.string().min(1, "제목을 입력해 주세요.").optional(),
+  coverImage: z.string().optional(),
+  blocks: z.array(newsBlockSchema).optional(),
+  status: z.enum(NEWS_STATUSES).optional(),
+  pinned: z.boolean().optional(),
+});
+export type UpdateNewsInput = z.infer<typeof updateNewsSchema>;
 
 // ===== 게시판 입력 스키마 =====
 export const POST_CATEGORIES = ["notice", "inquiry", "free"] as const;
