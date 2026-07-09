@@ -26,6 +26,20 @@ export type DetailFields = {
   body: string;
   brewMethods: string;
   originProcess: string;
+  // 권장 레시피 — 에스프레소 (모두 선택 입력)
+  espBasket: string;
+  espTemp: string;
+  espDose: string;
+  espYield: string;
+  espTime: string;
+  // 권장 레시피 — 필터 (모두 선택 입력)
+  filDripper: string;
+  filPaper: string;
+  filDose: string;
+  filGrind: string;
+  filWater: string;
+  filTemp: string;
+  filTime: string;
 };
 
 export const emptyDetailFields: DetailFields = {
@@ -46,6 +60,18 @@ export const emptyDetailFields: DetailFields = {
   body: "",
   brewMethods: "",
   originProcess: "",
+  espBasket: "",
+  espTemp: "",
+  espDose: "",
+  espYield: "",
+  espTime: "",
+  filDripper: "",
+  filPaper: "",
+  filDose: "",
+  filGrind: "",
+  filWater: "",
+  filTemp: "",
+  filTime: "",
 };
 
 // 산미/바디 1~5 선택 옵션
@@ -299,6 +325,73 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
           rows={4}
           data-testid="textarea-detail-description"
         />
+      </div>
+
+      {/* 권장 레시피 (에스프레소 / 필터) — 둘 다 선택 입력, 비운 항목은 상세페이지에 표시되지 않음 */}
+      <div className="space-y-3 rounded-md border border-border bg-background p-3">
+        <Label className="text-xs font-semibold">
+          권장 레시피 <span className="font-normal text-muted-foreground">(선택 · 입력한 항목만 표시)</span>
+        </Label>
+
+        <div className="space-y-2">
+          <p className="font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">에스프레소</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-[11px]">포터필터 바스켓</Label>
+              <Input value={detail.espBasket} onChange={(e) => setDetail("espBasket", e.target.value)} placeholder="예: VST 18g" data-testid="input-esp-basket" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Temperature</Label>
+              <Input value={detail.espTemp} onChange={(e) => setDetail("espTemp", e.target.value)} placeholder="예: 93℃" data-testid="input-esp-temp" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Dose</Label>
+              <Input value={detail.espDose} onChange={(e) => setDetail("espDose", e.target.value)} placeholder="예: 18g" data-testid="input-esp-dose" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Yield</Label>
+              <Input value={detail.espYield} onChange={(e) => setDetail("espYield", e.target.value)} placeholder="예: 36g" data-testid="input-esp-yield" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Time</Label>
+              <Input value={detail.espTime} onChange={(e) => setDetail("espTime", e.target.value)} placeholder="예: 28초" data-testid="input-esp-time" />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">필터</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-[11px]">Dripper</Label>
+              <Input value={detail.filDripper} onChange={(e) => setDetail("filDripper", e.target.value)} placeholder="예: 하리오 V60" data-testid="input-fil-dripper" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">필터 (종이필터)</Label>
+              <Input value={detail.filPaper} onChange={(e) => setDetail("filPaper", e.target.value)} placeholder="예: V60 전용지" data-testid="input-fil-paper" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Dose</Label>
+              <Input value={detail.filDose} onChange={(e) => setDetail("filDose", e.target.value)} placeholder="예: 20g" data-testid="input-fil-dose" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Ground Size (EK43 기준)</Label>
+              <Input value={detail.filGrind} onChange={(e) => setDetail("filGrind", e.target.value)} placeholder="예: 9.0" data-testid="input-fil-grind" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Water</Label>
+              <Input value={detail.filWater} onChange={(e) => setDetail("filWater", e.target.value)} placeholder="예: 320g" data-testid="input-fil-water" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Temperature</Label>
+              <Input value={detail.filTemp} onChange={(e) => setDetail("filTemp", e.target.value)} placeholder="예: 92℃" data-testid="input-fil-temp" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px]">Time</Label>
+              <Input value={detail.filTime} onChange={(e) => setDetail("filTime", e.target.value)} placeholder="예: 2:30" data-testid="input-fil-time" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 이미지 업로더 */}

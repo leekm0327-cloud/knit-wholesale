@@ -140,6 +140,19 @@ export default function AdminProducts() {
         body: d.body,
         brewMethods: d.brewMethods,
         originProcess: d.originProcess,
+        // 권장 레시피 — 에스프레소/필터 (양식 공통, 입력한 값만 의미 있음)
+        espBasket: d.espBasket,
+        espTemp: d.espTemp,
+        espDose: d.espDose,
+        espYield: d.espYield,
+        espTime: d.espTime,
+        filDripper: d.filDripper,
+        filPaper: d.filPaper,
+        filDose: d.filDose,
+        filGrind: d.filGrind,
+        filWater: d.filWater,
+        filTemp: d.filTemp,
+        filTime: d.filTime,
       };
       const detailObj =
         tpl === "blend"
