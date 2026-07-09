@@ -10,68 +10,43 @@ export function AppHeader() {
   const { count } = useCart();
   const [location, navigate] = useLocation();
 
+  // 네비게이션 항목 (데스크톱 = 텍스트 / 모바일 = 아이콘, 로고 아래 별도 행)
+  const navItems = [
+    { href: "/catalog", label: "Catalog", icon: BookOpen, active: location === "/catalog" },
+    { href: "/orders", label: "Orders", icon: ClipboardList, active: location === "/orders" },
+    { href: "/sample", label: "Sample", icon: Gift, active: location === "/sample" },
+    { href: "/board", label: "Board", icon: MessageSquare, active: location.startsWith("/board") },
+    { href: "/news", label: "News", icon: Newspaper, active: location.startsWith("/news") },
+    { href: "/help", label: "Help", icon: HelpCircle, active: location.startsWith("/help") },
+  ];
+
   const navLink = (active: boolean) =>
     `font-ui text-xs font-semibold uppercase tracking-[0.12em] transition-colors ${
       active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
     }`;
 
+  const testId = (href: string) => `link-${href.slice(1)}`;
+
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
-      <div className="mx-auto grid h-16 max-w-[1280px] grid-cols-3 items-center px-5 sm:px-10">
-        {/* 좌측 메뉴 */}
-        <nav className="flex items-center gap-5">
-          <button
-            onClick={() => navigate("/catalog")}
-            data-testid="link-catalog"
-            className={navLink(location === "/catalog")}
-          >
-            <span className="hidden sm:inline">Catalog</span>
-            <BookOpen className="h-4 w-4 sm:hidden" />
-          </button>
-          <button
-            onClick={() => navigate("/orders")}
-            data-testid="link-orders"
-            className={navLink(location === "/orders")}
-          >
-            <span className="hidden sm:inline">Orders</span>
-            <ClipboardList className="h-4 w-4 sm:hidden" />
-          </button>
-          <button
-            onClick={() => navigate("/sample")}
-            data-testid="link-sample"
-            className={navLink(location === "/sample")}
-          >
-            <span className="hidden sm:inline">Sample</span>
-            <Gift className="h-4 w-4 sm:hidden" />
-          </button>
-          <button
-            onClick={() => navigate("/board")}
-            data-testid="link-board"
-            className={navLink(location.startsWith("/board"))}
-          >
-            <span className="hidden sm:inline">Board</span>
-            <MessageSquare className="h-4 w-4 sm:hidden" />
-          </button>
-          <button
-            onClick={() => navigate("/news")}
-            data-testid="link-news"
-            className={navLink(location.startsWith("/news"))}
-          >
-            <span className="hidden sm:inline">News</span>
-            <Newspaper className="h-4 w-4 sm:hidden" />
-          </button>
-          <button
-            onClick={() => navigate("/help")}
-            data-testid="link-help"
-            className={navLink(location.startsWith("/help"))}
-          >
-            <span className="hidden sm:inline">Help</span>
-            <HelpCircle className="h-4 w-4 sm:hidden" />
-          </button>
+      {/* 상단 행: 모바일 = 로고 + 액션 / 데스크톱 = 메뉴 + 로고 + 액션 */}
+      <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-5 sm:grid sm:grid-cols-3 sm:px-10">
+        {/* 데스크톱 좌측 메뉴 (모바일 숨김) */}
+        <nav className="hidden items-center gap-5 sm:flex">
+          {navItems.map((n) => (
+            <button
+              key={n.href}
+              onClick={() => navigate(n.href)}
+              data-testid={testId(n.href)}
+              className={navLink(n.active)}
+            >
+              {n.label}
+            </button>
+          ))}
         </nav>
 
-        {/* 중앙 로고 */}
-        <div className="flex justify-center">
+        {/* 로고: 모바일 = 좌측 / 데스크톱 = 중앙 */}
+        <div className="flex justify-start sm:justify-center">
           <Link href="/catalog" data-testid="link-home" className="-m-1 p-1">
             <Wordmark size={28} />
           </Link>
@@ -118,6 +93,24 @@ export function AppHeader() {
           </button>
         </div>
       </div>
+
+      {/* 모바일 메뉴 행 — 로고 아래에 별도로 표시 (데스크톱 숨김) */}
+      <nav className="flex items-center justify-center gap-6 border-t border-border px-4 py-2 sm:hidden">
+        {navItems.map((n) => {
+          const Icon = n.icon;
+          return (
+            <button
+              key={n.href}
+              onClick={() => navigate(n.href)}
+              data-testid={`m-${testId(n.href)}`}
+              aria-label={n.label}
+              className={`transition-colors ${n.active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Icon className="h-5 w-5" />
+            </button>
+          );
+        })}
+      </nav>
 
       {user && (
         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-border px-5 py-1.5 text-center font-ui text-[11px] tracking-wide text-muted-foreground sm:px-10">
