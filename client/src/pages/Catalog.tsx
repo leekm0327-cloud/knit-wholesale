@@ -9,7 +9,7 @@ import { useCart } from "@/lib/cart";
 import { won } from "@/lib/format";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product } from "@shared/schema";
-import { Plus, Minus, ShoppingCart, Star, ArrowRight } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Star } from "lucide-react";
 import { fmtDate } from "@/lib/format";
 
 // ③ 소식 카드 요약 타입
@@ -169,34 +169,28 @@ export default function Catalog() {
       <AppHeader />
 
       <main className="mx-auto max-w-[1200px] px-5 pb-56 pt-8 sm:px-8 sm:pb-60 sm:pt-10">
-        {/* ③ NEWS — 소식이 하나도 없으면 섹션 자체를 숨김. 최상단 노출 */}
+        {/* ③ NEWS — 소식이 하나도 없으면 섹션 자체를 숨김. 최상단 노출 (헤더 없이 카드만) */}
         {topNews.length > 0 && (
           <section className="mb-10" data-testid="section-catalog-news">
-            <div className="mb-3 flex items-end justify-between">
-              <h2 className="font-display text-lg font-bold uppercase tracking-[0.08em] text-foreground">NEWS</h2>
-              <Link href="/news" className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline" data-testid="link-news-more">
-                더보기 <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {topNews.map((n) => (
                 <Link
                   key={n.id}
                   href={`/news/${n.id}`}
-                  className="group overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-md"
+                  className="group relative block aspect-[3/2] overflow-hidden rounded-lg border border-border bg-muted"
                   data-testid={`card-news-${n.id}`}
                 >
-                  <div className="aspect-[3/2] w-full overflow-hidden bg-muted">
-                    {n.coverImage ? (
-                      <img src={n.coverImage} alt={n.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">니트커피</div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="line-clamp-2 text-sm font-semibold text-foreground">{n.title}</h3>
+                  {n.coverImage ? (
+                    <img src={n.coverImage} alt={n.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">니트커피</div>
+                  )}
+                  {/* 데스크톱: hover 시 / 모바일: 기본으로 사진이 어두워지며 제목 노출 */}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-md:opacity-100" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 opacity-0 transition-all duration-300 group-hover:opacity-100 max-md:opacity-100">
+                    <h3 className="line-clamp-2 text-sm font-semibold text-white drop-shadow-sm">{n.title}</h3>
                     {n.publishedAt ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{fmtDate(n.publishedAt)}</p>
+                      <p className="mt-1 text-xs text-white/80">{fmtDate(n.publishedAt)}</p>
                     ) : null}
                   </div>
                 </Link>
