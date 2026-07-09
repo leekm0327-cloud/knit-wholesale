@@ -26,7 +26,8 @@ export type DetailFields = {
   body: string;
   brewMethods: string;
   originProcess: string;
-  // 권장 레시피 — 에스프레소 (모두 선택 입력)
+  // 권장 레시피 — 에스프레소/필터 중 택1
+  recipeType: string; // "" | "espresso" | "filter"
   espBasket: string;
   espTemp: string;
   espDose: string;
@@ -60,6 +61,7 @@ export const emptyDetailFields: DetailFields = {
   body: "",
   brewMethods: "",
   originProcess: "",
+  recipeType: "",
   espBasket: "",
   espTemp: "",
   espDose: "",
@@ -161,15 +163,6 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
               data-testid="input-detail-blend-ratio"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">추천 사용처</Label>
-            <Input
-              value={detail.recommendedUse}
-              onChange={(e) => setDetail("recommendedUse", e.target.value)}
-              placeholder="예: 에스프레소, 라떼, 밀크 베이스"
-              data-testid="input-detail-recommended-use"
-            />
-          </div>
         </>
       ) : (
         <>
@@ -267,45 +260,6 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs">산미 (1~5)</Label>
-          <Select value={detail.acidity || undefined} onValueChange={(v) => setDetail("acidity", v)}>
-            <SelectTrigger className="h-9 text-xs" data-testid="select-detail-acidity">
-              <SelectValue placeholder="선택 안 함" />
-            </SelectTrigger>
-            <SelectContent>
-              {RATING_OPTIONS.map((n) => (
-                <SelectItem key={n} value={n}>{n}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">바디 (1~5)</Label>
-          <Select value={detail.body || undefined} onValueChange={(v) => setDetail("body", v)}>
-            <SelectTrigger className="h-9 text-xs" data-testid="select-detail-body">
-              <SelectValue placeholder="선택 안 함" />
-            </SelectTrigger>
-            <SelectContent>
-              {RATING_OPTIONS.map((n) => (
-                <SelectItem key={n} value={n}>{n}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label className="text-xs">추천 추출</Label>
-        <Input
-          value={detail.brewMethods}
-          onChange={(e) => setDetail("brewMethods", e.target.value)}
-          placeholder="예: 에스프레소, 핸드드립, 콜드브루"
-          data-testid="input-detail-brew-methods"
-        />
-      </div>
-
       <div className="space-y-1.5">
         <Label className="text-xs">원산지 · 가공</Label>
         <Input
@@ -316,25 +270,25 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs">상세 설명</Label>
-        <Textarea
-          value={detail.description}
-          onChange={(e) => setDetail("description", e.target.value)}
-          placeholder="원두에 대한 자세한 설명을 자유롭게 작성하세요"
-          rows={4}
-          data-testid="textarea-detail-description"
-        />
-      </div>
-
-      {/* 권장 레시피 (에스프레소 / 필터) — 둘 다 선택 입력, 비운 항목은 상세페이지에 표시되지 않음 */}
+      {/* 권장 레시피 — 에스프레소 / 필터 중 택1 (없음이면 표시 안 함) */}
       <div className="space-y-3 rounded-md border border-border bg-background p-3">
-        <Label className="text-xs font-semibold">
-          권장 레시피 <span className="font-normal text-muted-foreground">(선택 · 입력한 항목만 표시)</span>
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-semibold">권장 레시피</Label>
+          <div className="w-32">
+            <Select value={detail.recipeType || "none"} onValueChange={(v) => setDetail("recipeType", v === "none" ? "" : v)}>
+              <SelectTrigger className="h-8 text-xs" data-testid="select-recipe-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">없음</SelectItem>
+                <SelectItem value="espresso">에스프레소</SelectItem>
+                <SelectItem value="filter">필터</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-        <div className="space-y-2">
-          <p className="font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">에스프레소</p>
+        {detail.recipeType === "espresso" && (
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-[11px]">포터필터 바스켓</Label>
@@ -357,10 +311,9 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
               <Input value={detail.espTime} onChange={(e) => setDetail("espTime", e.target.value)} placeholder="예: 28초" data-testid="input-esp-time" />
             </div>
           </div>
-        </div>
+        )}
 
-        <div className="space-y-2">
-          <p className="font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">필터</p>
+        {detail.recipeType === "filter" && (
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-[11px]">Dripper</Label>
@@ -391,7 +344,11 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
               <Input value={detail.filTime} onChange={(e) => setDetail("filTime", e.target.value)} placeholder="예: 2:30" data-testid="input-fil-time" />
             </div>
           </div>
-        </div>
+        )}
+
+        {!detail.recipeType && (
+          <p className="text-[11px] text-muted-foreground">레시피 유형을 선택하면 입력란이 표시됩니다.</p>
+        )}
       </div>
 
       {/* 이미지 업로더 */}

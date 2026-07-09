@@ -136,11 +136,9 @@ export default function AdminProducts() {
       // B-1: 강화 필드(맛노트/산미/바디/추천추출/원산지·가공)는 양식 공통으로 포함
       const enriched = {
         tastingNotes: d.tastingNotes,
-        acidity: d.acidity,
-        body: d.body,
-        brewMethods: d.brewMethods,
         originProcess: d.originProcess,
-        // 권장 레시피 — 에스프레소/필터 (양식 공통, 입력한 값만 의미 있음)
+        // 권장 레시피 — 에스프레소/필터 중 택1 (양식 공통)
+        recipeType: d.recipeType,
         espBasket: d.espBasket,
         espTemp: d.espTemp,
         espDose: d.espDose,
@@ -162,8 +160,6 @@ export default function AdminProducts() {
               blendRatio: d.blendRatio,
               flavorNotes: d.flavorNotes,
               roastLevel: d.roastLevel,
-              recommendedUse: d.recommendedUse,
-              description: d.description,
               ...enriched,
             }
           : {
@@ -177,7 +173,6 @@ export default function AdminProducts() {
               altitude: d.altitude,
               flavorNotes: d.flavorNotes,
               roastLevel: d.roastLevel,
-              description: d.description,
               ...enriched,
             };
       const payload = {
@@ -316,10 +311,6 @@ export default function AdminProducts() {
                 <Label className="text-xs">정렬 순서</Label>
                 <Input type="number" value={form.sortOrder} onChange={(e) => set("sortOrder", e.target.value)} data-testid="input-product-sort" />
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">산지 / 설명</Label>
-              <Input value={form.origin} onChange={(e) => set("origin", e.target.value)} placeholder="예: 에티오피아 예가체프 / 블루베리, 플로럴" data-testid="input-product-origin" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">단가 (원)</Label>
