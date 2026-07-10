@@ -22,6 +22,16 @@ import { CheckCircle2, RotateCcw, Plus } from "lucide-react";
 
 const DAY = 1000 * 60 * 60 * 24;
 
+// 유효 주문 일자: 관리자가 지정한 ecountDate(YYYY-MM-DD)가 있으면 그 값을, 없으면 생성일(createdAt)
+function effectiveOrderTs(o: Order): number {
+  const ed = (o as any).ecountDate;
+  if (typeof ed === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ed)) {
+    const t = new Date(ed + "T00:00:00").getTime();
+    if (!Number.isNaN(t)) return t;
+  }
+  return o.createdAt;
+}
+
 export default function AdminOrders() {
   const [, navigate] = useLocation();
   const { data: orders, isLoading } = useQuery<Order[]>({
@@ -74,22 +84,23 @@ export default function AdminOrders() {
       }
       // 상태
       if (statusFilter !== "all" && o.status !== statusFilter) return false;
-      // 기간
-      if (dateRange === "1w" && o.createdAt < now - 7 * DAY) return false;
-      if (dateRange === "1m" && o.createdAt < now - 30 * DAY) return false;
-      if (dateRange === "3m" && o.createdAt < now - 90 * DAY) return false;
+      // 기간 (유효 주문 일자 기준)
+      const ts = effectiveOrderTs(o);
+      if (dateRange === "1w" && ts < now - 7 * DAY) return false;
+      if (dateRange === "1m" && ts < now - 30 * DAY) return false;
+      if (dateRange === "3m" && ts < now - 90 * DAY) return false;
       if (dateRange === "custom") {
         if (fromDate) {
           const fromTs = new Date(fromDate + "T00:00:00").getTime();
-          if (!Number.isNaN(fromTs) && o.createdAt < fromTs) return false;
+          if (!Number.isNaN(fromTs) && ts < fromTs) return false;
         }
         if (toDate) {
           const toTs = new Date(toDate + "T23:59:59").getTime();
-          if (!Number.isNaN(toTs) && o.createdAt > toTs) return false;
+          if (!Number.isNaN(toTs) && ts > toTs) return false;
         }
       }
       return true;
-    });
+    }).sort((a, b) => effectiveOrderTs(b) - effectiveOrderTs(a));
   }, [orders, query, statusFilter, dateRange, fromDate, toDate, quickOnly, sampleOnly]);
 
   return (
@@ -216,7 +227,7 @@ export default function AdminOrders() {
                           )}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
-                          {items[0]?.name}{items.length > 1 ? ` 외 ${items.length - 1}건` : ""} · {fmtDate(o.createdAt)}
+                          {items[0]?.name}{items.length > 1 ? ` 외 ${items.length - 1}건` : ""} · {fmtDate(effectiveOrderTs(o))}
                         </div>
                       </div>
                     </div>
