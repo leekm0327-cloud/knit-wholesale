@@ -634,7 +634,11 @@ async function saveSaleOnEcount(
   productCodeMap: Map<number, string>,
 ): Promise<{ ok: boolean; message: string; res: any }> {
   const items: OrderItem[] = JSON.parse(order.items);
-  const ioDate = ymdFromDate(new Date(order.createdAt));
+  // 관리자가 지정한 주문 일자(ecountDate, YYYY-MM-DD)가 있으면 그 날짜로, 없으면 주문 생성일 기준
+  const ioDate =
+    order.ecountDate && order.ecountDate.trim()
+      ? order.ecountDate.replace(/-/g, "")
+      : ymdFromDate(new Date(order.createdAt));
   const url = `${ctx.host}/OAPI/V2/Sale/SaveSale?SESSION_ID=${ctx.sid}`;
   // 원칙: 판매전표에는 거래처코드(CUST = 사업자등록번호)와 품목코드(PROD_CD)만 전송.
   // CUST_DES/PROD_DES 는 보내지 않음 — ECOUNT가 마스터 데이터에서 거래처명/품목명을 자동 매칭함.

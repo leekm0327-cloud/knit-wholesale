@@ -325,6 +325,8 @@ for (const [table, col] of [
   ["orders", "auto_purchase_id INTEGER"],
   // B-2: 샘플 주문 여부
   ["orders", "is_sample INTEGER NOT NULL DEFAULT 0"],
+  // 관리자 지정 주문 일자 (ECOUNT 전송 IO_DATE로 사용)
+  ["orders", "ecount_date TEXT NOT NULL DEFAULT ''"],
   // B-3: 사업자 검증/승인, 샘플 사용 여부
   ["customers", "biz_verified INTEGER NOT NULL DEFAULT 0"],
   ["customers", "sample_used INTEGER NOT NULL DEFAULT 0"],

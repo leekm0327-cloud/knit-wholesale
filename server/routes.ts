@@ -1519,7 +1519,7 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/orders/:id", requireAdmin, async (req, res) => {
-    const allowed = ["status", "trackingNo", "adminMemo", "desiredDate", "note", "quickRequest"];
+    const allowed = ["status", "trackingNo", "adminMemo", "desiredDate", "note", "quickRequest", "ecountDate"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     const order = await storage.getOrder(Number(req.params.id));
