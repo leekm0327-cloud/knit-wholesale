@@ -288,9 +288,6 @@ function EnrichedFields({ detail }: { detail: ProductDetail }) {
   return (
     <>
       <Field label="맛노트" value={d.tastingNotes} />
-      <RatingField label="산미" value={d.acidity} />
-      <RatingField label="바디" value={d.body} />
-      <Field label="추천 추출" value={d.brewMethods} />
       <Field label="원산지·가공" value={d.originProcess} />
     </>
   );
@@ -307,46 +304,45 @@ function RecipeRow({ label, value }: { label: string; value?: string }) {
   );
 }
 
-// 권장 레시피 섹션 — 에스프레소/필터 각각 값이 하나라도 있으면 표시
+// 권장 레시피 섹션 — recipeType(에스프레소/필터 중 택1)에 따라 해당 유형만 표시
 function RecipeSection({ detail }: { detail: ProductDetail }) {
   const d = detail as ProductDetail & {
+    recipeType?: string;
     espBasket?: string; espTemp?: string; espDose?: string; espYield?: string; espTime?: string;
     filDripper?: string; filPaper?: string; filDose?: string; filGrind?: string; filWater?: string; filTemp?: string; filTime?: string;
   };
-  const hasEsp = [d.espBasket, d.espTemp, d.espDose, d.espYield, d.espTime].some((v) => v && v.trim());
-  const hasFil = [d.filDripper, d.filPaper, d.filDose, d.filGrind, d.filWater, d.filTemp, d.filTime].some((v) => v && v.trim());
-  if (!hasEsp && !hasFil) return null;
+  const isEsp = d.recipeType === "espresso" && [d.espBasket, d.espTemp, d.espDose, d.espYield, d.espTime].some((v) => v && v.trim());
+  const isFil = d.recipeType === "filter" && [d.filDripper, d.filPaper, d.filDose, d.filGrind, d.filWater, d.filTemp, d.filTime].some((v) => v && v.trim());
+  if (!isEsp && !isFil) return null;
   return (
     <div className="mt-6 border-t border-border pt-6">
       <h3 className="mb-4 font-ui text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">권장 레시피</h3>
-      <div className="grid gap-6 sm:grid-cols-2">
-        {hasEsp && (
-          <div>
-            <h4 className="mb-2 font-display text-sm font-semibold text-foreground">에스프레소</h4>
-            <dl>
-              <RecipeRow label="포터필터 바스켓" value={d.espBasket} />
-              <RecipeRow label="Temperature" value={d.espTemp} />
-              <RecipeRow label="Dose" value={d.espDose} />
-              <RecipeRow label="Yield" value={d.espYield} />
-              <RecipeRow label="Time" value={d.espTime} />
-            </dl>
-          </div>
-        )}
-        {hasFil && (
-          <div>
-            <h4 className="mb-2 font-display text-sm font-semibold text-foreground">필터</h4>
-            <dl>
-              <RecipeRow label="Dripper" value={d.filDripper} />
-              <RecipeRow label="필터" value={d.filPaper} />
-              <RecipeRow label="Dose" value={d.filDose} />
-              <RecipeRow label="Ground Size (EK43 기준)" value={d.filGrind} />
-              <RecipeRow label="Water" value={d.filWater} />
-              <RecipeRow label="Temperature" value={d.filTemp} />
-              <RecipeRow label="Time" value={d.filTime} />
-            </dl>
-          </div>
-        )}
-      </div>
+      {isEsp && (
+        <div className="max-w-md">
+          <h4 className="mb-2 font-display text-sm font-semibold text-foreground">에스프레소</h4>
+          <dl>
+            <RecipeRow label="포터필터 바스켓" value={d.espBasket} />
+            <RecipeRow label="Temperature" value={d.espTemp} />
+            <RecipeRow label="Dose" value={d.espDose} />
+            <RecipeRow label="Yield" value={d.espYield} />
+            <RecipeRow label="Time" value={d.espTime} />
+          </dl>
+        </div>
+      )}
+      {isFil && (
+        <div className="max-w-md">
+          <h4 className="mb-2 font-display text-sm font-semibold text-foreground">필터</h4>
+          <dl>
+            <RecipeRow label="Dripper" value={d.filDripper} />
+            <RecipeRow label="필터" value={d.filPaper} />
+            <RecipeRow label="Dose" value={d.filDose} />
+            <RecipeRow label="Ground Size (EK43 기준)" value={d.filGrind} />
+            <RecipeRow label="Water" value={d.filWater} />
+            <RecipeRow label="Temperature" value={d.filTemp} />
+            <RecipeRow label="Time" value={d.filTime} />
+          </dl>
+        </div>
+      )}
     </div>
   );
 }
@@ -365,9 +361,6 @@ function DetailFields({
     return (
       <section>
         <h2 className="mb-4 font-display text-lg font-semibold tracking-tight text-foreground">상품 정보</h2>
-        <dl>
-          <Field label="원산지" value={origin} />
-        </dl>
         <p className="mt-4 text-xs text-muted-foreground">
           관리자가 상세 정보를 등록하면 이곳에 더 자세한 내용이 표시됩니다.
         </p>
@@ -384,15 +377,8 @@ function DetailFields({
           <Field label="블렌드 구성" value={d.blendRatio} />
           <Field label="향미 노트" value={d.flavorNotes} />
           <Field label="로스팅 레벨" value={d.roastLevel} />
-          <Field label="추천 사용처" value={d.recommendedUse} />
           <EnrichedFields detail={d} />
         </dl>
-        {d.description && d.description.trim() && (
-          <div className="mt-6 border-t border-border pt-6">
-            <h3 className="mb-3 font-ui text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">상세 설명</h3>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{d.description}</p>
-          </div>
-        )}
         <RecipeSection detail={d} />
       </section>
     );
@@ -413,12 +399,6 @@ function DetailFields({
         <Field label="로스팅 레벨" value={d.roastLevel} />
         <EnrichedFields detail={d} />
       </dl>
-      {d.description && d.description.trim() && (
-        <div className="mt-6 border-t border-border pt-6">
-          <h3 className="mb-3 font-ui text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">상세 설명</h3>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{d.description}</p>
-        </div>
-      )}
       <RecipeSection detail={d} />
     </section>
   );

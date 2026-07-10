@@ -7,9 +7,41 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { errMsg, CATEGORY_LABEL } from "@/lib/format";
+import { errMsg, CATEGORY_LABEL, won } from "@/lib/format";
 import type { Product } from "@shared/schema";
-import { ArrowLeft, Loader2, Check, PackageCheck } from "lucide-react";
+import { ArrowLeft, Loader2, Check, PackageCheck, ChevronDown } from "lucide-react";
+
+// 상품 detailJson에서 샘플 화면에 노출할 정보(블렌드 구성/향미 노트/권장 레시피)만 추출
+function parseSampleInfo(p: Product) {
+  let j: any = {};
+  try { j = p.detailJson ? JSON.parse(p.detailJson) : {}; } catch { j = {}; }
+  const s = (v: any) => (typeof v === "string" ? v : "");
+  const blendRatio = s(j.blendRatio);
+  const flavorNotes = s(j.flavorNotes);
+  const recipeType = s(j.recipeType);
+  let recipe: { label: string; rows: [string, string][] } | null = null;
+  if (recipeType === "espresso") {
+    const rows = ([
+      ["포터필터 바스켓", s(j.espBasket)], ["Temperature", s(j.espTemp)], ["Dose", s(j.espDose)], ["Yield", s(j.espYield)], ["Time", s(j.espTime)],
+    ] as [string, string][]).filter(([, v]) => v.trim());
+    if (rows.length) recipe = { label: "에스프레소", rows };
+  } else if (recipeType === "filter") {
+    const rows = ([
+      ["Dripper", s(j.filDripper)], ["필터", s(j.filPaper)], ["Dose", s(j.filDose)], ["Ground Size (EK43 기준)", s(j.filGrind)], ["Water", s(j.filWater)], ["Temperature", s(j.filTemp)], ["Time", s(j.filTime)],
+    ] as [string, string][]).filter(([, v]) => v.trim());
+    if (rows.length) recipe = { label: "필터", rows };
+  }
+  return { blendRatio, flavorNotes, recipe };
+}
+
+function SampleInfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[80px_1fr] gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-foreground">{value}</span>
+    </div>
+  );
+}
 
 // B-2: 샘플 신청 페이지 — 원두 최대 2종, 각 1kg 고정, 무료. 승인+미사용 고객만 신청 가능.
 const BEAN_CATEGORIES = ["blend", "decaf", "single"];
@@ -22,6 +54,16 @@ export default function SampleRequest() {
   const { toast } = useToast();
   const [selected, setSelected] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  function toggleExpand(id: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const { data: eligibility, isLoading: eligLoading } = useQuery<Eligibility>({
     queryKey: ["/api/sample/eligibility"],
@@ -113,28 +155,66 @@ export default function SampleRequest() {
               ) : (
                 beans.map((p) => {
                   const on = selected.includes(p.id);
+                  const open = expanded.has(p.id);
+                  const info = parseSampleInfo(p);
                   return (
                     <Card
                       key={p.id}
-                      onClick={() => toggle(p.id)}
-                      className={`flex cursor-pointer items-center gap-3 p-4 hover-elevate ${on ? "border-foreground" : ""}`}
+                      className={`p-4 ${on ? "border-foreground" : ""}`}
                       data-testid={`row-sample-${p.id}`}
                     >
                       <div
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border ${on ? "border-foreground bg-foreground text-background" : "border-border"}`}
+                        onClick={() => toggle(p.id)}
+                        className="-m-1 flex cursor-pointer items-center gap-3 rounded-sm p-1 hover-elevate"
                       >
-                        {on && <Check className="h-3.5 w-3.5" />}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">{p.name}</span>
-                          <span className="shrink-0 border border-border px-1.5 py-0.5 font-ui text-[10px] tracking-wide text-muted-foreground">
-                            {CATEGORY_LABEL[p.category] ?? p.category}
-                          </span>
+                        <div
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border ${on ? "border-foreground bg-foreground text-background" : "border-border"}`}
+                        >
+                          {on && <Check className="h-3.5 w-3.5" />}
                         </div>
-                        {p.origin && <div className="mt-0.5 truncate text-xs text-muted-foreground">{p.origin}</div>}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">{p.name}</span>
+                            <span className="shrink-0 border border-border px-1.5 py-0.5 font-ui text-[10px] tracking-wide text-muted-foreground">
+                              {CATEGORY_LABEL[p.category] ?? p.category}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-xs font-semibold text-muted-foreground">1kg · 무료</span>
                       </div>
-                      <span className="shrink-0 text-xs font-semibold text-muted-foreground">1kg · 무료</span>
+
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); toggleExpand(p.id); }}
+                        className="mt-2 inline-flex items-center gap-1 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground"
+                        data-testid={`button-sample-info-${p.id}`}
+                      >
+                        제품 정보
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {open && (
+                        <div className="mt-3 space-y-2 border-t border-border pt-3">
+                          <SampleInfoRow label="단가" value={won(p.price)} />
+                          {info.blendRatio && <SampleInfoRow label="블렌드 구성" value={info.blendRatio} />}
+                          {info.flavorNotes && <SampleInfoRow label="향미 노트" value={info.flavorNotes} />}
+                          {info.recipe && (
+                            <div className="pt-1">
+                              <div className="mb-1 font-ui text-[11px] font-semibold text-foreground">
+                                권장 레시피 · {info.recipe.label}
+                              </div>
+                              <dl className="space-y-0.5">
+                                {info.recipe.rows.map(([k, v]) => (
+                                  <div key={k} className="grid grid-cols-[120px_1fr] gap-2 text-xs">
+                                    <dt className="text-muted-foreground">{k}</dt>
+                                    <dd className="text-foreground">{v}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </Card>
                   );
                 })
