@@ -115,6 +115,7 @@ export const orders = sqliteTable("orders", {
   vat: integer("vat").notNull(), // 부가세
   totalAmount: integer("total_amount").notNull(), // 합계
   desiredDate: text("desired_date").notNull().default(""), // 희망 납품일
+  ecountDate: text("ecount_date").notNull().default(""), // 관리자 지정 주문 일자(YYYY-MM-DD). ECOUNT IO_DATE로 사용, 비면 createdAt 기준
   note: text("note").notNull().default(""), // 요청사항
   status: text("status").notNull().default("pending"), // pending | done | cancelled
   isSample: integer("is_sample").notNull().default(0), // B-2: 샘플 주문 여부 (1=샘플, 무료·5kg검증 제외)
