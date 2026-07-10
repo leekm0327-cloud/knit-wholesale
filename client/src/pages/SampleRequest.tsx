@@ -44,7 +44,8 @@ function SampleInfoRow({ label, value }: { label: string; value: string }) {
 }
 
 // B-2: 샘플 신청 페이지 — 원두 최대 2종, 각 1kg 고정, 무료. 승인+미사용 고객만 신청 가능.
-const BEAN_CATEGORIES = ["blend", "decaf", "single"];
+// 샘플 신청 대상: 블렌드 + 디카페인만 (싱글 오리진 제외)
+const BEAN_CATEGORIES = ["blend", "decaf"];
 const MAX_TYPES = 2;
 
 type Eligibility = { eligible: boolean; bizVerified: boolean; alreadyUsed: boolean; reason: string };
