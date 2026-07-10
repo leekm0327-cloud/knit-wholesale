@@ -28,6 +28,13 @@ import { orderToKakaoText } from "@/lib/kakaoFormat";
 import type { Order } from "@shared/schema";
 import { ArrowLeft, Printer, Loader2, CheckCircle2, RotateCcw, Link2, ScrollText, Pencil, XCircle, Copy } from "lucide-react";
 
+// epoch(ms) → "YYYY-MM-DD" (date input 기본값용)
+function toDateInputValue(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export default function AdminOrderDetail() {
   const [, params] = useRoute("/admin/orders/:id");
   const [, navigate] = useLocation();
@@ -41,6 +48,7 @@ export default function AdminOrderDetail() {
 
   const [trackingNo, setTrackingNo] = useState("");
   const [adminMemo, setAdminMemo] = useState("");
+  const [ecountDate, setEcountDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [sendingEcount, setSendingEcount] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -130,6 +138,8 @@ export default function AdminOrderDetail() {
     if (order) {
       setTrackingNo(order.trackingNo);
       setAdminMemo(order.adminMemo);
+      // 관리자 지정 일자가 있으면 그 값을, 없으면 주문 생성일을 기본 표시
+      setEcountDate((order as any).ecountDate || toDateInputValue(order.createdAt));
     }
   }, [order]);
 
@@ -272,6 +282,20 @@ export default function AdminOrderDetail() {
                   />
                 </div>
               )}
+
+              <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">
+                    주문 일자 <span className="font-normal text-muted-foreground">(ECOUNT 전송 시 이 날짜로 입력됩니다)</span>
+                  </Label>
+                  <Input type="date" value={ecountDate} onChange={(e) => setEcountDate(e.target.value)} data-testid="input-ecount-date" />
+                </div>
+                <div className="flex items-end">
+                  <Button variant="outline" onClick={() => patch({ ecountDate }, "주문 일자 저장됨")} disabled={saving} data-testid="button-save-ecount-date">
+                    날짜 저장
+                  </Button>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
                 <div className="space-y-1.5">
