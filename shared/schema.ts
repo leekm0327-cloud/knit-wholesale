@@ -468,6 +468,31 @@ export const newsBlockSchema = z.discriminatedUnion("type", [
 ]);
 export type NewsBlock = z.infer<typeof newsBlockSchema>;
 
+// ===== 홀세일 납품 문의 (비회원 공개 폼) =====
+export const wholesaleInquiries = sqliteTable("wholesale_inquiries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  businessName: text("business_name").notNull(), // 상호
+  contactName: text("contact_name").notNull().default(""), // 담당자
+  phone: text("phone").notNull(), // 연락처
+  email: text("email").notNull().default(""),
+  region: text("region").notNull().default(""), // 지역
+  volume: text("volume").notNull().default(""), // 예상 월 물량
+  message: text("message").notNull(), // 문의 내용
+  status: text("status").notNull().default("new"), // new | done
+  adminMemo: text("admin_memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+export type WholesaleInquiry = typeof wholesaleInquiries.$inferSelect;
+export const insertInquirySchema = z.object({
+  businessName: z.string().trim().min(1, "상호(업체명)를 입력해 주세요.").max(120),
+  contactName: z.string().trim().max(80).optional().default(""),
+  phone: z.string().trim().min(1, "연락처를 입력해 주세요.").max(60),
+  email: z.string().trim().max(120).optional().default(""),
+  region: z.string().trim().max(120).optional().default(""),
+  volume: z.string().trim().max(120).optional().default(""),
+  message: z.string().trim().min(1, "문의 내용을 입력해 주세요.").max(3000),
+});
+
 export const NEWS_STATUSES = ["draft", "published"] as const;
 
 // 생성: blocks는 배열로 받아 서버에서 JSON 직렬화
