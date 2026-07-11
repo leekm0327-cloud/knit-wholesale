@@ -9,7 +9,7 @@ import { useCart } from "@/lib/cart";
 import { won } from "@/lib/format";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Product } from "@shared/schema";
-import { Plus, Minus, ShoppingCart, Star } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Star, ChevronDown } from "lucide-react";
 import { fmtDate } from "@/lib/format";
 
 // ③ 소식 카드 요약 타입
@@ -68,6 +68,37 @@ function getProductFields(product: Product): ProductFields {
 
 function isBlendCategory(category: string): boolean {
   return category === "blend";
+}
+
+// Coffee Information 패널용: 기본 정보(구성/품종/가공방식/노트) + 권장 레시피(택1)
+function getCoffeeInfo(product: Product): {
+  rows: [string, string][];
+  recipe: { label: string; rows: [string, string][] } | null;
+} {
+  const f = getProductFields(product);
+  const rows: [string, string][] = [];
+  if (f.composition) rows.push(["구성", f.composition]);
+  if (f.variety) rows.push(["품종", f.variety]);
+  if (f.process) rows.push(["가공방식", f.process]);
+  if (f.notes) rows.push(["노트", f.notes]);
+
+  let recipe: { label: string; rows: [string, string][] } | null = null;
+  try {
+    const j = product.detailJson ? JSON.parse(product.detailJson) : {};
+    const s = (v: any) => (typeof v === "string" ? v : "");
+    if (j.recipeType === "espresso") {
+      const rr = ([
+        ["포터필터 바스켓", s(j.espBasket)], ["Temperature", s(j.espTemp)], ["Dose", s(j.espDose)], ["Yield", s(j.espYield)], ["Time", s(j.espTime)],
+      ] as [string, string][]).filter(([, v]) => v.trim());
+      if (rr.length) recipe = { label: "에스프레소", rows: rr };
+    } else if (j.recipeType === "filter") {
+      const rr = ([
+        ["Dripper", s(j.filDripper)], ["필터", s(j.filPaper)], ["Dose", s(j.filDose)], ["Ground Size (EK43 기준)", s(j.filGrind)], ["Water", s(j.filWater)], ["Temperature", s(j.filTemp)], ["Time", s(j.filTime)],
+      ] as [string, string][]).filter(([, v]) => v.trim());
+      if (rr.length) recipe = { label: "필터", rows: rr };
+    }
+  } catch {}
+  return { rows, recipe };
 }
 
 export default function Catalog() {
@@ -305,25 +336,11 @@ export default function Catalog() {
                 </h2>
                 <div className="mb-2 h-px bg-border" />
 
-                {/* 테이블 헤더 (데스크탑) — 카테고리별 컬럼 차별화 */}
-                {isBlendCategory(group.key) ? (
-                  <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(150px,1.0fr)_minmax(180px,1.6fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
-                    <div>상품명</div>
-                    <div>구성</div>
-                    <div>노트</div>
-                    <div className="text-right">공급가액</div>
-                    <div className="text-right">수량</div>
-                  </div>
-                ) : (
-                  <div className="hidden border-b border-border pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:grid lg:grid-cols-[minmax(170px,1.3fr)_minmax(110px,1fr)_minmax(110px,1fr)_minmax(160px,1.4fr)_110px_140px] lg:items-center lg:gap-4">
-                    <div>상품명</div>
-                    <div>품종</div>
-                    <div>가공방식</div>
-                    <div>노트</div>
-                    <div className="text-right">공급가액</div>
-                    <div className="text-right">수량</div>
-                  </div>
-                )}
+                {/* 목록 헤더 (데스크탑) — 상세 정보는 각 상품의 Coffee Information에서 확인 */}
+                <div className="hidden items-center justify-between border-b border-border pb-2 font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:flex">
+                  <span>상품명</span>
+                  <span>공급가액 · 수량</span>
+                </div>
 
                 <ul className="divide-y divide-border">
                   {group.items.map((p) => (
@@ -419,223 +436,92 @@ function ProductRow({
   onQtyChange: (qty: number) => void;
   onToggleFavorite: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const soldOut = product.available === 0;
   const unitPrice = (product as any).effectivePrice ?? product.price;
   const hasCustomPrice = Boolean((product as any).hasCustomPrice);
   const isFavorite = Boolean((product as any).isFavorite);
-  const fields = getProductFields(product);
-  const isBlend = isBlendCategory(product.category);
+  const info = getCoffeeInfo(product);
+  const hasInfo = info.rows.length > 0 || info.recipe !== null;
 
   return (
     <li
       className={`py-3 transition-colors ${soldOut ? "opacity-50" : ""}`}
       data-testid={`row-product-${product.id}`}
     >
-      {/* ===== 데스크탑 ===== */}
-      {isBlend ? (
-        // 블렌드: 상품명 / 구성 / 노트 / 가격 / 수량
-        <div className="hidden lg:grid lg:grid-cols-[minmax(150px,1.0fr)_minmax(180px,1.6fr)_minmax(180px,1.6fr)_110px_140px] lg:items-center lg:gap-4">
-          {/* 상품명 */}
-          <div className="min-w-0">
-            {soldOut && (
-              <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Sold out
-              </span>
-            )}
-            <div className="flex items-center gap-1.5">
-              <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
-              <Link href={`/products/${product.id}`}>
-                <a
-                  className="block min-w-0 text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
-                  data-testid={`link-product-${product.id}`}
-                >
-                  {product.name}
-                </a>
-              </Link>
-            </div>
-          </div>
-
-          {/* 구성 */}
-          <div className="min-w-0 text-xs text-muted-foreground">
-            {fields.composition || "—"}
-          </div>
-
-          {/* 노트 */}
-          <div className="min-w-0 text-xs text-muted-foreground">
-            {fields.notes || "—"}
-          </div>
-
-          {/* 공급가액 */}
-          <div
-            className="text-right font-ui text-sm tabular text-foreground"
-            data-testid={`text-price-${product.id}`}
-          >
-            {won(unitPrice)}
-            {hasCustomPrice && (
-              <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
-            )}
-          </div>
-
-          {/* 수량 컨트롤 */}
-          <div className="flex justify-end">
-            <QtyControl
-              productId={product.id}
-              qty={qty}
-              soldOut={soldOut}
-              onQtyChange={onQtyChange}
-            />
-          </div>
+      {/* 상단: 상품명 / 가격 / 수량 (한 줄, 반응형 공통) */}
+      <div className="flex items-center gap-3">
+        <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
+        <div className="min-w-0 flex-1">
+          {soldOut && (
+            <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              Sold out
+            </span>
+          )}
+          <Link href={`/products/${product.id}`}>
+            <a
+              className="block truncate text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+              data-testid={`link-product-${product.id}`}
+            >
+              {product.name}
+            </a>
+          </Link>
         </div>
-      ) : (
-        // 디카페인 / 싱글: 상품명 / 품종 / 가공방식 / 노트 / 가격 / 수량
-        <div className="hidden lg:grid lg:grid-cols-[minmax(170px,1.3fr)_minmax(110px,1fr)_minmax(110px,1fr)_minmax(160px,1.4fr)_110px_140px] lg:items-center lg:gap-4">
-          {/* 상품명 */}
-          <div className="min-w-0">
-            {soldOut && (
-              <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Sold out
-              </span>
-            )}
-            <div className="flex items-center gap-1.5">
-              <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
-              <Link href={`/products/${product.id}`}>
-                <a
-                  className="block min-w-0 text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
-                  data-testid={`link-product-${product.id}`}
-                >
-                  {product.name}
-                </a>
-              </Link>
-            </div>
-          </div>
-
-          {/* 품종 */}
-          <div className="min-w-0 text-xs text-muted-foreground">
-            {fields.variety || "—"}
-          </div>
-
-          {/* 가공방식 */}
-          <div className="min-w-0 text-xs text-muted-foreground">
-            {fields.process || "—"}
-          </div>
-
-          {/* 노트 */}
-          <div className="min-w-0 text-xs text-muted-foreground">
-            {fields.notes || "—"}
-          </div>
-
-          {/* 공급가액 */}
-          <div
-            className="text-right font-ui text-sm tabular text-foreground"
-            data-testid={`text-price-${product.id}`}
-          >
-            {won(unitPrice)}
-            {hasCustomPrice && (
-              <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
-            )}
-          </div>
-
-          {/* 수량 컨트롤 */}
-          <div className="flex justify-end">
-            <QtyControl
-              productId={product.id}
-              qty={qty}
-              soldOut={soldOut}
-              onQtyChange={onQtyChange}
-            />
-          </div>
+        <div className="shrink-0 text-right" data-testid={`text-price-${product.id}`}>
+          <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
+          {hasCustomPrice && (
+            <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
+          )}
         </div>
-      )}
-
-      {/* ===== 모바일 / 태블릿 ===== */}
-      <div className="lg:hidden">
-        {isBlend ? (
-          // 블렌드: 상품명 + 가격 한 줄
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
-              <div className="min-w-0">
-                {soldOut && (
-                  <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    Sold out
-                  </span>
-                )}
-                <Link href={`/products/${product.id}`}>
-                  <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
-                    {product.name}
-                  </a>
-                </Link>
-              </div>
-            </div>
-            <div className="shrink-0 text-right">
-              <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
-              {hasCustomPrice && (
-                <div className="text-[10px] text-teal-600">전용가</div>
-              )}
-            </div>
-          </div>
-        ) : (
-          // 디카페인 / 싱글: 카드형 (상품명+가격 / 품종 / 가공방식 / 노트)
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 flex-1 items-start gap-1.5">
-                <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
-                <div className="min-w-0">
-                  {soldOut && (
-                    <span className="mb-1 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                      Sold out
-                    </span>
-                  )}
-                  <Link href={`/products/${product.id}`}>
-                    <a className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 hover:decoration-current">
-                      {product.name}
-                    </a>
-                  </Link>
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
-                {hasCustomPrice && (
-                  <div className="text-[10px] text-teal-600">전용가</div>
-                )}
-              </div>
-            </div>
-
-            {/* 품종 / 가공방식 / 노트 — 줄 나눔 */}
-            <dl className="mt-2 space-y-1 text-xs">
-              {fields.variety && (
-                <div className="flex gap-2">
-                  <dt className="w-16 shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">품종</dt>
-                  <dd className="min-w-0 flex-1 text-foreground">{fields.variety}</dd>
-                </div>
-              )}
-              {fields.process && (
-                <div className="flex gap-2">
-                  <dt className="w-16 shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">가공방식</dt>
-                  <dd className="min-w-0 flex-1 text-foreground">{fields.process}</dd>
-                </div>
-              )}
-              {fields.notes && (
-                <div className="flex gap-2">
-                  <dt className="w-16 shrink-0 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">노트</dt>
-                  <dd className="min-w-0 flex-1 text-muted-foreground">{fields.notes}</dd>
-                </div>
-              )}
-            </dl>
-          </div>
-        )}
-
-        {/* 수량 컨트롤 — 공통 */}
-        <div className="mt-3 flex items-center justify-end">
-          <QtyControl
-            productId={product.id}
-            qty={qty}
-            soldOut={soldOut}
-            onQtyChange={onQtyChange}
-            compact
-          />
+        <div className="shrink-0">
+          <QtyControl productId={product.id} qty={qty} soldOut={soldOut} onQtyChange={onQtyChange} compact />
         </div>
       </div>
+
+      {/* Coffee Information — 접이식 */}
+      {hasInfo && (
+        <div className="mt-2 pl-7">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="inline-flex items-center gap-1 font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground"
+            data-testid={`button-coffee-info-${product.id}`}
+          >
+            Coffee Information
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+          {open && (
+            <div className="mt-2 max-w-2xl rounded-md border border-border bg-muted/20 p-3">
+              {info.rows.length > 0 && (
+                <dl className="space-y-1.5">
+                  {info.rows.map(([k, v]) => (
+                    <div key={k} className="grid grid-cols-[84px_1fr] gap-3 text-xs">
+                      <dt className="font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{k}</dt>
+                      <dd className="min-w-0 text-foreground">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              {info.recipe && (
+                <div className={info.rows.length > 0 ? "mt-3 border-t border-border pt-3" : ""}>
+                  <div className="mb-1.5 font-ui text-[11px] font-semibold text-foreground">
+                    권장 레시피 · {info.recipe.label}
+                  </div>
+                  <dl className="space-y-1">
+                    {info.recipe.rows.map(([k, v]) => (
+                      <div key={k} className="grid grid-cols-[130px_1fr] gap-3 text-xs">
+                        <dt className="text-muted-foreground">{k}</dt>
+                        <dd className="text-foreground">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </li>
   );
 }
