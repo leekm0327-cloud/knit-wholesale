@@ -815,18 +815,20 @@ export async function registerRoutes(
   app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
     const allOrders = await storage.listOrders();
     const allCustomers = await storage.listCustomers();
+    // 취소된 주문은 매출·집계에서 제외 (금액/건수 모두 실제 유효 주문 기준)
+    const activeOrders = allOrders.filter((o) => o.status !== "cancelled");
     const pending = allOrders.filter((o) => o.status === "pending").length;
-    const totalRevenue = allOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const totalRevenue = activeOrders.reduce((s, o) => s + o.totalAmount, 0);
 
     const monthly: Record<string, number> = {};
-    for (const o of allOrders) {
+    for (const o of activeOrders) {
       const d = new Date(o.createdAt);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       monthly[key] = (monthly[key] ?? 0) + o.totalAmount;
     }
 
     const byCustomer: Record<number, { orders: number; revenue: number }> = {};
-    for (const o of allOrders) {
+    for (const o of activeOrders) {
       byCustomer[o.customerId] = byCustomer[o.customerId] ?? { orders: 0, revenue: 0 };
       byCustomer[o.customerId].orders += 1;
       byCustomer[o.customerId].revenue += o.totalAmount;
@@ -840,7 +842,7 @@ export async function registerRoutes(
     }));
 
     res.json({
-      totalOrders: allOrders.length,
+      totalOrders: activeOrders.length,
       pendingOrders: pending,
       totalCustomers: allCustomers.length,
       totalRevenue,
