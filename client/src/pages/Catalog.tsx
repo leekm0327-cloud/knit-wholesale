@@ -267,6 +267,13 @@ export default function Catalog() {
           <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
             수량을 입력하고 담아 주세요. 단가는 공급가액 기준이며, 부가세 10%가 별도로 가산됩니다.
           </p>
+          <Link
+            href="/visit-setup"
+            data-testid="link-catalog-visit-setup"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-foreground bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background"
+          >
+            커피 세팅이 필요하신가요? <span aria-hidden="true">→</span>
+          </Link>
         </div>
 
         {/* 출고 안내 박스 */}
