@@ -287,7 +287,6 @@ function EnrichedFields({ detail }: { detail: ProductDetail }) {
   };
   return (
     <>
-      <Field label="맛노트" value={d.tastingNotes} />
       <Field label="원산지·가공" value={d.originProcess} />
     </>
   );

@@ -11,34 +11,45 @@ import { errMsg, CATEGORY_LABEL, won } from "@/lib/format";
 import type { Product } from "@shared/schema";
 import { ArrowLeft, Loader2, Check, PackageCheck, ChevronDown } from "lucide-react";
 
-// 상품 detailJson에서 샘플 화면에 노출할 정보(블렌드 구성/향미 노트/권장 레시피)만 추출
+// 상품 detailJson에서 Coffee Information용 정보(구성/품종/가공방식/노트/로스팅 레벨 + 권장 레시피) 추출
+// — 카탈로그의 Coffee Information과 동일한 양식
 function parseSampleInfo(p: Product) {
   let j: any = {};
   try { j = p.detailJson ? JSON.parse(p.detailJson) : {}; } catch { j = {}; }
   const s = (v: any) => (typeof v === "string" ? v : "");
-  const blendRatio = s(j.blendRatio);
-  const flavorNotes = s(j.flavorNotes);
+  const template = p.detailTemplate || (p.category === "blend" ? "blend" : "single");
+
+  const rows: [string, string][] = [];
+  if (template === "blend") {
+    if (s(j.blendRatio).trim()) rows.push(["구성", s(j.blendRatio)]);
+  } else {
+    if (s(j.variety).trim()) rows.push(["품종", s(j.variety)]);
+    if (s(j.process).trim()) rows.push(["가공방식", s(j.process)]);
+  }
+  if (s(j.flavorNotes).trim()) rows.push(["노트", s(j.flavorNotes)]);
+  if (s(j.roastLevel).trim()) rows.push(["로스팅 레벨", s(j.roastLevel)]);
+
   const recipeType = s(j.recipeType);
   let recipe: { label: string; rows: [string, string][] } | null = null;
   if (recipeType === "espresso") {
-    const rows = ([
+    const rr = ([
       ["포터필터 바스켓", s(j.espBasket)], ["Temperature", s(j.espTemp)], ["Dose", s(j.espDose)], ["Yield", s(j.espYield)], ["Time", s(j.espTime)],
     ] as [string, string][]).filter(([, v]) => v.trim());
-    if (rows.length) recipe = { label: "에스프레소", rows };
+    if (rr.length) recipe = { label: "에스프레소", rows: rr };
   } else if (recipeType === "filter") {
-    const rows = ([
+    const rr = ([
       ["Dripper", s(j.filDripper)], ["필터", s(j.filPaper)], ["Dose", s(j.filDose)], ["Ground Size (EK43 기준)", s(j.filGrind)], ["Water", s(j.filWater)], ["Temperature", s(j.filTemp)], ["Time", s(j.filTime)],
     ] as [string, string][]).filter(([, v]) => v.trim());
-    if (rows.length) recipe = { label: "필터", rows };
+    if (rr.length) recipe = { label: "필터", rows: rr };
   }
-  return { blendRatio, flavorNotes, recipe };
+  return { rows, recipe };
 }
 
 function SampleInfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[80px_1fr] gap-2 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-foreground">{value}</span>
+    <div className="grid grid-cols-[84px_1fr] gap-3 text-xs">
+      <span className="font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-foreground">{value}</span>
     </div>
   );
 }
@@ -190,15 +201,16 @@ export default function SampleRequest() {
                         className="mt-2 inline-flex items-center gap-1 font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground transition-colors hover:text-foreground"
                         data-testid={`button-sample-info-${p.id}`}
                       >
-                        제품 정보
+                        Coffee Information
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
                       </button>
 
                       {open && (
                         <div className="mt-3 space-y-2 border-t border-border pt-3">
-                          <SampleInfoRow label="단가" value={won(p.price)} />
-                          {info.blendRatio && <SampleInfoRow label="블렌드 구성" value={info.blendRatio} />}
-                          {info.flavorNotes && <SampleInfoRow label="향미 노트" value={info.flavorNotes} />}
+                          <SampleInfoRow label="원래 납품가" value={won(p.price)} />
+                          {info.rows.map(([k, v]) => (
+                            <SampleInfoRow key={k} label={k} value={v} />
+                          ))}
                           {info.recipe && (
                             <div className="pt-1">
                               <div className="mb-1 font-ui text-[11px] font-semibold text-foreground">

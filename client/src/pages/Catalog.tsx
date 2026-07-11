@@ -33,7 +33,8 @@ type ProductFields = {
   composition?: string; // 블렌드: 구성 (blendRatio)
   variety?: string;     // 디카페인/싱글: 품종
   process?: string;     // 디카페인/싱글: 가공방식
-  notes?: string;       // 공통: 노트 (flavorNotes · roastLevel)
+  notes?: string;       // 공통: 노트 (향미 노트 = flavorNotes)
+  roastLevel?: string;  // 공통: 로스팅 레벨
 };
 
 function getProductFields(product: Product): ProductFields {
@@ -42,17 +43,15 @@ function getProductFields(product: Product): ProductFields {
     const json = JSON.parse(product.detailJson);
     const template = product.detailTemplate || (product.category === "blend" ? "blend" : "single");
 
-    // 노트 = 맛노트 + flavorNotes + roastLevel (있는 것끼리 · 로 연결)
-    const noteParts: string[] = [];
-    if (json.tastingNotes) noteParts.push(String(json.tastingNotes));
-    if (json.flavorNotes) noteParts.push(String(json.flavorNotes));
-    if (json.roastLevel) noteParts.push(String(json.roastLevel));
-    const notes = noteParts.length > 0 ? noteParts.join(" · ") : undefined;
+    // 노트 = 향미 노트(flavorNotes)만. 로스팅 레벨은 별도 항목으로 분리.
+    const notes = json.flavorNotes ? String(json.flavorNotes) : undefined;
+    const roastLevel = json.roastLevel ? String(json.roastLevel) : undefined;
 
     if (template === "blend") {
       return {
         composition: json.blendRatio || undefined,
         notes,
+        roastLevel,
       };
     }
     // single / decaf
@@ -60,6 +59,7 @@ function getProductFields(product: Product): ProductFields {
       variety: json.variety || undefined,
       process: json.process || undefined,
       notes,
+      roastLevel,
     };
   } catch {
     return {};
@@ -81,6 +81,7 @@ function getCoffeeInfo(product: Product): {
   if (f.variety) rows.push(["품종", f.variety]);
   if (f.process) rows.push(["가공방식", f.process]);
   if (f.notes) rows.push(["노트", f.notes]);
+  if (f.roastLevel) rows.push(["로스팅 레벨", f.roastLevel]);
 
   let recipe: { label: string; rows: [string, string][] } | null = null;
   try {
