@@ -48,7 +48,7 @@ export default function Login() {
         <StackedLogo size={88} className="mb-6" />
         <p className="eyebrow mb-3">Wholesale</p>
         <h1 className="font-display text-3xl font-medium tracking-tight text-foreground">
-          거래처 발주 시스템
+          니트커피 파트너스
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           니트커피 도매 거래처 전용 주문 공간
