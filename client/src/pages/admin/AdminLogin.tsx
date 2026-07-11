@@ -69,7 +69,7 @@ export default function AdminLogin() {
       {/* #1 거래처 로그인 이동 링크 — 거래처 로그인의 "ADMIN LOGIN" 링크와 대칭 형태 */}
       <p className="mt-7 text-center font-ui text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
         <Link href="/login" data-testid="link-customer-login" className="hover:text-foreground">
-          거래처 발주 시스템 로그인 →
+          니트커피 파트너스 로그인 →
         </Link>
       </p>
     </div>
