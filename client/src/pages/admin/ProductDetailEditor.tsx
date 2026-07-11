@@ -249,17 +249,6 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
         />
       </div>
 
-      {/* B-1: 원두 상세정보 강화 */}
-      <div className="space-y-1.5">
-        <Label className="text-xs">맛노트</Label>
-        <Input
-          value={detail.tastingNotes}
-          onChange={(e) => setDetail("tastingNotes", e.target.value)}
-          placeholder="예: 밀크 초콜릿, 캐러멜, 은은한 견과류"
-          data-testid="input-detail-tasting-notes"
-        />
-      </div>
-
       <div className="space-y-1.5">
         <Label className="text-xs">원산지 · 가공</Label>
         <Input
