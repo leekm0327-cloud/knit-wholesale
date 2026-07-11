@@ -118,6 +118,10 @@ export default function Login() {
           아직 거래처 등록 전이신가요?{" "}
           <Link href="/register" data-testid="link-register" className="font-semibold text-foreground underline underline-offset-2">거래처 가입</Link>
         </div>
+        <div className="mt-3 text-center text-xs text-muted-foreground">
+          도매 납품을 검토 중이신가요?{" "}
+          <Link href="/inquiry" data-testid="link-inquiry" className="font-semibold text-teal-700 underline underline-offset-2">홀세일 납품 문의</Link>
+        </div>
         {/* #3 멀티 계정 안내: 여러 지점을 운영하는 사장님을 위한 설명 */}
         <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground/80">
           여러 지점을 운영하시나요? 각 지점 상호로 한 번씩 로그인해 두면,
