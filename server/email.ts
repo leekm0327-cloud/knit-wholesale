@@ -455,3 +455,43 @@ export async function sendOrderMergedEmail(payload: OrderMergedEmailPayload) {
     text,
   });
 }
+
+// ===== 홀세일 납품 문의 관리자 알림 =====
+export async function sendWholesaleInquiryEmail(payload: {
+  businessName: string;
+  contactName?: string;
+  phone: string;
+  email?: string;
+  region?: string;
+  volume?: string;
+  message: string;
+}) {
+  if (!NOTIFY_TO) {
+    console.warn("[email] NOTIFY_TO 미설정 — 납품 문의 알림 건너뜀");
+    return;
+  }
+  const esc = (s: string) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const rows: [string, string][] = [
+    ["상호", payload.businessName],
+    ["담당자", payload.contactName || "-"],
+    ["연락처", payload.phone],
+    ["이메일", payload.email || "-"],
+    ["지역", payload.region || "-"],
+    ["예상 월 물량", payload.volume || "-"],
+  ];
+  const html = `<div style="font-family:sans-serif;max-width:560px">
+    <h2 style="margin:0 0 12px">홀세일 납품 문의</h2>
+    <table style="border-collapse:collapse;width:100%;font-size:14px">
+    ${rows
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:6px 10px;color:#888;white-space:nowrap">${k}</td><td style="padding:6px 10px;font-weight:600">${esc(v)}</td></tr>`,
+      )
+      .join("")}
+    </table>
+    <div style="margin-top:14px;padding:14px;background:#f5f2ec;border-radius:8px;white-space:pre-wrap;font-size:14px">${esc(payload.message)}</div>
+    <p style="margin-top:16px;font-size:12px;color:#999">관리자 &gt; 납품 문의 에서 확인하세요.</p>
+  </div>`;
+  const text = `홀세일 납품 문의\n상호: ${payload.businessName}\n담당자: ${payload.contactName || "-"}\n연락처: ${payload.phone}\n이메일: ${payload.email || "-"}\n지역: ${payload.region || "-"}\n예상 월 물량: ${payload.volume || "-"}\n\n${payload.message}`;
+  await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] 홀세일 납품 문의 — ${payload.businessName}`, html, text });
+}

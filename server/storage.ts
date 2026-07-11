@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -17,6 +17,7 @@ import type {
   PostWithMeta,
   PostCategory,
   News,
+  WholesaleInquiry,
   CustomerPrice,
   Favorite,
   ActivityLog,
@@ -312,6 +313,20 @@ CREATE TABLE IF NOT EXISTS news (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_news_status ON news(status, pinned DESC, published_at DESC);
+
+CREATE TABLE IF NOT EXISTS wholesale_inquiries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_name TEXT NOT NULL,
+  contact_name TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  region TEXT NOT NULL DEFAULT '',
+  volume TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new',
+  admin_memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
 `);
 
 // ===== 멱등 컬럼 추가 마이그레이션 =====
@@ -576,6 +591,11 @@ export interface IStorage {
   updateNews(id: number, patch: Partial<News>): Promise<News | undefined>;
   deleteNews(id: number): Promise<void>;
   incrementNewsView(id: number): Promise<void>;
+  // 홀세일 납품 문의
+  createInquiry(i: Omit<WholesaleInquiry, "id" | "createdAt" | "status" | "adminMemo">): Promise<WholesaleInquiry>;
+  listInquiries(): Promise<WholesaleInquiry[]>;
+  getInquiry(id: number): Promise<WholesaleInquiry | undefined>;
+  updateInquiry(id: number, patch: Partial<WholesaleInquiry>): Promise<WholesaleInquiry | undefined>;
   // comments
   listComments(postId: number): Promise<Comment[]>;
   createComment(c: Omit<Comment, "id" | "createdAt">): Promise<Comment>;
@@ -1573,6 +1593,30 @@ export class DatabaseStorage implements IStorage {
   async incrementNewsView(id: number) {
     sqlite.prepare("UPDATE news SET view_count = view_count + 1 WHERE id = ?").run(id);
   }
+
+  // 홀세일 납품 문의
+  async createInquiry(i: Omit<WholesaleInquiry, "id" | "createdAt" | "status" | "adminMemo">): Promise<WholesaleInquiry> {
+    return db
+      .insert(wholesaleInquiries)
+      .values({ ...i, status: "new", adminMemo: "", createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async listInquiries(): Promise<WholesaleInquiry[]> {
+    return db.select().from(wholesaleInquiries).orderBy(desc(wholesaleInquiries.createdAt)).all();
+  }
+  async getInquiry(id: number) {
+    return db.select().from(wholesaleInquiries).where(eq(wholesaleInquiries.id, id)).get();
+  }
+  async updateInquiry(id: number, patch: Partial<WholesaleInquiry>): Promise<WholesaleInquiry | undefined> {
+    return db
+      .update(wholesaleInquiries)
+      .set(patch)
+      .where(eq(wholesaleInquiries.id, id))
+      .returning()
+      .get();
+  }
+
   async listComments(postId: number): Promise<Comment[]> {
     return db.select().from(comments).where(eq(comments.postId, postId)).orderBy(asc(comments.createdAt)).all();
   }

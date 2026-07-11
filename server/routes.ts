@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { storage, seed, seedFixedCostItems, seedPersonalCategories, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
-import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail } from "./email";
+import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
@@ -20,6 +20,7 @@ import {
   createOrderSchema,
   adminCreateOrderSchema,
   createNewsSchema,
+  insertInquirySchema,
   updateNewsSchema,
   updateOrderItemsSchema,
   insertProductSchema,
@@ -2215,6 +2216,46 @@ export async function registerRoutes(
       summary: `소식 삭제 (${existing.title})`,
     });
     res.json({ ok: true });
+  });
+
+  // ===== 홀세일 납품 문의 =====
+  // 공개(비회원) 제출
+  app.post("/api/inquiry", async (req, res) => {
+    const parsed = insertInquirySchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const d = parsed.data;
+    const item = await storage.createInquiry({
+      businessName: d.businessName,
+      contactName: d.contactName ?? "",
+      phone: d.phone,
+      email: d.email ?? "",
+      region: d.region ?? "",
+      volume: d.volume ?? "",
+      message: d.message,
+    });
+    // 관리자 이메일 알림 (실패해도 접수는 정상 처리)
+    try {
+      await sendWholesaleInquiryEmail(d);
+    } catch (e: any) {
+      console.warn("[inquiry] 알림 메일 실패:", e?.message ?? e);
+    }
+    res.json({ ok: true, id: item.id });
+  });
+  // 관리자 목록
+  app.get("/api/admin/inquiries", requireAdmin, async (_req, res) => {
+    res.json(await storage.listInquiries());
+  });
+  // 관리자 상태/메모 수정
+  app.patch("/api/admin/inquiries/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const patch: any = {};
+    if (req.body.status === "new" || req.body.status === "done") patch.status = req.body.status;
+    if (typeof req.body.adminMemo === "string") patch.adminMemo = req.body.adminMemo;
+    const updated = await storage.updateInquiry(id, patch);
+    if (!updated) return res.status(404).json({ message: "문의를 찾을 수 없습니다." });
+    res.json(updated);
   });
 
   // ===== Board (게시판) =====
