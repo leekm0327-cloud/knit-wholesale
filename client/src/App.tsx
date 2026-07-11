@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import Inquiry from "@/pages/Inquiry";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Catalog from "@/pages/Catalog";
@@ -54,6 +55,7 @@ import AdminExpenses from "@/pages/admin/AdminExpenses";
 import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
 import AdminPersonalLedger from "@/pages/admin/AdminPersonalLedger";
 import AdminKakao from "@/pages/admin/AdminKakao";
+import AdminInquiries from "@/pages/admin/AdminInquiries";
 import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
@@ -90,6 +92,7 @@ function AppRouter() {
       <Route path="/register" component={Register} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password/:token" component={ResetPassword} />
+      <Route path="/inquiry" component={Inquiry} />
 
       <Route path="/catalog">
         <RequireCustomer><Catalog /></RequireCustomer>
@@ -157,6 +160,7 @@ function AppRouter() {
       <Route path="/admin/fixed-cost-items" component={AdminFixedCostItems} />
       <Route path="/admin/personal-ledger" component={AdminPersonalLedger} />
       <Route path="/admin/kakao" component={AdminKakao} />
+      <Route path="/admin/inquiries" component={AdminInquiries} />
 
       <Route component={NotFound} />
     </Switch>
