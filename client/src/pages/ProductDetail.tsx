@@ -39,6 +39,20 @@ function defaultTemplate(category: string): "blend" | "single" {
   return category === "blend" ? "blend" : "single";
 }
 
+// 블렌드 구성 항목 파싱 (카탈로그/샘플과 동일)
+function parseBlendComponents(raw: any): { name: string; ratio: string }[] {
+  let arr = raw;
+  if (typeof raw === "string") { try { arr = JSON.parse(raw || "[]"); } catch { return []; } }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x: any) => ({ name: String(x?.name ?? "").trim(), ratio: String(x?.ratio ?? "").trim() }))
+    .filter((c) => c.name || c.ratio);
+}
+function fmtRatio(r: string): string {
+  const t = r.trim();
+  return t ? (/%$/.test(t) ? t : `${t}%`) : "";
+}
+
 export default function ProductDetail() {
   const [, params] = useRoute<{ id: string }>("/products/:id");
   const productId = params ? Number(params.id) : NaN;
@@ -369,11 +383,25 @@ function DetailFields({
 
   if (template === "blend") {
     const d = detail as Extract<ProductDetail, { template: "blend" }>;
+    const comps = parseBlendComponents((d as any).blendComponents);
     return (
       <section>
         <h2 className="mb-4 font-display text-lg font-semibold tracking-tight text-foreground">블렌드 정보</h2>
+        {comps.length > 0 && (
+          <div className="mb-4">
+            <h3 className="mb-2 font-ui text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">블렌드 구성</h3>
+            <ul className="divide-y divide-border border-y border-border">
+              {comps.map((c, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-4 py-2.5 text-sm">
+                  <span className="min-w-0 text-foreground">{c.name}</span>
+                  {c.ratio && <span className="shrink-0 tabular text-muted-foreground">{fmtRatio(c.ratio)}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <dl>
-          <Field label="블렌드 구성" value={d.blendRatio} />
+          {comps.length === 0 && <Field label="블렌드 구성" value={d.blendRatio} />}
           <Field label="향미 노트" value={d.flavorNotes} />
           <Field label="로스팅 레벨" value={d.roastLevel} />
           <EnrichedFields detail={d} />

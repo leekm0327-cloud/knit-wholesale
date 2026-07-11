@@ -11,17 +11,31 @@ import { errMsg, CATEGORY_LABEL, won } from "@/lib/format";
 import type { Product } from "@shared/schema";
 import { ArrowLeft, Loader2, Check, PackageCheck, ChevronDown } from "lucide-react";
 
-// 상품 detailJson에서 Coffee Information용 정보(구성/품종/가공방식/노트/로스팅 레벨 + 권장 레시피) 추출
-// — 카탈로그의 Coffee Information과 동일한 양식
+// 블렌드 구성 항목 파싱 (카탈로그와 동일)
+function parseBlendComponents(raw: any): { name: string; ratio: string }[] {
+  let arr = raw;
+  if (typeof raw === "string") { try { arr = JSON.parse(raw || "[]"); } catch { return []; } }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x: any) => ({ name: String(x?.name ?? "").trim(), ratio: String(x?.ratio ?? "").trim() }))
+    .filter((c) => c.name || c.ratio);
+}
+function fmtRatio(r: string): string {
+  const t = r.trim();
+  return t ? (/%$/.test(t) ? t : `${t}%`) : "";
+}
+
+// 상품 detailJson에서 Coffee Information용 정보 추출 — 카탈로그와 동일 양식
 function parseSampleInfo(p: Product) {
   let j: any = {};
   try { j = p.detailJson ? JSON.parse(p.detailJson) : {}; } catch { j = {}; }
   const s = (v: any) => (typeof v === "string" ? v : "");
   const template = p.detailTemplate || (p.category === "blend" ? "blend" : "single");
+  const components = parseBlendComponents(j.blendComponents);
 
   const rows: [string, string][] = [];
   if (template === "blend") {
-    if (s(j.blendRatio).trim()) rows.push(["구성", s(j.blendRatio)]);
+    if (components.length === 0 && s(j.blendRatio).trim()) rows.push(["구성", s(j.blendRatio)]);
   } else {
     if (s(j.variety).trim()) rows.push(["품종", s(j.variety)]);
     if (s(j.process).trim()) rows.push(["가공방식", s(j.process)]);
@@ -42,7 +56,7 @@ function parseSampleInfo(p: Product) {
     ] as [string, string][]).filter(([, v]) => v.trim());
     if (rr.length) recipe = { label: "필터", rows: rr };
   }
-  return { rows, recipe };
+  return { components, rows, recipe };
 }
 
 function SampleInfoRow({ label, value }: { label: string; value: string }) {
@@ -208,6 +222,19 @@ export default function SampleRequest() {
                       {open && (
                         <div className="mt-3 space-y-2 border-t border-border pt-3">
                           <SampleInfoRow label="원래 납품가" value={won(p.price)} />
+                          {info.components.length > 0 && (
+                            <div>
+                              <div className="mb-1 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">구성</div>
+                              <ul className="space-y-0.5">
+                                {info.components.map((c, i) => (
+                                  <li key={i} className="flex items-baseline justify-between gap-3 text-xs">
+                                    <span className="min-w-0 text-foreground">{c.name}</span>
+                                    {c.ratio && <span className="shrink-0 tabular text-muted-foreground">{fmtRatio(c.ratio)}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           {info.rows.map(([k, v]) => (
                             <SampleInfoRow key={k} label={k} value={v} />
                           ))}

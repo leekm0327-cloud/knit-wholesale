@@ -70,36 +70,61 @@ function isBlendCategory(category: string): boolean {
   return category === "blend";
 }
 
-// Coffee Information 패널용: 기본 정보(구성/품종/가공방식/노트) + 권장 레시피(택1)
+// 블렌드 구성 항목 파싱: detailJson.blendComponents(JSON 문자열 또는 배열) → [{name, ratio}]
+function parseBlendComponents(raw: any): { name: string; ratio: string }[] {
+  let arr = raw;
+  if (typeof raw === "string") {
+    try { arr = JSON.parse(raw || "[]"); } catch { return []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x: any) => ({ name: String(x?.name ?? "").trim(), ratio: String(x?.ratio ?? "").trim() }))
+    .filter((c) => c.name || c.ratio);
+}
+
+// 비율 표기: 숫자만 있으면 % 붙임
+function fmtRatio(r: string): string {
+  const t = r.trim();
+  if (!t) return "";
+  return /%$/.test(t) ? t : `${t}%`;
+}
+
+// Coffee Information 패널용: 블렌드 구성(components) + 기본 정보(품종/가공방식/노트/로스팅레벨) + 권장 레시피(택1)
 function getCoffeeInfo(product: Product): {
+  components: { name: string; ratio: string }[];
   rows: [string, string][];
   recipe: { label: string; rows: [string, string][] } | null;
 } {
-  const f = getProductFields(product);
+  let j: any = {};
+  try { j = product.detailJson ? JSON.parse(product.detailJson) : {}; } catch {}
+  const s = (v: any) => (typeof v === "string" ? v : "");
+  const template = product.detailTemplate || (product.category === "blend" ? "blend" : "single");
+  const components = parseBlendComponents(j.blendComponents);
+
   const rows: [string, string][] = [];
-  if (f.composition) rows.push(["구성", f.composition]);
-  if (f.variety) rows.push(["품종", f.variety]);
-  if (f.process) rows.push(["가공방식", f.process]);
-  if (f.notes) rows.push(["노트", f.notes]);
-  if (f.roastLevel) rows.push(["로스팅 레벨", f.roastLevel]);
+  if (template === "blend") {
+    // 구성은 components로 별도 표시. 레거시 자유입력만 있으면 한 줄로.
+    if (components.length === 0 && s(j.blendRatio).trim()) rows.push(["구성", s(j.blendRatio)]);
+  } else {
+    if (s(j.variety).trim()) rows.push(["품종", s(j.variety)]);
+    if (s(j.process).trim()) rows.push(["가공방식", s(j.process)]);
+  }
+  if (s(j.flavorNotes).trim()) rows.push(["노트", s(j.flavorNotes)]);
+  if (s(j.roastLevel).trim()) rows.push(["로스팅 레벨", s(j.roastLevel)]);
 
   let recipe: { label: string; rows: [string, string][] } | null = null;
-  try {
-    const j = product.detailJson ? JSON.parse(product.detailJson) : {};
-    const s = (v: any) => (typeof v === "string" ? v : "");
-    if (j.recipeType === "espresso") {
-      const rr = ([
-        ["포터필터 바스켓", s(j.espBasket)], ["Temperature", s(j.espTemp)], ["Dose", s(j.espDose)], ["Yield", s(j.espYield)], ["Time", s(j.espTime)],
-      ] as [string, string][]).filter(([, v]) => v.trim());
-      if (rr.length) recipe = { label: "에스프레소", rows: rr };
-    } else if (j.recipeType === "filter") {
-      const rr = ([
-        ["Dripper", s(j.filDripper)], ["필터", s(j.filPaper)], ["Dose", s(j.filDose)], ["Ground Size (EK43 기준)", s(j.filGrind)], ["Water", s(j.filWater)], ["Temperature", s(j.filTemp)], ["Time", s(j.filTime)],
-      ] as [string, string][]).filter(([, v]) => v.trim());
-      if (rr.length) recipe = { label: "필터", rows: rr };
-    }
-  } catch {}
-  return { rows, recipe };
+  if (j.recipeType === "espresso") {
+    const rr = ([
+      ["포터필터 바스켓", s(j.espBasket)], ["Temperature", s(j.espTemp)], ["Dose", s(j.espDose)], ["Yield", s(j.espYield)], ["Time", s(j.espTime)],
+    ] as [string, string][]).filter(([, v]) => v.trim());
+    if (rr.length) recipe = { label: "에스프레소", rows: rr };
+  } else if (j.recipeType === "filter") {
+    const rr = ([
+      ["Dripper", s(j.filDripper)], ["필터", s(j.filPaper)], ["Dose", s(j.filDose)], ["Ground Size (EK43 기준)", s(j.filGrind)], ["Water", s(j.filWater)], ["Temperature", s(j.filTemp)], ["Time", s(j.filTime)],
+    ] as [string, string][]).filter(([, v]) => v.trim());
+    if (rr.length) recipe = { label: "필터", rows: rr };
+  }
+  return { components, rows, recipe };
 }
 
 export default function Catalog() {
@@ -443,7 +468,7 @@ function ProductRow({
   const hasCustomPrice = Boolean((product as any).hasCustomPrice);
   const isFavorite = Boolean((product as any).isFavorite);
   const info = getCoffeeInfo(product);
-  const hasInfo = info.rows.length > 0 || info.recipe !== null;
+  const hasInfo = info.components.length > 0 || info.rows.length > 0 || info.recipe !== null;
 
   return (
     <li
@@ -493,7 +518,20 @@ function ProductRow({
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
           </button>
           {open && (
-            <div className="mt-2 max-w-2xl rounded-md border border-border bg-muted/20 p-3">
+            <div className="mt-2 max-w-2xl space-y-3 rounded-md border border-border bg-muted/20 p-3">
+              {info.components.length > 0 && (
+                <div>
+                  <div className="mb-1.5 font-ui text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">구성</div>
+                  <ul className="space-y-1">
+                    {info.components.map((c, i) => (
+                      <li key={i} className="flex items-baseline justify-between gap-3 text-xs">
+                        <span className="min-w-0 text-foreground">{c.name}</span>
+                        {c.ratio && <span className="shrink-0 tabular text-muted-foreground">{fmtRatio(c.ratio)}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {info.rows.length > 0 && (
                 <dl className="space-y-1.5">
                   {info.rows.map(([k, v]) => (
@@ -505,7 +543,7 @@ function ProductRow({
                 </dl>
               )}
               {info.recipe && (
-                <div className={info.rows.length > 0 ? "mt-3 border-t border-border pt-3" : ""}>
+                <div>
                   <div className="mb-1.5 font-ui text-[11px] font-semibold text-foreground">
                     권장 레시피 · {info.recipe.label}
                   </div>
