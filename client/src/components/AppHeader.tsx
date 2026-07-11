@@ -3,7 +3,7 @@ import { Wordmark } from "./Logo";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
-import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift, Newspaper } from "lucide-react";
+import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift, Newspaper, Wrench } from "lucide-react";
 
 export function AppHeader() {
   const { user, logout } = useAuth();
@@ -15,6 +15,7 @@ export function AppHeader() {
     { href: "/catalog", label: "Catalog", icon: BookOpen, active: location === "/catalog" },
     { href: "/orders", label: "Orders", icon: ClipboardList, active: location === "/orders" },
     { href: "/sample", label: "Sample", icon: Gift, active: location === "/sample" },
+    { href: "/visit-setup", label: "Setup", icon: Wrench, active: location.startsWith("/visit-setup") },
     { href: "/board", label: "Board", icon: MessageSquare, active: location.startsWith("/board") },
     { href: "/news", label: "News", icon: Newspaper, active: location.startsWith("/news") },
     { href: "/help", label: "Help", icon: HelpCircle, active: location.startsWith("/help") },

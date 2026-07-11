@@ -35,6 +35,7 @@ import {
   ChevronDown,
   Menu,
   Inbox,
+  CalendarCheck,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -91,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/news", label: "소식", icon: Newspaper },
       { href: "/admin/board", label: "게시판", icon: MessageSquare },
       { href: "/admin/inquiries", label: "납품 문의", icon: Inbox },
+      { href: "/admin/visit-setups", label: "방문 세팅", icon: CalendarCheck },
     ],
   },
   {
