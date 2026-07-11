@@ -167,19 +167,19 @@ export default function Catalog() {
     const all = products ?? [];
     return CATEGORY_ORDER.map((cat) => ({
       ...cat,
-      items: all.filter((p) => p.category === cat.key),
+      items: all.filter((p) => p.category === cat.key && p.available !== 0),
     })).filter((g) => g.items.length > 0);
   }, [products]);
 
   // #1 즐겨찾기 품목 (카테고리 무관, sortOrder 순 유지)
   const favoriteItems = useMemo(() => {
-    return (products ?? []).filter((p) => (p as any).isFavorite);
+    return (products ?? []).filter((p) => (p as any).isFavorite && p.available !== 0);
   }, [products]);
 
   // 앵커 카테고리
   const anchorCats = useMemo(() => {
     if (!products) return [];
-    return CATEGORY_ORDER.filter((cat) => (products ?? []).some((p) => p.category === cat.key));
+    return CATEGORY_ORDER.filter((cat) => (products ?? []).some((p) => p.category === cat.key && p.available !== 0));
   }, [products]);
 
   // 누적 합계
