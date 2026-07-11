@@ -1,4 +1,4 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries } from "@shared/schema";
+import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -18,6 +18,7 @@ import type {
   PostCategory,
   News,
   WholesaleInquiry,
+  VisitRequest,
   CustomerPrice,
   Favorite,
   ActivityLog,
@@ -327,6 +328,22 @@ CREATE TABLE IF NOT EXISTS wholesale_inquiries (
   admin_memo TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS visit_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  business_name TEXT NOT NULL,
+  contact_name TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  purpose TEXT NOT NULL DEFAULT 'open',
+  preferred_date1 TEXT NOT NULL DEFAULT '',
+  preferred_date2 TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'new',
+  confirmed_date TEXT NOT NULL DEFAULT '',
+  admin_memo TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
 `);
 
 // ===== 멱등 컬럼 추가 마이그레이션 =====
@@ -596,6 +613,11 @@ export interface IStorage {
   listInquiries(): Promise<WholesaleInquiry[]>;
   getInquiry(id: number): Promise<WholesaleInquiry | undefined>;
   updateInquiry(id: number, patch: Partial<WholesaleInquiry>): Promise<WholesaleInquiry | undefined>;
+
+  createVisitRequest(v: Omit<VisitRequest, "id" | "createdAt" | "status" | "confirmedDate" | "adminMemo">): Promise<VisitRequest>;
+  listVisitRequests(): Promise<VisitRequest[]>;
+  getVisitRequest(id: number): Promise<VisitRequest | undefined>;
+  updateVisitRequest(id: number, patch: Partial<VisitRequest>): Promise<VisitRequest | undefined>;
   // comments
   listComments(postId: number): Promise<Comment[]>;
   createComment(c: Omit<Comment, "id" | "createdAt">): Promise<Comment>;
@@ -1613,6 +1635,29 @@ export class DatabaseStorage implements IStorage {
       .update(wholesaleInquiries)
       .set(patch)
       .where(eq(wholesaleInquiries.id, id))
+      .returning()
+      .get();
+  }
+
+  // 방문 커피 세팅 신청
+  async createVisitRequest(v: Omit<VisitRequest, "id" | "createdAt" | "status" | "confirmedDate" | "adminMemo">): Promise<VisitRequest> {
+    return db
+      .insert(visitRequests)
+      .values({ ...v, status: "new", confirmedDate: "", adminMemo: "", createdAt: Date.now() })
+      .returning()
+      .get();
+  }
+  async listVisitRequests(): Promise<VisitRequest[]> {
+    return db.select().from(visitRequests).orderBy(desc(visitRequests.createdAt)).all();
+  }
+  async getVisitRequest(id: number) {
+    return db.select().from(visitRequests).where(eq(visitRequests.id, id)).get();
+  }
+  async updateVisitRequest(id: number, patch: Partial<VisitRequest>): Promise<VisitRequest | undefined> {
+    return db
+      .update(visitRequests)
+      .set(patch)
+      .where(eq(visitRequests.id, id))
       .returning()
       .get();
   }

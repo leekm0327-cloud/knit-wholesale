@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { storage, seed, seedFixedCostItems, seedPersonalCategories, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
-import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail } from "./email";
+import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
@@ -21,6 +21,9 @@ import {
   adminCreateOrderSchema,
   createNewsSchema,
   insertInquirySchema,
+  insertVisitRequestSchema,
+  VISIT_PURPOSE_LABELS,
+  VISIT_STATUSES,
   updateNewsSchema,
   updateOrderItemsSchema,
   insertProductSchema,
@@ -2257,6 +2260,58 @@ export async function registerRoutes(
     if (typeof req.body.adminMemo === "string") patch.adminMemo = req.body.adminMemo;
     const updated = await storage.updateInquiry(id, patch);
     if (!updated) return res.status(404).json({ message: "문의를 찾을 수 없습니다." });
+    res.json(updated);
+  });
+
+  // ===== 방문 커피 세팅 신청 (거래처 로그인 전용) =====
+  app.post("/api/visit-request", requireAuth, async (req, res) => {
+    const parsed = insertVisitRequestSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const d = parsed.data;
+    const customer = await storage.getCustomer(req.session.userId!);
+    if (!customer) return res.status(401).json({ message: "로그인이 필요합니다." });
+    const item = await storage.createVisitRequest({
+      customerId: customer.id,
+      businessName: customer.businessName,
+      contactName: customer.managerName ?? "",
+      phone: (d.phone && d.phone.trim()) || customer.phone || "",
+      purpose: d.purpose,
+      preferredDate1: d.preferredDate1 ?? "",
+      preferredDate2: d.preferredDate2 ?? "",
+      message: d.message ?? "",
+    });
+    // 관리자 이메일 알림 (실패해도 접수는 정상 처리)
+    try {
+      await sendVisitRequestEmail({
+        businessName: item.businessName,
+        contactName: item.contactName,
+        phone: item.phone,
+        purposeLabel: VISIT_PURPOSE_LABELS[d.purpose] ?? d.purpose,
+        preferredDate1: item.preferredDate1,
+        preferredDate2: item.preferredDate2,
+        message: item.message,
+      });
+    } catch (e: any) {
+      console.warn("[visit-request] 알림 메일 실패:", e?.message ?? e);
+    }
+    res.json({ ok: true, id: item.id });
+  });
+  // 관리자 목록
+  app.get("/api/admin/visit-requests", requireAdmin, async (_req, res) => {
+    res.json(await storage.listVisitRequests());
+  });
+  // 관리자 상태/확정일/메모 수정
+  app.patch("/api/admin/visit-requests/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const patch: any = {};
+    if (typeof req.body.status === "string" && (VISIT_STATUSES as readonly string[]).includes(req.body.status))
+      patch.status = req.body.status;
+    if (typeof req.body.confirmedDate === "string") patch.confirmedDate = req.body.confirmedDate;
+    if (typeof req.body.adminMemo === "string") patch.adminMemo = req.body.adminMemo;
+    const updated = await storage.updateVisitRequest(id, patch);
+    if (!updated) return res.status(404).json({ message: "신청을 찾을 수 없습니다." });
     res.json(updated);
   });
 

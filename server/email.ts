@@ -495,3 +495,43 @@ export async function sendWholesaleInquiryEmail(payload: {
   const text = `홀세일 납품 문의\n상호: ${payload.businessName}\n담당자: ${payload.contactName || "-"}\n연락처: ${payload.phone}\n이메일: ${payload.email || "-"}\n지역: ${payload.region || "-"}\n예상 월 물량: ${payload.volume || "-"}\n\n${payload.message}`;
   await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] 홀세일 납품 문의 — ${payload.businessName}`, html, text });
 }
+
+// 방문 커피 세팅 신청 알림
+export async function sendVisitRequestEmail(payload: {
+  businessName: string;
+  contactName?: string;
+  phone: string;
+  purposeLabel: string;
+  preferredDate1?: string;
+  preferredDate2?: string;
+  message?: string;
+}) {
+  if (!NOTIFY_TO) {
+    console.warn("[email] NOTIFY_TO 미설정 — 방문 세팅 신청 알림 건너뜀");
+    return;
+  }
+  const esc = (s: string) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const rows: [string, string][] = [
+    ["상호", payload.businessName],
+    ["담당자", payload.contactName || "-"],
+    ["연락처", payload.phone || "-"],
+    ["방문 목적", payload.purposeLabel],
+    ["희망일 1지망", payload.preferredDate1 || "-"],
+    ["희망일 2지망", payload.preferredDate2 || "-"],
+  ];
+  const html = `<div style="font-family:sans-serif;max-width:560px">
+    <h2 style="margin:0 0 12px">방문 커피 세팅 신청</h2>
+    <table style="border-collapse:collapse;width:100%;font-size:14px">
+    ${rows
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:6px 10px;color:#888;white-space:nowrap">${k}</td><td style="padding:6px 10px;font-weight:600">${esc(v)}</td></tr>`,
+      )
+      .join("")}
+    </table>
+    ${payload.message ? `<div style="margin-top:14px;padding:14px;background:#f5f2ec;border-radius:8px;white-space:pre-wrap;font-size:14px">${esc(payload.message)}</div>` : ""}
+    <p style="margin-top:16px;font-size:12px;color:#999">관리자 &gt; 방문 세팅 에서 일정을 확정하세요.</p>
+  </div>`;
+  const text = `방문 커피 세팅 신청\n상호: ${payload.businessName}\n담당자: ${payload.contactName || "-"}\n연락처: ${payload.phone || "-"}\n방문 목적: ${payload.purposeLabel}\n희망일 1지망: ${payload.preferredDate1 || "-"}\n희망일 2지망: ${payload.preferredDate2 || "-"}\n\n${payload.message || ""}`;
+  await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] 방문 세팅 신청 — ${payload.businessName}`, html, text });
+}
