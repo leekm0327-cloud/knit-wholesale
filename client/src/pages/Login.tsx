@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { StackedLogo } from "@/components/Logo";
+import { KakaoChannelButton } from "@/components/KakaoChannelButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -132,6 +133,8 @@ export default function Login() {
       <p className="mt-7 text-center font-ui text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
         <Link href="/admin/login" data-testid="link-admin-login" className="hover:text-foreground">Admin login</Link>
       </p>
+
+      <KakaoChannelButton />
     </div>
   );
 }
