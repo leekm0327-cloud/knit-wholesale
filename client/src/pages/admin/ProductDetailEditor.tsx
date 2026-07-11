@@ -9,7 +9,8 @@ import { ImagePlus, X } from "lucide-react";
 
 export type DetailFields = {
   tagline: string;
-  blendRatio: string;
+  blendRatio: string; // (레거시) 자유 입력 블렌드 구성 — 하위호환 표시용
+  blendComponents: string; // 블렌드 구성 항목 JSON: [{ name, ratio }] (최대 5개)
   recommendedUse: string;
   country: string;
   region: string;
@@ -46,6 +47,7 @@ export type DetailFields = {
 export const emptyDetailFields: DetailFields = {
   tagline: "",
   blendRatio: "",
+  blendComponents: "",
   recommendedUse: "",
   country: "",
   region: "",
@@ -87,6 +89,65 @@ type Props = {
   images: string[];
   setImages: (v: string[]) => void;
 };
+
+// 블렌드 구성 입력기 — 이름 + 비율(%) 최대 5줄. value/onChange 는 JSON 문자열([{name,ratio}]).
+function BlendComposition({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  let arr: { name: string; ratio: string }[] = [];
+  try {
+    const p = JSON.parse(value || "[]");
+    if (Array.isArray(p)) arr = p.map((x) => ({ name: String(x?.name ?? ""), ratio: String(x?.ratio ?? "") }));
+  } catch {}
+  const rows = arr.length > 0 ? arr : [{ name: "", ratio: "" }];
+  const commit = (next: { name: string; ratio: string }[]) => onChange(JSON.stringify(next));
+  const update = (i: number, key: "name" | "ratio", v: string) =>
+    commit(rows.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)));
+  const add = () => { if (rows.length < 5) commit([...rows, { name: "", ratio: "" }]); };
+  const remove = (i: number) => { const next = rows.filter((_, idx) => idx !== i); commit(next); };
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">
+        블렌드 구성 <span className="font-normal text-muted-foreground">(원두 이름 + 비율, 최대 5개)</span>
+      </Label>
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              className="flex-1"
+              value={r.name}
+              onChange={(e) => update(i, "name", e.target.value)}
+              placeholder="예: Brazil Cerrado Fin Cup Natural"
+              data-testid={`input-blend-name-${i}`}
+            />
+            <div className="flex w-24 shrink-0 items-center gap-1">
+              <Input
+                value={r.ratio}
+                onChange={(e) => update(i, "ratio", e.target.value)}
+                placeholder="40"
+                data-testid={`input-blend-ratio-${i}`}
+              />
+              <span className="text-xs text-muted-foreground">%</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="구성 삭제"
+              data-testid={`button-remove-blend-${i}`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      {rows.length < 5 && (
+        <Button type="button" variant="outline" size="sm" onClick={add} data-testid="button-add-blend-component">
+          + 구성 추가
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function ProductDetailEditor({ template, setTemplate, detail, setDetail, images, setImages }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -153,17 +214,7 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
       </div>
 
       {template === "blend" ? (
-        <>
-          <div className="space-y-1.5">
-            <Label className="text-xs">블렌드 구성</Label>
-            <Input
-              value={detail.blendRatio}
-              onChange={(e) => setDetail("blendRatio", e.target.value)}
-              placeholder="예: 브라질 50% / 콜롬비아 30% / 에티오피아 20%"
-              data-testid="input-detail-blend-ratio"
-            />
-          </div>
-        </>
+        <BlendComposition value={detail.blendComponents} onChange={(v) => setDetail("blendComponents", v)} />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">

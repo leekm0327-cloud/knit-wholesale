@@ -158,6 +158,7 @@ export default function AdminProducts() {
               template: "blend" as const,
               tagline: d.tagline,
               blendRatio: d.blendRatio,
+              blendComponents: d.blendComponents,
               flavorNotes: d.flavorNotes,
               roastLevel: d.roastLevel,
               ...enriched,
