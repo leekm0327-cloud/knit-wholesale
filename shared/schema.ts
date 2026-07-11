@@ -493,6 +493,45 @@ export const insertInquirySchema = z.object({
   message: z.string().trim().min(1, "문의 내용을 입력해 주세요.").max(3000),
 });
 
+// ===== 방문 커피 세팅 신청 (거래처 로그인 전용) =====
+// 방문 목적: 신규 오픈 세팅 / 원두 변경 후 재세팅 / 추출 재점검 / 기타
+export const VISIT_PURPOSES = ["open", "beanchange", "recalib", "etc"] as const;
+export type VisitPurpose = (typeof VISIT_PURPOSES)[number];
+export const VISIT_PURPOSE_LABELS: Record<VisitPurpose, string> = {
+  open: "신규 오픈 세팅",
+  beanchange: "원두 변경 후 재세팅",
+  recalib: "추출 재점검",
+  etc: "기타",
+};
+// 상태: 신규 → 일정 조율 → 방문 확정 → 완료
+export const VISIT_STATUSES = ["new", "coordinating", "confirmed", "done"] as const;
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+
+export const visitRequests = sqliteTable("visit_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(), // 신청 거래처
+  businessName: text("business_name").notNull(), // 신청 당시 상호 스냅샷
+  contactName: text("contact_name").notNull().default(""), // 담당자(스냅샷)
+  phone: text("phone").notNull().default(""), // 연락처
+  purpose: text("purpose").notNull().default("open"), // VISIT_PURPOSES
+  preferredDate1: text("preferred_date1").notNull().default(""), // 희망일 1지망
+  preferredDate2: text("preferred_date2").notNull().default(""), // 희망일 2지망
+  message: text("message").notNull().default(""), // 요청사항
+  status: text("status").notNull().default("new"), // VISIT_STATUSES
+  confirmedDate: text("confirmed_date").notNull().default(""), // 관리자 확정 방문일
+  adminMemo: text("admin_memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+export type VisitRequest = typeof visitRequests.$inferSelect;
+// 신청 폼 입력 (상호·담당자는 로그인 세션에서 채움 → 폼에서 받지 않음)
+export const insertVisitRequestSchema = z.object({
+  purpose: z.enum(VISIT_PURPOSES).default("open"),
+  preferredDate1: z.string().trim().max(40).optional().default(""),
+  preferredDate2: z.string().trim().max(40).optional().default(""),
+  phone: z.string().trim().max(60).optional().default(""),
+  message: z.string().trim().max(3000).optional().default(""),
+});
+
 export const NEWS_STATUSES = ["draft", "published"] as const;
 
 // 생성: blocks는 배열로 받아 서버에서 JSON 직렬화
