@@ -58,6 +58,7 @@ import AdminPersonalLedger from "@/pages/admin/AdminPersonalLedger";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
 import AdminVisitSetups from "@/pages/admin/AdminVisitSetups";
+import AdminWebAnalytics from "@/pages/admin/AdminWebAnalytics";
 import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
@@ -167,6 +168,7 @@ function AppRouter() {
       <Route path="/admin/kakao" component={AdminKakao} />
       <Route path="/admin/inquiries" component={AdminInquiries} />
       <Route path="/admin/visit-setups" component={AdminVisitSetups} />
+      <Route path="/admin/web-analytics" component={AdminWebAnalytics} />
 
       <Route component={NotFound} />
     </Switch>
