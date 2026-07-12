@@ -18,7 +18,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { won, fmtDate, errMsg } from "@/lib/format";
 import type { Supplier, Purchase, Product, PurchaseItem } from "@shared/schema";
-import { PackagePlus, Plus, Trash2, Loader2 } from "lucide-react";
+import { PackagePlus, Plus, Trash2, Loader2, Pencil } from "lucide-react";
 
 function todayStr(): string {
   const d = new Date();
@@ -47,6 +47,8 @@ export default function AdminPurchases() {
   const [memo, setMemo] = useState("");
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingNo, setEditingNo] = useState<string>("");
 
   function updateLine(idx: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -113,21 +115,39 @@ export default function AdminPurchases() {
         amount: Math.round(qty * unitPrice),
       });
     }
+    const wasEditing = editingId;
     setBusy(true);
     try {
-      await apiRequest("POST", "/api/admin/purchases", {
-        supplierId: Number(supplierId),
-        purchaseDate,
-        items,
-        memo,
-      });
-      toast({ title: "발주가 등록되었습니다." });
+      if (wasEditing) {
+        await apiRequest("PATCH", `/api/admin/purchases/${wasEditing}`, {
+          supplierId: Number(supplierId),
+          purchaseDate,
+          items,
+          memo,
+        });
+        toast({ title: "발주가 수정되었습니다." });
+      } else {
+        await apiRequest("POST", "/api/admin/purchases", {
+          supplierId: Number(supplierId),
+          purchaseDate,
+          items,
+          memo,
+        });
+        toast({ title: "발주가 등록되었습니다." });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/admin/purchases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/supplier-balances"] });
       setLines([emptyLine()]);
       setMemo("");
+      if (wasEditing) {
+        // 수정 완료 후 폼 초기화
+        setEditingId(null);
+        setEditingNo("");
+        setSupplierId("");
+        setPurchaseDate(todayStr());
+      }
     } catch (e) {
-      toast({ variant: "destructive", title: "등록 실패", description: errMsg(e) });
+      toast({ variant: "destructive", title: wasEditing ? "수정 실패" : "등록 실패", description: errMsg(e) });
     } finally {
       setBusy(false);
     }
@@ -145,6 +165,38 @@ export default function AdminPurchases() {
     }
   }
 
+  function startEdit(p: Purchase) {
+    let its: PurchaseItem[] = [];
+    try {
+      its = JSON.parse(p.items) as PurchaseItem[];
+    } catch {}
+    setEditingId(p.id);
+    setEditingNo(p.purchaseNo);
+    setSupplierId(String(p.supplierId));
+    setPurchaseDate(p.purchaseDate);
+    setMemo(p.memo ?? "");
+    setLines(
+      its.length
+        ? its.map((it) => ({
+            productId: it.productId ?? null,
+            name: it.name,
+            qty: String(it.qty),
+            unitPrice: String(it.unitPrice),
+          }))
+        : [emptyLine()],
+    );
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditingNo("");
+    setSupplierId("");
+    setPurchaseDate(todayStr());
+    setMemo("");
+    setLines([emptyLine()]);
+  }
+
   const supplierName = (sid: number) => suppliers?.find((s) => s.id === sid)?.name ?? `#${sid}`;
 
   return (
@@ -156,7 +208,9 @@ export default function AdminPurchases() {
 
         {/* 발주 입력 */}
         <Card className="mb-6 p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">발주 등록</h2>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">
+            {editingId ? `발주 수정 · ${editingNo}` : "발주 등록"}
+          </h2>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs">공급처 *</Label>
@@ -235,10 +289,17 @@ export default function AdminPurchases() {
             <div className="text-sm text-muted-foreground">
               합계 <span className="ml-2 font-display text-lg font-semibold tabular text-foreground" data-testid="text-purchase-total">{won(total)}</span>
             </div>
-            <Button onClick={submit} disabled={busy} data-testid="button-submit-purchase">
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              발주 등록
-            </Button>
+            <div className="flex items-center gap-2">
+              {editingId && (
+                <Button variant="ghost" onClick={cancelEdit} disabled={busy} data-testid="button-cancel-edit">
+                  취소
+                </Button>
+              )}
+              <Button onClick={submit} disabled={busy} data-testid="button-submit-purchase">
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {editingId ? "발주 수정" : "발주 등록"}
+              </Button>
+            </div>
           </div>
         </Card>
 
@@ -284,7 +345,10 @@ export default function AdminPurchases() {
                         <td className="px-4 py-3 text-foreground">{supplierName(p.supplierId)}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{itemCount}개 품목</td>
                         <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(p.totalAmount)}</td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" onClick={() => startEdit(p)} aria-label="수정" data-testid={`button-edit-purchase-${p.id}`}>
+                            <Pencil className="h-4 w-4 text-muted-foreground" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => remove(p)} aria-label="삭제" data-testid={`button-delete-purchase-${p.id}`}>
                             <Trash2 className="h-4 w-4 text-muted-foreground" />
                           </Button>
