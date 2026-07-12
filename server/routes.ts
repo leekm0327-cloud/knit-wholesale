@@ -8,6 +8,7 @@ import { storage, seed, seedFixedCostItems, seedPersonalCategories, db, DB_PATH 
 import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
+import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
@@ -854,6 +855,17 @@ export async function registerRoutes(
         .map(([month, revenue]) => ({ month, revenue })),
       customerStats: customerStats.sort((a, b) => b.revenue - a.revenue),
     });
+  });
+
+  // 방문자 통계 (Cloudflare Web Analytics)
+  app.get("/api/admin/web-analytics", requireAdmin, async (req, res) => {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
+    try {
+      const data = await fetchWebAnalytics(days);
+      res.json(data);
+    } catch (e: any) {
+      res.json({ configured: isWebAnalyticsConfigured(), error: e?.message ?? "통계 조회에 실패했습니다." });
+    }
   });
 
   app.get("/api/admin/customers", requireAdmin, async (_req, res) => {
