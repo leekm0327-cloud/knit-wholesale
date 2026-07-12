@@ -236,7 +236,7 @@ export default function Catalog() {
                 <Link
                   key={n.id}
                   href={`/news/${n.id}`}
-                  className="group relative block aspect-[3/2] overflow-hidden rounded-lg border border-border bg-muted"
+                  className="group relative block aspect-[2/1] overflow-hidden rounded-lg border border-border bg-muted"
                   data-testid={`card-news-${n.id}`}
                 >
                   {n.coverImage ? (
