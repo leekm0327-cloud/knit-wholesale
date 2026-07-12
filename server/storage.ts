@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS products (
   category TEXT NOT NULL,
   origin TEXT NOT NULL DEFAULT '',
   price INTEGER NOT NULL DEFAULT 0,
+  cost_price INTEGER NOT NULL DEFAULT 0,
   available INTEGER NOT NULL DEFAULT 1,
   sort_order INTEGER NOT NULL DEFAULT 0,
   ecount_code TEXT NOT NULL DEFAULT '',
@@ -535,6 +536,7 @@ try {
 for (const col of [
   "ecount_code TEXT NOT NULL DEFAULT ''",
   "price INTEGER NOT NULL DEFAULT 0",
+  "cost_price INTEGER NOT NULL DEFAULT 0",
   "detail_template TEXT NOT NULL DEFAULT ''",
   "detail_json TEXT NOT NULL DEFAULT ''",
   "detail_images TEXT NOT NULL DEFAULT '[]'",

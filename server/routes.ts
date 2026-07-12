@@ -347,9 +347,19 @@ export async function registerRoutes(
     const list = await storage.listProducts();
     const userId = req.session.userId;
     const role = req.session.role;
-    if (!userId || role === "admin") {
+    // 매입금(costPrice)은 관리자만 노출. 비로그인/거래처 응답에서는 제거한다.
+    const stripCost = (p: any) => {
+      const { costPrice, ...rest } = p;
+      return rest;
+    };
+    if (userId && role === "admin") {
       return res.json(
         list.map((p) => ({ ...p, effectivePrice: p.price, hasCustomPrice: false, isFavorite: false })),
+      );
+    }
+    if (!userId) {
+      return res.json(
+        list.map((p) => ({ ...stripCost(p), effectivePrice: p.price, hasCustomPrice: false, isFavorite: false })),
       );
     }
     const overrides = await storage.listCustomerPrices(userId);
@@ -361,7 +371,7 @@ export async function registerRoutes(
       list.map((p) => {
         const custom = overrideMap.get(p.id);
         return {
-          ...p,
+          ...stripCost(p),
           effectivePrice: custom !== undefined ? custom : p.price,
           hasCustomPrice: custom !== undefined,
           isFavorite: favSet.has(p.id),
@@ -403,8 +413,9 @@ export async function registerRoutes(
     if (userId && role !== "admin") {
       const override = await storage.getCustomerPrice(userId, id);
       const effectivePrice = override ? override.price : product.price;
+      const { costPrice, ...pub } = product as any; // 매입금은 거래처에 노출하지 않음
       return res.json({
-        ...product,
+        ...pub,
         effectivePrice,
         hasCustomPrice: !!override,
       });
@@ -1726,7 +1737,7 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
-    const allowed = ["name", "category", "origin", "price", "available", "sortOrder", "ecountCode", "detailTemplate", "detailJson", "detailImages"];
+    const allowed = ["name", "category", "origin", "price", "costPrice", "available", "sortOrder", "ecountCode", "detailTemplate", "detailJson", "detailImages"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     const updated = await storage.updateProduct(Number(req.params.id), patch);
