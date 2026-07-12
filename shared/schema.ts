@@ -42,6 +42,7 @@ export const products = sqliteTable("products", {
   category: text("category").notNull(), // blend | decaf | single
   origin: text("origin").notNull().default(""), // 산지 / 설명
   price: integer("price").notNull().default(0), // 단가 (원)
+  costPrice: integer("cost_price").notNull().default(0), // 매입금 (클라리멘토 원가) — 관리자 전용, 발주 단가 기본값
   available: integer("available").notNull().default(1), // 1 판매중 / 0 품절
   sortOrder: integer("sort_order").notNull().default(0),
   // ECOUNT 품목코드 (ECOUNT 마스터의 PROD_CD와 일치해야 매칭됨). 비어있으면 ECOUNT 전송 불가.
