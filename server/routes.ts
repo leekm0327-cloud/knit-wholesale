@@ -1165,7 +1165,26 @@ export async function registerRoutes(
 
   app.get("/api/admin/purchases", requireAdmin, async (req, res) => {
     const supplierId = req.query.supplierId ? Number(req.query.supplierId) : undefined;
-    res.json(await storage.listPurchases(Number.isFinite(supplierId!) ? supplierId : undefined));
+    const list = await storage.listPurchases(Number.isFinite(supplierId!) ? supplierId : undefined);
+    // 자동발주의 출처(어떤 거래처 주문에서 생성됐는지) 부착 — order.autoPurchaseId 로 매칭
+    const orders = await storage.listOrders();
+    const byAutoPurchase = new Map<number, (typeof orders)[number]>();
+    for (const o of orders) {
+      if (o.autoPurchaseId) byAutoPurchase.set(o.autoPurchaseId, o);
+    }
+    const enriched = list.map((p) => {
+      const o = byAutoPurchase.get(p.id);
+      let sourceCustomer = "";
+      let sourceOrderNo = "";
+      if (o) {
+        sourceOrderNo = o.orderNo;
+        try {
+          sourceCustomer = JSON.parse(o.customerSnapshot)?.businessName ?? "";
+        } catch {}
+      }
+      return { ...p, sourceCustomer, sourceOrderNo };
+    });
+    res.json(enriched);
   });
 
   // 매입단가 자동채움용
