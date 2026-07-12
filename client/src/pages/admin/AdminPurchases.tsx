@@ -66,7 +66,11 @@ export default function AdminPurchases() {
     }
     const pid = Number(value);
     const prod = products?.find((p) => p.id === pid);
-    updateLine(idx, { productId: pid, name: prod?.name ?? "" });
+    const cost = Number((prod as any)?.costPrice ?? 0);
+    // 상품에 매입금이 설정돼 있으면 발주 단가로 우선 적용 (수정 가능)
+    updateLine(idx, { productId: pid, name: prod?.name ?? "", ...(cost > 0 ? { unitPrice: String(cost) } : {}) });
+    if (cost > 0) return; // 매입금 우선
+    // 매입금이 없을 때만 직전 매입가로 폴백
     if (!supplierId) return;
     try {
       const res = await apiRequest(

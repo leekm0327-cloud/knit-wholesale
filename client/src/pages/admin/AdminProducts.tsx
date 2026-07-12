@@ -44,6 +44,7 @@ type FormState = {
   category: string;
   origin: string;
   price: string;
+  costPrice: string;
   available: boolean;
   sortOrder: string;
   ecountCode: string;
@@ -57,6 +58,7 @@ const empty: FormState = {
   category: "blend",
   origin: "",
   price: "",
+  costPrice: "",
   available: true,
   sortOrder: "99",
   ecountCode: "",
@@ -114,6 +116,7 @@ export default function AdminProducts() {
       category: p.category,
       origin: p.origin,
       price: String(p.price ?? 0),
+      costPrice: String((p as any).costPrice ?? 0),
       available: p.available === 1,
       sortOrder: String(p.sortOrder),
       ecountCode: p.ecountCode || "",
@@ -181,6 +184,7 @@ export default function AdminProducts() {
         category: form.category,
         origin: form.origin,
         price: Number(form.price) || 0,
+        costPrice: Number(form.costPrice) || 0,
         available: form.available ? 1 : 0,
         sortOrder: Number(form.sortOrder) || 0,
         ecountCode: form.ecountCode.trim(),
@@ -245,8 +249,11 @@ export default function AdminProducts() {
                       <Badge variant="secondary" className="text-[11px]">{CATEGORY_LABEL[p.category]}</Badge>
                     </div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">{p.origin}</div>
-                    <div className="mt-1 text-xs text-foreground">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-foreground">
                       <span className="font-semibold tabular">{won(p.price)}</span>
+                      {(p as any).costPrice > 0 && (
+                        <span className="tabular text-muted-foreground">매입 {won((p as any).costPrice)}</span>
+                      )}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       ECOUNT 품목코드: {p.ecountCode ? <span className="font-mono text-foreground">{p.ecountCode}</span> : <span className="text-destructive">미설정</span>}
@@ -322,6 +329,17 @@ export default function AdminProducts() {
                 placeholder="예: 32000"
                 data-testid="input-product-price"
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">매입금 (원) · 관리자 전용</Label>
+              <Input
+                type="number"
+                value={form.costPrice}
+                onChange={(e) => set("costPrice", e.target.value)}
+                placeholder="예: 18000 (클라리멘토 매입가)"
+                data-testid="input-product-cost-price"
+              />
+              <p className="text-[11px] text-muted-foreground">발주 관리에서 이 상품의 기본 매입 단가로 적용됩니다. 거래처에는 표시되지 않습니다.</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">ECOUNT 품목코드</Label>
