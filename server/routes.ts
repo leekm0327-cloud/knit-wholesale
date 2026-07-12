@@ -1214,6 +1214,45 @@ export async function registerRoutes(
     res.json(purchase);
   });
 
+  // 발주 수정 (품목/공급처/발주일/메모 전체 교체 — 채무는 발주 합계에서 자동 파생되므로 재계산 불필요)
+  app.patch("/api/admin/purchases/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const existing = await storage.getPurchase(id);
+    if (!existing) return res.status(404).json({ message: "발주 내역을 찾을 수 없습니다." });
+    const parsed = insertPurchaseSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const supplier = await storage.getSupplier(parsed.data.supplierId);
+    if (!supplier) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
+    // amount는 신뢰하지 않고 서버에서 재계산
+    const items: PurchaseItem[] = parsed.data.items.map((it) => ({
+      productId: it.productId ?? null,
+      name: it.name,
+      qty: it.qty,
+      unitPrice: it.unitPrice,
+      amount: Math.round(it.qty * it.unitPrice),
+    }));
+    const totalAmount = items.reduce((s, i) => s + i.amount, 0);
+    const updated = await storage.updatePurchase(id, {
+      supplierId: parsed.data.supplierId,
+      purchaseDate: parsed.data.purchaseDate,
+      memo: parsed.data.memo ?? "",
+      items,
+      totalAmount,
+    });
+    if (!updated) return res.status(404).json({ message: "발주 내역을 찾을 수 없습니다." });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "purchase.update",
+      targetType: "purchase",
+      targetId: String(id),
+      summary: `발주 ${existing.purchaseNo} 수정 (${totalAmount}원)`,
+    });
+    res.json(updated);
+  });
+
   app.delete("/api/admin/purchases/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     const purchase = await storage.getPurchase(id);

@@ -657,6 +657,7 @@ export interface IStorage {
   listPurchases(supplierId?: number): Promise<Purchase[]>;
   getPurchase(id: number): Promise<Purchase | undefined>;
   createPurchase(p: InsertPurchase & { totalAmount: number; items: PurchaseItem[] }): Promise<Purchase>;
+  updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number }): Promise<Purchase | undefined>;
   deletePurchase(id: number): Promise<void>;
   listSupplierPayments(supplierId?: number): Promise<SupplierPayment[]>;
   createSupplierPayment(p: InsertSupplierPayment): Promise<SupplierPayment>;
@@ -1032,6 +1033,20 @@ export class DatabaseStorage implements IStorage {
         memo: p.memo ?? "",
         createdAt: Date.now(),
       })
+      .returning()
+      .get();
+  }
+  async updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number }): Promise<Purchase | undefined> {
+    return db
+      .update(purchases)
+      .set({
+        supplierId: p.supplierId,
+        purchaseDate: p.purchaseDate,
+        items: JSON.stringify(p.items),
+        totalAmount: p.totalAmount,
+        memo: p.memo ?? "",
+      })
+      .where(eq(purchases.id, id))
       .returning()
       .get();
   }
