@@ -321,12 +321,13 @@ export default function AdminPurchases() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium">발주번호</th>
                     <th className="px-4 py-2 text-left font-medium">발주일</th>
                     <th className="px-4 py-2 text-left font-medium">공급처</th>
+                    <th className="px-4 py-2 text-left font-medium">거래처(주문)</th>
                     <th className="px-4 py-2 text-left font-medium">품목</th>
                     <th className="px-4 py-2 text-right font-medium">합계</th>
                     <th className="px-4 py-2 text-right font-medium"></th>
@@ -343,6 +344,18 @@ export default function AdminPurchases() {
                         <td className="px-4 py-3 font-display tabular text-xs font-semibold text-foreground whitespace-nowrap">{p.purchaseNo}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{p.purchaseDate}</td>
                         <td className="px-4 py-3 text-foreground">{supplierName(p.supplierId)}</td>
+                        <td className="px-4 py-3 text-xs">
+                          {(p as any).sourceCustomer ? (
+                            <div>
+                              <div className="text-foreground">{(p as any).sourceCustomer}</div>
+                              {(p as any).sourceOrderNo && (
+                                <div className="font-mono text-[11px] text-muted-foreground">{(p as any).sourceOrderNo}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">직접 등록</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{itemCount}개 품목</td>
                         <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(p.totalAmount)}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
