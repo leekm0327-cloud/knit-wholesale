@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -77,6 +77,8 @@ export default function AdminMoneyEntry() {
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
+  // 엔터 중복 제출 방지 — 한글 IME에서 엔터 keydown이 두 번 발생해도 한 번만 저장되도록
+  const submittingRef = useRef(false);
 
   // 사업 지출 입력
   const [category, setCategory] = useState("");
@@ -143,6 +145,7 @@ export default function AdminMoneyEntry() {
   }, [pType]);
 
   async function submitExpense() {
+    if (submittingRef.current) return;
     const cat = category || expenseCategories[0] || "";
     if (!cat) {
       toast({ variant: "destructive", title: "항목을 선택해 주세요." });
@@ -153,6 +156,7 @@ export default function AdminMoneyEntry() {
       toast({ variant: "destructive", title: "지출액을 입력해 주세요." });
       return;
     }
+    submittingRef.current = true;
     setBusy(true);
     try {
       await apiRequest("POST", "/api/admin/expenses", {
@@ -170,10 +174,12 @@ export default function AdminMoneyEntry() {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(e) });
     } finally {
       setBusy(false);
+      submittingRef.current = false;
     }
   }
 
   async function submitPersonal() {
+    if (submittingRef.current) return;
     const cid = categoryId === "" ? (typeCategories[0]?.id ?? 0) : Number(categoryId);
     if (!cid) {
       toast({ variant: "destructive", title: "카테고리를 선택해 주세요." });
@@ -184,6 +190,7 @@ export default function AdminMoneyEntry() {
       toast({ variant: "destructive", title: "금액을 입력해 주세요." });
       return;
     }
+    submittingRef.current = true;
     setBusy(true);
     try {
       await apiRequest("POST", "/api/personal-ledger", {
@@ -202,6 +209,7 @@ export default function AdminMoneyEntry() {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(e) });
     } finally {
       setBusy(false);
+      submittingRef.current = false;
     }
   }
 
@@ -390,7 +398,7 @@ export default function AdminMoneyEntry() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") onSave();
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) onSave();
                 }}
                 placeholder="0"
                 className="h-11 text-lg font-semibold tabular"
@@ -414,7 +422,7 @@ export default function AdminMoneyEntry() {
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") onSave();
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) onSave();
               }}
               placeholder="비고"
               data-testid="input-money-memo"
