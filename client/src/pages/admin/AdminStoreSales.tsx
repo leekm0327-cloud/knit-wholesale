@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import { won, errMsg } from "@/lib/format";
 import type { StoreSale, Sector } from "@shared/schema";
 import { SECTOR_LABEL } from "@shared/schema";
@@ -24,6 +25,8 @@ function todayStr(): string {
 
 export default function AdminStoreSales() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isOwner = (user as any)?.adminRole === "owner";
   const { data: sales, isLoading } = useQuery<StoreSale[]>({ queryKey: ["/api/admin/store-sales"] });
 
   const [saleDate, setSaleDate] = useState(todayStr());
@@ -66,6 +69,16 @@ export default function AdminStoreSales() {
     } catch (e) {
       toast({ variant: "destructive", title: "삭제 실패", description: errMsg(e) });
     }
+  }
+
+  if (!isOwner) {
+    return (
+      <AdminLayout>
+        <div className="mx-auto max-w-4xl px-4 py-16 text-center">
+          <p className="text-sm text-muted-foreground">사장님(Owner) 전용 메뉴입니다.</p>
+        </div>
+      </AdminLayout>
+    );
   }
 
   return (

@@ -4,6 +4,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import {
   BarChart,
   Bar,
@@ -28,6 +29,8 @@ type Analytics = {
 const num = (n: number | undefined) => (n ?? 0).toLocaleString("ko-KR");
 
 export default function AdminWebAnalytics() {
+  const { user } = useAuth();
+  const isOwner = (user as any)?.adminRole === "owner";
   const [days, setDays] = useState(7);
   const { data, isLoading } = useQuery<Analytics>({
     queryKey: ["/api/admin/web-analytics", days],
@@ -39,6 +42,16 @@ export default function AdminWebAnalytics() {
     label: d.date.slice(5).replace("-", "."),
     visits: d.visits,
   }));
+
+  if (!isOwner) {
+    return (
+      <AdminLayout>
+        <div className="mx-auto max-w-4xl px-4 py-16 text-center">
+          <p className="text-sm text-muted-foreground">사장님(Owner) 전용 메뉴입니다.</p>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>

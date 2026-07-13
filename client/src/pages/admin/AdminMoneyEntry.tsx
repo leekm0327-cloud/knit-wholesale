@@ -124,16 +124,18 @@ export default function AdminMoneyEntry() {
     enabled: isOwner,
   });
 
-  const expenseCategories = [...(items ?? []).map((i) => i.name), ETC_CATEGORY];
+  // 고정비 항목명 + '기타'. 고정비 항목에 이미 '기타'가 있으면 중복되므로 이름 기준으로 중복 제거.
+  const expenseCategories = Array.from(new Set([...(items ?? []).map((i) => i.name), ETC_CATEGORY]));
   const catMap = new Map((categories ?? []).map((c) => [c.id, c]));
   const typeCategories = (categories ?? []).filter((c) => c.type === pType);
 
-  // 지출 항목 기본 선택값 보정
+  // 지출 항목 기본 선택값 보정 — 항목(items)이 로드된 뒤에만 기본값을 정한다.
+  // (로드 전에 정하면 임시 목록의 '기타'가 기본값으로 박혀버리는 문제 방지)
   useEffect(() => {
-    if (mode === "expense" && !category && expenseCategories.length > 0) {
+    if (mode === "expense" && items && !category && expenseCategories.length > 0) {
       setCategory(expenseCategories[0]);
     }
-  }, [mode, category, expenseCategories.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, category, items, expenseCategories.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 개인 가계부 구분 변경 시 카테고리 초기화
   useEffect(() => {
@@ -256,6 +258,17 @@ export default function AdminMoneyEntry() {
   }
 
   const onSave = mode === "expense" ? submitExpense : submitPersonal;
+
+  // 경영·재무 전체 소유자(Owner) 전용
+  if (!isOwner) {
+    return (
+      <AdminLayout>
+        <div className="mx-auto max-w-4xl px-4 py-16 text-center">
+          <p className="text-sm text-muted-foreground">사장님(Owner) 전용 메뉴입니다.</p>
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
