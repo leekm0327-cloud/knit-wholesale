@@ -314,10 +314,40 @@ async function verifyInvoiceAuto(ctx: CallCtx) {
   return post(url, body);
 }
 
+async function verifyPurchase(ctx: CallCtx) {
+  // 구매관리API > 구매입력 (매입전표)
+  const url = `${ctx.host}/OAPI/V2/Purchases/SavePurchases?SESSION_ID=${ctx.sid}`;
+  const ymd = ymdToday();
+  const cust = ctx.custCode || VERIFY_CUST_CODE;
+  const body = {
+    PurchasesList: [
+      {
+        Line: "1",
+        BulkDatas: {
+          IO_DATE: ymd,
+          UPLOAD_SER_NO: "1",
+          CUST: cust,
+          CUST_DES: "API검증용 삭제예정",
+          WH_CD: ctx.s.warehouseCode,
+          PROD_CD: VERIFY_PROD_CD,
+          PROD_DES: "API검증용 삭제예정",
+          QTY: "1",
+          PRICE: "1",
+          SUPPLY_AMT: "1",
+          VAT_AMT: "0",
+          REMARKS_WIN: "API검증용",
+        },
+      },
+    ],
+  };
+  return post(url, body);
+}
+
 const VERIFY_STEPS: Array<[string, (ctx: CallCtx) => Promise<any>]> = [
   ["거래처등록", verifyCustomers],
   ["품목등록", verifyProducts],
   ["판매전표", verifySales],
+  ["구매전표", verifyPurchase],
   ["회계자동분개", verifyInvoiceAuto],
 ];
 
