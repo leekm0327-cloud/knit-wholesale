@@ -95,6 +95,10 @@ function parseStoredImages(p: Product): string[] {
 export default function AdminProducts() {
   const { toast } = useToast();
   const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
+  const categoryOptions = (categoryRows ?? [])
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(empty);
@@ -246,7 +250,7 @@ export default function AdminProducts() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">{p.name}</span>
-                      <Badge variant="secondary" className="text-[11px]">{CATEGORY_LABEL[p.category]}</Badge>
+                      <Badge variant="secondary" className="text-[11px]">{categoryOptions.find((c) => c.key === p.category)?.label ?? CATEGORY_LABEL[p.category] ?? p.category}</Badge>
                     </div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">{p.origin}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-foreground">
@@ -309,9 +313,17 @@ export default function AdminProducts() {
                 <Select value={form.category} onValueChange={(v) => set("category", v)}>
                   <SelectTrigger data-testid="select-product-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="blend">블렌드</SelectItem>
-                    <SelectItem value="decaf">디카페인</SelectItem>
-                    <SelectItem value="single">싱글 오리진</SelectItem>
+                    {categoryOptions.length === 0 ? (
+                      <>
+                        <SelectItem value="blend">블렌드</SelectItem>
+                        <SelectItem value="decaf">디카페인</SelectItem>
+                        <SelectItem value="single">싱글 오리진</SelectItem>
+                      </>
+                    ) : (
+                      categoryOptions.map((c) => (
+                        <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
