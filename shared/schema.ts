@@ -886,6 +886,14 @@ export type FinancialStatement = {
   };
 };
 
+// 품목별 기간 집계 (주문/발주 공용)
+export type ItemSummaryRow = {
+  name: string;
+  category: string;
+  qty: number;
+  amount: number;
+};
+
 export type EcountSettings = typeof ecountSettings.$inferSelect;
 export const ecountSettingsInputSchema = z.object({
   comCode: z.string().min(1, "회사코드 필수"),
