@@ -188,6 +188,7 @@ export const suppliers = sqliteTable("suppliers", {
   name: text("name").notNull(), // 공급처 상호 (예: 클라리멘토)
   contact: text("contact").notNull().default(""), // 담당자명
   phone: text("phone").notNull().default(""), // 연락처
+  ecountCode: text("ecount_code").notNull().default(""), // 이카운트 거래처코드 (매입전표 CUST) — 이미 이카운트에 등록된 공급처 코드
   memo: text("memo").notNull().default(""),
   createdAt: integer("created_at").notNull(),
 });
@@ -643,6 +644,7 @@ export const insertSupplierSchema = z.object({
   name: z.string().min(1, "공급처 상호를 입력해 주세요."),
   contact: z.string().optional().default(""),
   phone: z.string().optional().default(""),
+  ecountCode: z.string().optional().default(""),
   memo: z.string().optional().default(""),
 });
 export type InsertSupplier = z.infer<typeof insertSupplierSchema>;
