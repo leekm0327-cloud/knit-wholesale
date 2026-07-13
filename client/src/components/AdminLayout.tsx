@@ -38,6 +38,7 @@ import {
   ExternalLink,
   Tags,
   FileSpreadsheet,
+  Coffee,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -98,6 +99,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "소식·게시판",
     items: [
+      { href: "/admin/espresso", label: "에스프레소 로그", icon: Coffee },
       { href: "/admin/news", label: "소식", icon: Newspaper },
       { href: "/admin/board", label: "게시판", icon: MessageSquare },
       { href: "/admin/inquiries", label: "납품 문의", icon: Inbox },
