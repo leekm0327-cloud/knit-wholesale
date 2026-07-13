@@ -186,7 +186,7 @@ export default function AdminFinancials() {
                 </div>
               )}
               <div className="border-t p-3 text-[11px] text-muted-foreground">
-                매출원가는 원두도매업의 공장 매입(발주)만 반영됩니다. 매장(음식점) 식자재비 등은 별도 원가 구분 없이 판매관리비에 포함됩니다.
+                매출원가 = 원두도매업의 공장 매입(발주) + 각 부문의 '원부자재' 지출. 그 외 지출은 판매관리비로 집계됩니다.
               </div>
             </Card>
 
