@@ -20,7 +20,7 @@ import type {
   PersonalSummary,
 } from "@shared/schema";
 import { SECTORS, SECTOR_LABEL } from "@shared/schema";
-import { Receipt, BookUser, Trash2, Plus, Loader2 } from "lucide-react";
+import { Receipt, BookUser, Trash2, Pencil, Plus, Loader2, X } from "lucide-react";
 
 const ETC_CATEGORY = "기타";
 
@@ -79,6 +79,8 @@ export default function AdminMoneyEntry() {
   const [busy, setBusy] = useState(false);
   // 엔터 중복 제출 방지 — 한글 IME에서 엔터 keydown이 두 번 발생해도 한 번만 저장되도록
   const submittingRef = useRef(false);
+  // 수정 중인 내역 id (null이면 신규 등록). mode 에 따라 지출/가계부 대상이 결정됨.
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // 사업 지출 입력
   const [category, setCategory] = useState("");
@@ -139,10 +141,37 @@ export default function AdminMoneyEntry() {
     }
   }, [mode, category, items, expenseCategories.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 개인 가계부 구분 변경 시 카테고리 초기화
-  useEffect(() => {
-    setCategoryId("");
-  }, [pType]);
+  // 수정 취소 / 폼 초기화
+  function resetForm() {
+    setEditingId(null);
+    setAmount("");
+    setMemo("");
+    setDate(todayStr());
+  }
+
+  // 지출 내역 수정 시작 — 폼에 값 채우기
+  function startEditExpense(x: Expense) {
+    setMode("expense");
+    setEditingId(x.id);
+    setCategory(x.category);
+    setSector(((x as any).sector as Sector) ?? "common");
+    setAmount(String(x.amount));
+    setDate(x.expenseDate);
+    setMemo(x.memo ?? "");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // 가계부 내역 수정 시작
+  function startEditPersonal(x: PersonalLedgerEntry) {
+    setMode("personal");
+    setEditingId(x.id);
+    setPType(x.type as LedgerType);
+    setCategoryId(x.categoryId);
+    setAmount(String(x.amount));
+    setDate(x.date);
+    setMemo(x.memo ?? "");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function submitExpense() {
     if (submittingRef.current) return;
@@ -159,15 +188,16 @@ export default function AdminMoneyEntry() {
     submittingRef.current = true;
     setBusy(true);
     try {
-      await apiRequest("POST", "/api/admin/expenses", {
-        expenseDate: date,
-        category: cat,
-        sector,
-        amount: Math.round(amt),
-        memo,
-      });
-      toast({ title: "지출이 저장되었습니다." });
+      const body = { expenseDate: date, category: cat, sector, amount: Math.round(amt), memo };
+      if (editingId != null) {
+        await apiRequest("PATCH", `/api/admin/expenses/${editingId}`, body);
+        toast({ title: "지출이 수정되었습니다." });
+      } else {
+        await apiRequest("POST", "/api/admin/expenses", body);
+        toast({ title: "지출이 저장되었습니다." });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/admin/expenses"] });
+      setEditingId(null);
       setAmount("");
       setMemo("");
     } catch (e) {
@@ -193,16 +223,17 @@ export default function AdminMoneyEntry() {
     submittingRef.current = true;
     setBusy(true);
     try {
-      await apiRequest("POST", "/api/personal-ledger", {
-        date,
-        type: pType,
-        categoryId: cid,
-        amount: Math.round(amt),
-        memo,
-      });
-      toast({ title: "가계부에 저장되었습니다." });
+      const body = { date, type: pType, categoryId: cid, amount: Math.round(amt), memo };
+      if (editingId != null) {
+        await apiRequest("PATCH", `/api/personal-ledger/${editingId}`, body);
+        toast({ title: "가계부 내역이 수정되었습니다." });
+      } else {
+        await apiRequest("POST", "/api/personal-ledger", body);
+        toast({ title: "가계부에 저장되었습니다." });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/personal-ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/personal-ledger/summary"] });
+      setEditingId(null);
       setAmount("");
       setMemo("");
     } catch (e) {
@@ -292,7 +323,7 @@ export default function AdminMoneyEntry() {
           <div className="mb-5 inline-flex rounded-lg border bg-muted/40 p-1" data-testid="toggle-money-mode">
             <button
               type="button"
-              onClick={() => setMode("expense")}
+              onClick={() => { setMode("expense"); resetForm(); }}
               data-testid="toggle-expense"
               className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition ${
                 mode === "expense" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
@@ -303,7 +334,7 @@ export default function AdminMoneyEntry() {
             </button>
             <button
               type="button"
-              onClick={() => setMode("personal")}
+              onClick={() => { setMode("personal"); resetForm(); }}
               data-testid="toggle-personal"
               className={`flex items-center gap-1.5 rounded-md px-4 py-1.5 text-sm font-medium transition ${
                 mode === "personal" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
@@ -355,10 +386,10 @@ export default function AdminMoneyEntry() {
               <div className="mb-4">
                 <Label className="mb-2 block text-xs text-muted-foreground">구분</Label>
                 <div className="flex flex-wrap gap-2">
-                  <Chip active={pType === "expense"} onClick={() => setPType("expense")} testid="chip-ptype-expense">
+                  <Chip active={pType === "expense"} onClick={() => { setPType("expense"); setCategoryId(""); }} testid="chip-ptype-expense">
                     지출
                   </Chip>
-                  <Chip active={pType === "income"} onClick={() => setPType("income")} testid="chip-ptype-income">
+                  <Chip active={pType === "income"} onClick={() => { setPType("income"); setCategoryId(""); }} testid="chip-ptype-income">
                     수입
                   </Chip>
                 </div>
@@ -428,10 +459,21 @@ export default function AdminMoneyEntry() {
               data-testid="input-money-memo"
             />
           </div>
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {editingId != null && (
+              <>
+                <span className="mr-auto text-xs font-medium text-muted-foreground" data-testid="text-editing">
+                  수정 중 (#{editingId})
+                </span>
+                <Button variant="outline" onClick={resetForm} disabled={busy} data-testid="button-cancel-edit">
+                  <X className="mr-1 h-4 w-4" />
+                  취소
+                </Button>
+              </>
+            )}
             <Button onClick={onSave} disabled={busy} data-testid="button-save-money">
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              저장
+              {editingId != null ? "수정" : "저장"}
             </Button>
           </div>
         </Card>
@@ -518,9 +560,14 @@ export default function AdminMoneyEntry() {
                         <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[220px]">{x.memo || "-"}</td>
                         <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(x.amount)}</td>
                         <td className="px-4 py-3 text-right">
-                          <Button variant="ghost" size="icon" onClick={() => removeExpense(x)} aria-label="삭제" data-testid={`button-delete-expense-${x.id}`}>
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Button variant="ghost" size="icon" onClick={() => startEditExpense(x)} aria-label="수정" data-testid={`button-edit-expense-${x.id}`}>
+                              <Pencil className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => removeExpense(x)} aria-label="삭제" data-testid={`button-delete-expense-${x.id}`}>
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -567,9 +614,14 @@ export default function AdminMoneyEntry() {
                       <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[220px]">{x.memo || "-"}</td>
                       <td className={`px-4 py-3 text-right font-display tabular font-semibold ${x.type === "income" ? "text-foreground" : "text-destructive"}`}>{won(x.amount)}</td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="icon" onClick={() => removePersonal(x)} aria-label="삭제" data-testid={`button-delete-ledger-${x.id}`}>
-                          <Trash2 className="h-4 w-4 text-muted-foreground" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <Button variant="ghost" size="icon" onClick={() => startEditPersonal(x)} aria-label="수정" data-testid={`button-edit-ledger-${x.id}`}>
+                            <Pencil className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => removePersonal(x)} aria-label="삭제" data-testid={`button-delete-ledger-${x.id}`}>
+                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
