@@ -869,7 +869,7 @@ export async function registerRoutes(
   });
 
   // 방문자 통계 (Cloudflare Web Analytics)
-  app.get("/api/admin/web-analytics", requireAdmin, async (req, res) => {
+  app.get("/api/admin/web-analytics", requireOwner, async (req, res) => {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
     try {
       const data = await fetchWebAnalytics(days);
@@ -1363,13 +1363,13 @@ export async function registerRoutes(
 
   // ===== 경영 대시보드 (C) =====
   // 매장매출 (직원도 입력 가능 — requireAdmin)
-  app.get("/api/admin/store-sales", requireAdmin, async (req, res) => {
+  app.get("/api/admin/store-sales", requireOwner, async (req, res) => {
     const from = typeof req.query.from === "string" ? req.query.from : undefined;
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
     res.json(await storage.listStoreSales(from, to));
   });
 
-  app.post("/api/admin/store-sales", requireAdmin, async (req, res) => {
+  app.post("/api/admin/store-sales", requireOwner, async (req, res) => {
     const parsed = insertStoreSaleSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
@@ -1385,7 +1385,7 @@ export async function registerRoutes(
     res.json(sale);
   });
 
-  app.delete("/api/admin/store-sales/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/store-sales/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const actor = await getActor(req);
@@ -1400,8 +1400,8 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
-  // 고정비 항목: 조회는 requireAdmin, 정의(쓰기)는 requireOwner
-  app.get("/api/admin/fixed-cost-items", requireAdmin, async (req, res) => {
+  // 고정비 항목: 경영·재무 전용이므로 조회·정의 모두 requireOwner
+  app.get("/api/admin/fixed-cost-items", requireOwner, async (req, res) => {
     const includeInactive = req.query.includeInactive === "true";
     res.json(await storage.listFixedCostItems(includeInactive));
   });
@@ -1457,13 +1457,13 @@ export async function registerRoutes(
   });
 
   // 지출 (직원도 입력 가능 — requireAdmin)
-  app.get("/api/admin/expenses", requireAdmin, async (req, res) => {
+  app.get("/api/admin/expenses", requireOwner, async (req, res) => {
     const from = typeof req.query.from === "string" ? req.query.from : undefined;
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
     res.json(await storage.listExpenses(from, to));
   });
 
-  app.post("/api/admin/expenses", requireAdmin, async (req, res) => {
+  app.post("/api/admin/expenses", requireOwner, async (req, res) => {
     const parsed = insertExpenseSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
@@ -1479,7 +1479,7 @@ export async function registerRoutes(
     res.json(expense);
   });
 
-  app.delete("/api/admin/expenses/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/expenses/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const actor = await getActor(req);
