@@ -886,6 +886,17 @@ export type FinancialStatement = {
   };
 };
 
+// 에스프레소 추출 로그 집계 (구글시트 게시 데이터 기반, 공개)
+export type EspressoStats = {
+  totalLogs: number;
+  from: string;
+  to: string;
+  byRating: { rating: string; count: number }[];
+  byDate: { date: string; count: number }[];
+  byBeanRecipe: { bean: string; count: number; avgDose: number; avgYield: number; avgTime: number; ratio: number }[];
+  error?: string;
+};
+
 // 품목별 기간 집계 (주문/발주 공용)
 export type ItemSummaryRow = {
   name: string;
