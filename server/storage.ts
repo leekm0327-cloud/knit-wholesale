@@ -1505,8 +1505,13 @@ export class DatabaseStorage implements IStorage {
     for (const r of storeSaleRows) rev[norm(r.sector, "store")] += r.amount;
     // 매출원가: 공장 매입(발주)은 전부 원두도매(wholesale)의 매출원가
     for (const p of purchaseRows) cogs.wholesale += p.totalAmount;
-    // 판매관리비: 수기 지출 → 행의 sector
-    for (const e of expenseRows) sga[norm((e as any).sector, "common")] += e.amount;
+    // 지출 분류: '원부자재' 항목은 매출원가(원가성 비용), 그 외는 판매관리비 → 각 행의 sector
+    const COGS_EXPENSE_CATEGORIES = ["원부자재"];
+    for (const e of expenseRows) {
+      const s = norm((e as any).sector, "common");
+      if (COGS_EXPENSE_CATEGORIES.includes(e.category)) cogs[s] += e.amount;
+      else sga[s] += e.amount;
+    }
 
     const lines: FinancialStatement["lines"] = SECTORS.map((s) => {
       const revenue = rev[s];
