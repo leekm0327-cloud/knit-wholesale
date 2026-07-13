@@ -55,6 +55,19 @@ export const products = sqliteTable("products", {
   detailImages: text("detail_images").notNull().default("[]"),
 });
 
+// ===== 상품 카테고리 (관리자가 생성·수정·삭제·순서변경) =====
+// 상품의 category 필드는 이 테이블의 key 를 참조한다. (예: blend / decaf / single / dripbag ...)
+export const productCategories = sqliteTable("product_categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  key: text("key").notNull().unique(), // 상품에 저장되는 코드값 (영문 슬러그)
+  label: text("label").notNull(), // 화면 표시명 (예: "싱글 오리진 에스프레소")
+  sortOrder: integer("sort_order").notNull().default(0), // 카탈로그 노출 순서 (작을수록 먼저)
+  isBean: integer("is_bean").notNull().default(1), // 1이면 원두 — 5kg 최소주문 수량에 포함
+  sampleEligible: integer("sample_eligible").notNull().default(0), // 1이면 무료 샘플 신청 대상
+  active: integer("active").notNull().default(1), // 1 노출 / 0 숨김
+  createdAt: integer("created_at").notNull().default(0),
+});
+
 // ===== 거래처별 상품 가격 오버라이드 =====
 // 거래처가 특정 상품을 보는 가격. 행이 없는 상품은 products.price 그대로 적용.
 export const customerPrices = sqliteTable("customer_prices", {
@@ -449,6 +462,20 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
+
+export type ProductCategory = typeof productCategories.$inferSelect;
+export const insertProductCategorySchema = z.object({
+  key: z
+    .string()
+    .min(1, "코드값을 입력해 주세요.")
+    .regex(/^[a-z0-9_]+$/, "코드값은 영문 소문자·숫자·밑줄(_)만 사용할 수 있습니다."),
+  label: z.string().min(1, "표시명을 입력해 주세요."),
+  sortOrder: z.number().int().optional().default(0),
+  isBean: z.boolean().optional().default(true),
+  sampleEligible: z.boolean().optional().default(false),
+  active: z.boolean().optional().default(true),
+});
+export type InsertProductCategory = z.infer<typeof insertProductCategorySchema>;
 
 export type CustomerPrice = typeof customerPrices.$inferSelect;
 // API 응답용 — 상품에 거래처별 가격 적용 여부표시
