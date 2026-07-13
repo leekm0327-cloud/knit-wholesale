@@ -29,7 +29,6 @@ import {
   Store,
   Receipt,
   ListChecks,
-  BookUser,
   MessageCircle,
   Newspaper,
   ChevronDown,
@@ -82,9 +81,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/dashboard-pnl", label: "경영 대시보드", icon: LineChart, ownerOnly: true },
       { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity },
       { href: "/admin/store-sales", label: "매장매출", icon: Store },
-      { href: "/admin/expenses", label: "지출 입력", icon: Receipt },
+      { href: "/admin/money", label: "지출·가계부", icon: Receipt },
       { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
-      { href: "/admin/personal-ledger", label: "개인 가계부", icon: BookUser, ownerOnly: true },
     ],
   },
   {
