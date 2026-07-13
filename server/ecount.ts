@@ -1088,8 +1088,17 @@ async function savePurchaseOnEcount(
       ? purchase.purchaseDate.replace(/-/g, "")
       : ymdFromDate(new Date(purchase.createdAt));
   const url = `${ctx.host}/OAPI/V2/Purchases/SavePurchases?SESSION_ID=${ctx.sid}`;
-  // 납품거래처(출처 거래처명)는 구매입력 상단 추가문자형식1 = U_MEMO1 에 매핑(계정 설정 기준).
-  // 적요는 구매입력 API의 REMARKS 필드(판매입력의 REMARKS_WIN 과 다름)에 발주번호로 기록.
+  // 납품거래처(출처 거래처명) 처리:
+  //  1) 적요(REMARKS)에 발주번호 + 납품거래처를 함께 기록 → 확실하게 남는 기본값(검증 완료).
+  //  2) 구매입력 상단 "추가문자형식" 항목(이 계정에선 추가문자형식1 = 납품 거래처)에도
+  //     채워지도록 문자형식 계열 필드코드에 값을 넣는다. 이 계정에서 활성화되지 않은 코드는
+  //     이카운트가 무시하므로(과거 전송에서 확인됨), 실제 설정된 항목에만 표시된다.
+  const dn = deliver.name || "";
+  const customTextFields: Record<string, string> = {};
+  if (dn) {
+    for (let i = 1; i <= 10; i++) customTextFields[`U_TXT${i}`] = dn;
+    for (let i = 1; i <= 5; i++) customTextFields[`U_MEMO${i}`] = dn;
+  }
   const PurchasesList = items.map((it, idx) => ({
     Line: String(idx + 1),
     BulkDatas: {
@@ -1102,13 +1111,8 @@ async function savePurchaseOnEcount(
       PRICE: String(it.unitPrice),
       SUPPLY_AMT: String(it.amount),
       VAT_AMT: String(Math.round(it.amount * 0.1)),
-      U_MEMO1: deliver.name ? `${deliver.name} [M1]` : "",
-      U_MEMO2: deliver.name ? `${deliver.name} [M2]` : "",
-      U_MEMO3: deliver.name ? `${deliver.name} [M3]` : "",
-      U_MEMO4: deliver.name ? `${deliver.name} [M4]` : "",
-      U_MEMO5: deliver.name ? `${deliver.name} [M5]` : "",
-      U_TXT1: deliver.name ? `${deliver.name} [T1]` : "",
-      REMARKS: `발주 ${purchase.purchaseNo}`,
+      ...customTextFields,
+      REMARKS: dn ? `발주 ${purchase.purchaseNo} · 납품 ${dn}` : `발주 ${purchase.purchaseNo}`,
     },
   }));
   const body = { PurchasesList };
