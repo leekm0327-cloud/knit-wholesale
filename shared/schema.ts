@@ -856,6 +856,36 @@ export type DashboardSummary = {
   }[];
 };
 
+// ===== 재무제표 (내부 경영용: 손익계산서 + 채권·채무 요약) =====
+// 업종/부문별 손익 라인. 매장=음식점업, 홀세일=원두도매업.
+export type FinancialStatementLine = {
+  sector: Sector;
+  label: string; // 업종/부문 표시명
+  revenue: number; // 매출액
+  cogs: number; // 매출원가 (도매=공장 매입, 그 외 0)
+  grossProfit: number; // 매출총이익 = 매출 - 원가
+  sga: number; // 판매관리비 (수기 지출)
+  operatingProfit: number; // 영업이익 = 매출총이익 - 판관비
+};
+export type FinancialStatement = {
+  from: string;
+  to: string;
+  lines: FinancialStatementLine[]; // 활동 있는 부문만
+  totals: {
+    revenue: number;
+    cogs: number;
+    grossProfit: number;
+    sga: number;
+    operatingProfit: number;
+  };
+  // 채권·채무 (현재 시점 스냅샷)
+  workingCapital: {
+    receivables: number; // 거래처 미수금 합 (양수 잔액)
+    payables: number; // 공장 미지급금 합 (양수 잔액)
+    net: number; // 순운전자본(채권-채무)
+  };
+};
+
 export type EcountSettings = typeof ecountSettings.$inferSelect;
 export const ecountSettingsInputSchema = z.object({
   comCode: z.string().min(1, "회사코드 필수"),
