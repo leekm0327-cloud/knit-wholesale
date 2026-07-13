@@ -18,7 +18,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { won, fmtDate, errMsg } from "@/lib/format";
 import type { Supplier, Purchase, Product, PurchaseItem } from "@shared/schema";
-import { PackagePlus, Plus, Trash2, Loader2, Pencil } from "lucide-react";
+import { PackagePlus, Plus, Trash2, Loader2, Pencil, Send } from "lucide-react";
 
 function todayStr(): string {
   const d = new Date();
@@ -49,6 +49,7 @@ export default function AdminPurchases() {
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingNo, setEditingNo] = useState<string>("");
+  const [sendingId, setSendingId] = useState<number | null>(null);
 
   function updateLine(idx: number, patch: Partial<Line>) {
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
@@ -195,6 +196,26 @@ export default function AdminPurchases() {
     setPurchaseDate(todayStr());
     setMemo("");
     setLines([emptyLine()]);
+  }
+
+  async function sendToEcount(p: Purchase) {
+    if (!confirm(`발주 '${p.purchaseNo}'을(를) 이카운트 구매전표로 전송할까요?`)) return;
+    setSendingId(p.id);
+    try {
+      const res = await apiRequest("POST", `/api/admin/ecount/purchases/${p.id}/send`);
+      const data = await res.json();
+      const steps = (data.steps ?? []) as Array<{ step: string; ok: boolean; message: string }>;
+      if (data.ok) {
+        toast({ title: "이카운트 전송 완료", description: `발주 ${p.purchaseNo} 구매전표가 등록되었습니다.` });
+      } else {
+        const failed = steps.find((s) => !s.ok);
+        toast({ variant: "destructive", title: "이카운트 전송 실패", description: failed?.message ?? data.message ?? "전송에 실패했습니다." });
+      }
+    } catch (e) {
+      toast({ variant: "destructive", title: "이카운트 전송 실패", description: errMsg(e) });
+    } finally {
+      setSendingId(null);
+    }
   }
 
   const supplierName = (sid: number) => suppliers?.find((s) => s.id === sid)?.name ?? `#${sid}`;
@@ -359,6 +380,9 @@ export default function AdminPurchases() {
                         <td className="px-4 py-3 text-xs text-muted-foreground">{itemCount}개 품목</td>
                         <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(p.totalAmount)}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" onClick={() => sendToEcount(p)} disabled={sendingId === p.id} aria-label="이카운트 전송" title="이카운트 구매전표로 전송" data-testid={`button-ecount-purchase-${p.id}`}>
+                            {sendingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-teal-700" />}
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => startEdit(p)} aria-label="수정" data-testid={`button-edit-purchase-${p.id}`}>
                             <Pencil className="h-4 w-4 text-muted-foreground" />
                           </Button>
