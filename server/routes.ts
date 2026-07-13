@@ -9,6 +9,7 @@ import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
+import { fetchEspressoStats } from "./espressoLog";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, sendPurchaseToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
@@ -1545,6 +1546,11 @@ export async function registerRoutes(
     const to = typeof req.query.to === "string" ? req.query.to : "";
     if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
     res.json(await storage.getFinancialStatement(from, to));
+  });
+
+  // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
+  app.get("/api/espresso-log-stats", async (_req, res) => {
+    res.json(await fetchEspressoStats());
   });
 
   // 품목별 기간 집계 (주문/발주) — 직원도 조회 가능
