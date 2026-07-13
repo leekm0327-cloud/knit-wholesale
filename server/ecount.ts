@@ -1088,8 +1088,8 @@ async function savePurchaseOnEcount(
       ? purchase.purchaseDate.replace(/-/g, "")
       : ymdFromDate(new Date(purchase.createdAt));
   const url = `${ctx.host}/OAPI/V2/Purchases/SavePurchases?SESSION_ID=${ctx.sid}`;
-  // 납품거래처(출처 거래처)는 우선 적요(비고)에 담아 확실히 기록. 전용 필드는 로그 확인 후 연결.
-  const remark = `발주 ${purchase.purchaseNo}` + (deliver.name ? ` / 납품:${deliver.name}` : "");
+  // 납품거래처(출처 거래처명)는 구매입력 상단 추가문자형식1 = U_MEMO1 에 매핑(계정 설정 기준).
+  // 적요는 구매입력 API의 REMARKS 필드(판매입력의 REMARKS_WIN 과 다름)에 발주번호로 기록.
   const PurchasesList = items.map((it, idx) => ({
     Line: String(idx + 1),
     BulkDatas: {
@@ -1102,7 +1102,8 @@ async function savePurchaseOnEcount(
       PRICE: String(it.unitPrice),
       SUPPLY_AMT: String(it.amount),
       VAT_AMT: String(Math.round(it.amount * 0.1)),
-      REMARKS_WIN: remark,
+      U_MEMO1: deliver.name || "",
+      REMARKS: `발주 ${purchase.purchaseNo}`,
     },
   }));
   const body = { PurchasesList };
