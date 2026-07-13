@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
+import { ItemPeriodSummary } from "@/components/ItemPeriodSummary";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -226,6 +227,8 @@ export default function AdminPurchases() {
         <div className="eyebrow">Purchases</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">발주 관리</h1>
         <p className="mb-6 text-sm text-muted-foreground">OEM 공장 발주 등록 · 공장 채무 반영</p>
+
+        <ItemPeriodSummary endpoint="/api/admin/purchases/item-summary" qtyLabel="발주 수량" amountLabel="발주 금액" />
 
         {/* 발주 입력 */}
         <Card className="mb-6 p-5">

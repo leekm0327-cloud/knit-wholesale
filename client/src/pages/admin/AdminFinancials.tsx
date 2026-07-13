@@ -78,14 +78,29 @@ export default function AdminFinancials() {
   const t = data?.totals;
   const wc = data?.workingCapital;
 
-  // 손익계산서 행 정의 (항목명, 값 추출기, 강조 여부)
-  const rows: { key: string; label: string; get: (l: FinancialStatement["lines"][number]) => number; total: number; strong?: boolean; sign?: "minus" }[] = t
+  // 값 포맷: 금액(won) 또는 비율(%)
+  const fmtVal = (v: number, fmt: "won" | "pct") => (fmt === "pct" ? `${v.toFixed(1)}%` : won(v));
+  const rate = (num: number, den: number) => (den > 0 ? (num / den) * 100 : 0);
+
+  // 손익계산서 행 정의 (항목명, 값 추출기, 포맷, 강조 여부)
+  type FsRow = {
+    key: string;
+    label: string;
+    get: (l: FinancialStatement["lines"][number]) => number;
+    total: number;
+    fmt: "won" | "pct";
+    strong?: boolean;
+    muted?: boolean;
+  };
+  const rows: FsRow[] = t
     ? [
-        { key: "revenue", label: "매출액", get: (l) => l.revenue, total: t.revenue },
-        { key: "cogs", label: "(−) 매출원가 (공장 매입)", get: (l) => l.cogs, total: t.cogs, sign: "minus" },
-        { key: "gross", label: "매출총이익", get: (l) => l.grossProfit, total: t.grossProfit, strong: true },
-        { key: "sga", label: "(−) 판매관리비", get: (l) => l.sga, total: t.sga, sign: "minus" },
-        { key: "op", label: "영업이익", get: (l) => l.operatingProfit, total: t.operatingProfit, strong: true },
+        { key: "revenue", label: "매출액", get: (l) => l.revenue, total: t.revenue, fmt: "won" },
+        { key: "cogs", label: "(−) 매출원가", get: (l) => l.cogs, total: t.cogs, fmt: "won" },
+        { key: "cogsRate", label: "매출원가율", get: (l) => rate(l.cogs, l.revenue), total: rate(t.cogs, t.revenue), fmt: "pct", muted: true },
+        { key: "gross", label: "매출총이익", get: (l) => l.grossProfit, total: t.grossProfit, fmt: "won", strong: true },
+        { key: "sga", label: "(−) 판매관리비", get: (l) => l.sga, total: t.sga, fmt: "won" },
+        { key: "op", label: "영업이익", get: (l) => l.operatingProfit, total: t.operatingProfit, fmt: "won", strong: true },
+        { key: "opRate", label: "영업이익률", get: (l) => rate(l.operatingProfit, l.revenue), total: rate(t.operatingProfit, t.revenue), fmt: "pct", strong: true, muted: true },
       ]
     : [];
 
@@ -153,8 +168,8 @@ export default function AdminFinancials() {
                     </thead>
                     <tbody className="divide-y">
                       {rows.map((r) => (
-                        <tr key={r.key} className={r.strong ? "bg-muted/20" : ""}>
-                          <td className={`px-4 py-3 whitespace-nowrap ${r.strong ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                        <tr key={r.key} className={r.strong && !r.muted ? "bg-muted/20" : ""}>
+                          <td className={`px-4 py-3 whitespace-nowrap ${r.muted ? "text-xs text-muted-foreground" : r.strong ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                             {r.label}
                           </td>
                           {lines.map((l) => {
@@ -163,21 +178,23 @@ export default function AdminFinancials() {
                               <td
                                 key={l.sector}
                                 className={`px-4 py-3 text-right tabular ${
-                                  r.strong
+                                  r.muted
+                                    ? "text-xs text-muted-foreground"
+                                    : r.strong
                                     ? v < 0 ? "font-semibold text-destructive" : "font-semibold text-foreground"
                                     : "text-foreground"
                                 }`}
                               >
-                                {won(v)}
+                                {fmtVal(v, r.fmt)}
                               </td>
                             );
                           })}
                           <td
-                            className={`px-4 py-3 text-right tabular font-semibold ${
-                              r.total < 0 ? "text-destructive" : "text-foreground"
-                            }`}
+                            className={`px-4 py-3 text-right tabular ${
+                              r.muted ? "text-xs font-medium text-muted-foreground" : "font-semibold"
+                            } ${!r.muted && r.total < 0 ? "text-destructive" : r.muted ? "" : "text-foreground"}`}
                           >
-                            {won(r.total)}
+                            {fmtVal(r.total, r.fmt)}
                           </td>
                         </tr>
                       ))}

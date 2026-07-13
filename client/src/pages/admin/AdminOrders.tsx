@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
+import { ItemPeriodSummary } from "@/components/ItemPeriodSummary";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +117,8 @@ export default function AdminOrders() {
             대리 주문 입력
           </Button>
         </div>
+
+        <ItemPeriodSummary endpoint="/api/admin/orders/item-summary" qtyLabel="주문 수량" amountLabel="주문 금액" />
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Input
