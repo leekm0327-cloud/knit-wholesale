@@ -1539,6 +1539,14 @@ export async function registerRoutes(
     res.json(await storage.getDashboardSummary(from, to, granularity, sector));
   });
 
+  // 재무제표 (업종별 손익계산서 + 채권·채무 요약) — 소유자 전용
+  app.get("/api/admin/financial-statement", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    res.json(await storage.getFinancialStatement(from, to));
+  });
+
   // ===== E: 개인 가계부 (owner 전용, 사업 재무와 완전 분리) =====
   app.get("/api/personal-categories", requireOwner, async (_req, res) => {
     res.json(await storage.listPersonalCategories());

@@ -43,6 +43,7 @@ import type {
   Expense,
   InsertExpense,
   DashboardSummary,
+  FinancialStatement,
   DashboardGranularity,
   Sector,
   SectorPnl,
@@ -53,7 +54,7 @@ import type {
   PersonalSummary,
   KakaoTokens,
 } from "@shared/schema";
-import { SECTORS } from "@shared/schema";
+import { SECTORS, SECTOR_LABEL } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc, gt, and, asc, gte, lte, like } from "drizzle-orm";
@@ -709,6 +710,7 @@ export interface IStorage {
   updateExpense(id: number, patch: Partial<Expense>): Promise<Expense | undefined>;
   deleteExpense(id: number): Promise<void>;
   getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
+  getFinancialStatement(from: string, to: string): Promise<FinancialStatement>;
   // E: 개인 가계부
   listPersonalCategories(): Promise<PersonalCategory[]>;
   createPersonalCategory(c: InsertPersonalCategory): Promise<PersonalCategory>;
@@ -1472,6 +1474,80 @@ export class DatabaseStorage implements IStorage {
       netProfit: totalIncome - totalExpense,
       expenseByCategory,
       buckets,
+    };
+  }
+
+  // ===== 재무제표 (내부 경영용): 업종별 손익계산서 + 채권·채무 요약 =====
+  async getFinancialStatement(from: string, to: string): Promise<FinancialStatement> {
+    const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
+    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
+
+    // 원천 데이터 (기간 필터)
+    const allOrders = await this.listOrders();
+    const orderRows = allOrders.filter(
+      (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
+    );
+    const storeSaleRows = await this.listStoreSales(from, to);
+    const allPurchases = await this.listPurchases();
+    const purchaseRows = allPurchases.filter((p) => p.purchaseDate >= from && p.purchaseDate <= to);
+    const expenseRows = await this.listExpenses(from, to);
+
+    const norm = (s: string, fallback: Sector): Sector =>
+      (SECTORS as readonly string[]).includes(s) ? (s as Sector) : fallback;
+
+    // 부문별 매출/매출원가/판관비 집계
+    const rev: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
+    const cogs: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
+    const sga: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
+
+    // 매출: 도매주문 → wholesale, 매장/온라인 매출 → 행의 sector
+    for (const o of orderRows) rev.wholesale += o.totalAmount;
+    for (const r of storeSaleRows) rev[norm(r.sector, "store")] += r.amount;
+    // 매출원가: 공장 매입(발주)은 전부 원두도매(wholesale)의 매출원가
+    for (const p of purchaseRows) cogs.wholesale += p.totalAmount;
+    // 판매관리비: 수기 지출 → 행의 sector
+    for (const e of expenseRows) sga[norm((e as any).sector, "common")] += e.amount;
+
+    const lines: FinancialStatement["lines"] = SECTORS.map((s) => {
+      const revenue = rev[s];
+      const c = cogs[s];
+      const grossProfit = revenue - c;
+      const g = sga[s];
+      return {
+        sector: s,
+        label: SECTOR_LABEL[s],
+        revenue,
+        cogs: c,
+        grossProfit,
+        sga: g,
+        operatingProfit: grossProfit - g,
+      };
+    }).filter((l) => l.revenue !== 0 || l.cogs !== 0 || l.sga !== 0);
+
+    const totals = lines.reduce(
+      (acc, l) => {
+        acc.revenue += l.revenue;
+        acc.cogs += l.cogs;
+        acc.grossProfit += l.grossProfit;
+        acc.sga += l.sga;
+        acc.operatingProfit += l.operatingProfit;
+        return acc;
+      },
+      { revenue: 0, cogs: 0, grossProfit: 0, sga: 0, operatingProfit: 0 },
+    );
+
+    // 채권·채무 (현재 시점 스냅샷)
+    const custBalances = await this.getCustomerBalances();
+    const supBalances = await this.getSupplierBalances();
+    const receivables = custBalances.reduce((s, b) => s + Math.max(0, b.balance), 0);
+    const payables = supBalances.reduce((s, b) => s + Math.max(0, b.balance), 0);
+
+    return {
+      from,
+      to,
+      lines,
+      totals,
+      workingCapital: { receivables, payables, net: receivables - payables },
     };
   }
 
