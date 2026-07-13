@@ -1792,13 +1792,25 @@ export async function registerRoutes(
     });
     if (!updated) return res.status(404).json({ message: "주문 없음" });
 
+    // 발생주의 연동: 이 주문으로 자동 생성된 공장 발주가 있으면 함께 삭제한다.
+    //  → 발주가 사라지면 대시보드의 홀세일 지출(공장 매입)에서도 자동으로 빠진다.
+    let removedPurchaseNo = "";
+    if (order.autoPurchaseId) {
+      try {
+        const linked = await storage.getPurchase(order.autoPurchaseId);
+        removedPurchaseNo = linked?.purchaseNo ?? "";
+        await storage.deletePurchase(order.autoPurchaseId);
+      } catch { /* 이미 삭제된 발주면 무시 */ }
+      await storage.updateOrder(id, { autoPurchaseId: null });
+    }
+
     const actor = await getActor(req);
     await storage.logActivity({
       ...actor,
       action: "order.admin_cancel",
       targetType: "order",
       targetId: String(updated.id),
-      summary: `관리자가 주문 #${updated.orderNo} 취소`,
+      summary: `관리자가 주문 #${updated.orderNo} 취소${removedPurchaseNo ? ` (연결 발주 ${removedPurchaseNo} 삭제)` : ""}`,
     });
 
     res.json(updated);

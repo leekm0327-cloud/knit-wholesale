@@ -1383,8 +1383,10 @@ export class DatabaseStorage implements IStorage {
       (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
     );
     const storeSaleRows = await this.listStoreSales(from, to);
-    const allSupplierPayments = await this.listSupplierPayments();
-    const paymentRows = allSupplierPayments.filter((p) => p.paidAt >= from && p.paidAt <= to);
+    // 발생주의: 공장 매입(발주)을 발주일 기준으로 홀세일 지출에 반영. (공장 '지급'은 지출로 잡지 않음)
+    //  발주를 삭제하면 이 합산에서 자동으로 빠진다.
+    const allPurchases = await this.listPurchases();
+    const purchaseRows = allPurchases.filter((p) => p.purchaseDate >= from && p.purchaseDate <= to);
     const expenseRows = await this.listExpenses(from, to);
 
     // D: 부문별 손익 비교 (항상 전체 부문 계산)
@@ -1398,8 +1400,8 @@ export class DatabaseStorage implements IStorage {
       const s = (SECTORS as readonly string[]).includes(r.sector) ? (r.sector as Sector) : "store";
       secAgg[s].income += r.amount;
     }
-    // 공장지급 → wholesale 지출
-    for (const p of paymentRows) secAgg.wholesale.expense += p.amount;
+    // 공장 매입(발주) → wholesale 지출 (발생주의)
+    for (const p of purchaseRows) secAgg.wholesale.expense += p.totalAmount;
     // 지출 → 행의 sector
     for (const e of expenseRows) {
       const s = (SECTORS as readonly string[]).includes((e as any).sector) ? ((e as any).sector as Sector) : "common";
@@ -1422,14 +1424,14 @@ export class DatabaseStorage implements IStorage {
     const storeSalesTotal = filteredStoreSales.reduce((s, r) => s + r.amount, 0);
     const totalIncome = wholesaleSales + storeSalesTotal;
 
-    // 지출
-    const supplierPaid = includeWholesale ? paymentRows.reduce((s, p) => s + p.amount, 0) : 0;
+    // 지출 (발생주의: 공장 매입=발주액. 공장 지급은 제외)
+    const purchaseTotal = includeWholesale ? purchaseRows.reduce((s, p) => s + p.totalAmount, 0) : 0;
     const otherExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
-    const totalExpense = supplierPaid + otherExpense;
+    const totalExpense = purchaseTotal + otherExpense;
 
-    // 지출 항목별 비중 (공장지급 + 지출 카테고리별)
+    // 지출 항목별 비중 (공장 매입 + 지출 카테고리별)
     const catMap = new Map<string, number>();
-    if (supplierPaid > 0) catMap.set("공장지급", supplierPaid);
+    if (purchaseTotal > 0) catMap.set("공장 매입", purchaseTotal);
     for (const e of filteredExpenses) {
       catMap.set(e.category, (catMap.get(e.category) ?? 0) + e.amount);
     }
@@ -1446,7 +1448,7 @@ export class DatabaseStorage implements IStorage {
     };
     if (includeWholesale) {
       for (const o of orderRows) bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount);
-      for (const p of paymentRows) bump(bucketKey(dateFromYmd(p.paidAt), granularity), "expense", p.amount);
+      for (const p of purchaseRows) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", p.totalAmount);
     }
     for (const r of filteredStoreSales) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
     for (const e of filteredExpenses) bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
@@ -1464,7 +1466,7 @@ export class DatabaseStorage implements IStorage {
       wholesaleSales,
       storeSales: storeSalesTotal,
       totalIncome,
-      supplierPaid,
+      purchaseTotal,
       otherExpense,
       totalExpense,
       netProfit: totalIncome - totalExpense,
