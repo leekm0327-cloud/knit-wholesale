@@ -35,6 +35,7 @@ import {
   Menu,
   Inbox,
   CalendarCheck,
+  ExternalLink,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -43,6 +44,7 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   ownerOnly?: boolean;
+  external?: boolean; // 새 탭으로 여는 외부/고객 사이트 링크
 };
 
 // NAV 그룹 타입 (label === null 이면 그룹 헤더 없이 상단 단독 항목)
@@ -54,7 +56,10 @@ type NavGroup = {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: null,
-    items: [{ href: "/admin", label: "대시보드", icon: LayoutDashboard }],
+    items: [
+      { href: "/admin", label: "대시보드", icon: LayoutDashboard },
+      { href: "/#/catalog", label: "주문 사이트 바로가기", icon: ExternalLink, external: true },
+    ],
   },
   {
     label: "판매·주문",
@@ -79,9 +84,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "경영·재무",
     items: [
       { href: "/admin/dashboard-pnl", label: "경영 대시보드", icon: LineChart, ownerOnly: true },
-      { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity },
-      { href: "/admin/store-sales", label: "매장매출", icon: Store },
-      { href: "/admin/money", label: "지출·가계부", icon: Receipt },
+      { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity, ownerOnly: true },
+      { href: "/admin/store-sales", label: "매장매출", icon: Store, ownerOnly: true },
+      { href: "/admin/money", label: "지출·가계부", icon: Receipt, ownerOnly: true },
       { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
     ],
   },
@@ -182,6 +187,29 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     const active = matchActive(location, item.href);
     const Icon = item.icon;
     const badge = badgeFor(item.href);
+
+    // 외부/고객 사이트 링크는 새 탭으로 여는 일반 <a> 로 렌더 (관리자 세션 유지)
+    if (item.external) {
+      return (
+        <a
+          key={item.href}
+          href={item.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid={`nav-${item.href}`}
+          onClick={onNavigate}
+          className={`flex items-center justify-between rounded-none py-2 pr-3 font-ui text-sm font-semibold tracking-wide text-sidebar-foreground transition-colors hover-elevate ${
+            indent ? "pl-6" : "pl-3"
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Icon className="h-4 w-4" />
+            {item.label}
+          </span>
+        </a>
+      );
+    }
+
     return (
       <Link
         key={item.href}
