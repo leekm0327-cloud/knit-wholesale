@@ -4,7 +4,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, seedPersonalCategories, db, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
@@ -28,6 +28,7 @@ import {
   updateNewsSchema,
   updateOrderItemsSchema,
   insertProductSchema,
+  insertProductCategorySchema,
   insertPaymentSchema,
   ecountSettingsInputSchema,
   forgotPasswordSchema,
@@ -114,6 +115,7 @@ export async function registerRoutes(
   await seed();
   seedFixedCostItems();
   seedPersonalCategories();
+  seedProductCategories();
 
   // 샌드박스 iframe 쿠키 동작을 위한 설정
   app.set("trust proxy", 1);
@@ -435,13 +437,15 @@ export async function registerRoutes(
     const overrideMap = new Map(overrides.map((o) => [o.productId, o.price]));
     const rawItems = parsed.data.items;
     const newItems: any[] = [];
-    // A-4: 원두 카테고리(blend/decaf/single) 수량 합 (최소 5kg 검증용)
+    // A-4: 원두 카테고리 수량 합 (최소 5kg 검증용) — 카테고리 관리의 '원두(isBean)' 기준
+    const beanKeys = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
+    if (beanKeys.size === 0) ["blend", "decaf", "single"].forEach((k) => beanKeys.add(k)); // 방어적 폴백
     let beanQtyTotal = 0;
     for (const it of rawItems) {
       const prod = await storage.getProduct(it.productId);
       if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${it.productId}` });
       const unitPrice = overrideMap.get(it.productId) ?? prod.price;
-      if (["blend", "decaf", "single"].includes(prod.category)) beanQtyTotal += it.qty;
+      if (beanKeys.has(prod.category)) beanQtyTotal += it.qty;
       newItems.push({ ...it, category: prod.category, productName: prod.name, unitPrice, amount: unitPrice * it.qty });
     }
 
@@ -580,9 +584,11 @@ export async function registerRoutes(
     const recomputed = await recomputeOrderItems(customer.id, parsed.data.items);
     if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
 
-    // A-4: 도매 원두(blend/decaf/single) 최소 5kg(수량 5개) 검증
+    // A-4: 도매 원두 최소 5kg(수량 5개) 검증 — 카테고리 관리의 '원두(isBean)' 기준
+    const beanKeys2 = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
+    if (beanKeys2.size === 0) ["blend", "decaf", "single"].forEach((k) => beanKeys2.add(k));
     const beanQtyTotal = recomputed.items
-      .filter((i: any) => ["blend", "decaf", "single"].includes(i.category))
+      .filter((i: any) => beanKeys2.has(i.category))
       .reduce((s: number, i: any) => s + i.qty, 0);
     if (beanQtyTotal > 0 && beanQtyTotal < 5)
       return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
@@ -656,14 +662,16 @@ export async function registerRoutes(
     if (productIds.length > 2)
       return res.status(400).json({ message: "샘플은 최대 2종까지 신청할 수 있습니다." });
 
-    // 중복 제거 및 원두 카테고리 검증
+    // 중복 제거 및 샘플 대상 카테고리 검증 — 카테고리 관리의 '샘플 대상(sampleEligible)' 기준
+    const sampleKeys = new Set((await storage.listProductCategories()).filter((c) => c.sampleEligible).map((c) => c.key));
+    if (sampleKeys.size === 0) ["blend", "decaf"].forEach((k) => sampleKeys.add(k)); // 방어적 폴백
     const uniqueIds = Array.from(new Set(productIds.map((x) => Number(x))));
     const items: any[] = [];
     for (const pid of uniqueIds) {
       const prod = await storage.getProduct(pid);
       if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${pid}` });
-      if (!["blend", "decaf", "single"].includes(prod.category))
-        return res.status(400).json({ message: "샘플은 원두 상품만 신청할 수 있습니다." });
+      if (!sampleKeys.has(prod.category))
+        return res.status(400).json({ message: "샘플 신청이 가능한 카테고리의 상품이 아닙니다." });
       // 각 1kg(수량 1) 고정, 무료(단가 0)
       items.push({ productId: prod.id, name: prod.name, category: prod.category, unitPrice: 0, qty: 1, amount: 0 });
     }
@@ -1719,9 +1727,9 @@ export async function registerRoutes(
             if (supplier) {
               let orderItems: any[] = [];
               try { orderItems = JSON.parse(updated.items); } catch { /* noop */ }
-              const beanItems = orderItems.filter((it) =>
-                ["blend", "decaf", "single"].includes(it.category),
-              );
+              const autoBeanKeys = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
+              if (autoBeanKeys.size === 0) ["blend", "decaf", "single"].forEach((k) => autoBeanKeys.add(k));
+              const beanItems = orderItems.filter((it) => autoBeanKeys.has(it.category));
               if (beanItems.length > 0) {
                 const purchaseItems: PurchaseItem[] = [];
                 for (const it of beanItems) {
@@ -1843,6 +1851,65 @@ export async function registerRoutes(
       targetId: String(id),
       summary: `상품 '${product.name}' 삭제`,
     });
+    res.json({ ok: true });
+  });
+
+  // ===== 상품 카테고리 (조회는 공개, 관리는 소유자 전용) =====
+  app.get("/api/product-categories", async (_req, res) => {
+    res.json(await storage.listProductCategories());
+  });
+
+  app.post("/api/admin/product-categories", requireOwner, async (req, res) => {
+    const parsed = insertProductCategorySchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const existing = await storage.listProductCategories();
+    if (existing.some((c) => c.key === parsed.data.key))
+      return res.status(400).json({ message: "이미 존재하는 코드값입니다." });
+    // 새 카테고리는 기본적으로 맨 뒤 순서로
+    const maxOrder = existing.reduce((m, c) => Math.max(m, c.sortOrder), -1);
+    const cat = await storage.createProductCategory({ ...parsed.data, sortOrder: parsed.data.sortOrder ?? maxOrder + 1 });
+    res.json(cat);
+  });
+
+  app.patch("/api/admin/product-categories/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const patch: Record<string, any> = {};
+    if (typeof req.body.label === "string") patch.label = req.body.label.trim();
+    if (typeof req.body.sortOrder === "number") patch.sortOrder = req.body.sortOrder;
+    if (typeof req.body.isBean === "boolean") patch.isBean = req.body.isBean ? 1 : 0;
+    if (typeof req.body.sampleEligible === "boolean") patch.sampleEligible = req.body.sampleEligible ? 1 : 0;
+    if (typeof req.body.active === "boolean") patch.active = req.body.active ? 1 : 0;
+    if (patch.label === "") return res.status(400).json({ message: "표시명을 입력해 주세요." });
+    // 코드값(key)은 상품이 참조하므로 수정 불가
+    const cat = await storage.updateProductCategory(id, patch);
+    if (!cat) return res.status(404).json({ message: "카테고리를 찾을 수 없습니다." });
+    res.json(cat);
+  });
+
+  app.delete("/api/admin/product-categories/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const cats = await storage.listProductCategories();
+    const target = cats.find((c) => c.id === id);
+    if (!target) return res.status(404).json({ message: "카테고리를 찾을 수 없습니다." });
+    // 해당 카테고리를 쓰는 상품이 있으면 삭제 차단 (상품을 먼저 다른 카테고리로 옮겨야 함)
+    const products = await storage.listProducts();
+    const inUse = products.filter((p) => p.category === target.key).length;
+    if (inUse > 0)
+      return res.status(400).json({
+        message: `이 카테고리를 쓰는 상품이 ${inUse}개 있습니다. 상품을 먼저 다른 카테고리로 바꾼 뒤 삭제해 주세요. (임시로 숨기려면 '표시'를 꺼주세요.)`,
+      });
+    await storage.deleteProductCategory(id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/admin/product-categories/reorder", requireOwner, async (req, res) => {
+    const ids = req.body?.orderedIds;
+    if (!Array.isArray(ids) || ids.some((x) => typeof x !== "number"))
+      return res.status(400).json({ message: "orderedIds 배열이 필요합니다." });
+    await storage.reorderProductCategories(ids);
     res.json({ ok: true });
   });
 

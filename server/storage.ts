@@ -1,9 +1,11 @@
-import { customers, products, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests } from "@shared/schema";
+import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
   Product,
   InsertProduct,
+  ProductCategory,
+  InsertProductCategory,
   Order,
   OrderItem,
   Payment,
@@ -269,6 +271,16 @@ CREATE TABLE IF NOT EXISTS fixed_cost_items (
   sort_order INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS product_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_bean INTEGER NOT NULL DEFAULT 1,
+  sample_eligible INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS expenses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -581,6 +593,12 @@ export interface IStorage {
   createProduct(p: InsertProduct): Promise<Product>;
   updateProduct(id: number, patch: Partial<Product>): Promise<Product | undefined>;
   deleteProduct(id: number): Promise<void>;
+  // product categories
+  listProductCategories(): Promise<ProductCategory[]>;
+  createProductCategory(c: InsertProductCategory): Promise<ProductCategory>;
+  updateProductCategory(id: number, patch: Partial<ProductCategory>): Promise<ProductCategory | undefined>;
+  deleteProductCategory(id: number): Promise<void>;
+  reorderProductCategories(orderedIds: number[]): Promise<void>;
   // orders
   createOrder(
     o: Omit<Order, "id" | "cancelledAt" | "cancelledBy" | "autoPurchaseId"> &
@@ -808,6 +826,41 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteProduct(id: number) {
     db.delete(products).where(eq(products.id, id)).run();
+  }
+
+  // ===== 상품 카테고리 =====
+  async listProductCategories(): Promise<ProductCategory[]> {
+    return db
+      .select()
+      .from(productCategories)
+      .orderBy(asc(productCategories.sortOrder), asc(productCategories.id))
+      .all();
+  }
+  async createProductCategory(c: InsertProductCategory): Promise<ProductCategory> {
+    return db
+      .insert(productCategories)
+      .values({
+        key: c.key,
+        label: c.label,
+        sortOrder: c.sortOrder ?? 0,
+        isBean: c.isBean === false ? 0 : 1,
+        sampleEligible: c.sampleEligible ? 1 : 0,
+        active: c.active === false ? 0 : 1,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async updateProductCategory(id: number, patch: Partial<ProductCategory>): Promise<ProductCategory | undefined> {
+    return db.update(productCategories).set(patch).where(eq(productCategories.id, id)).returning().get();
+  }
+  async deleteProductCategory(id: number): Promise<void> {
+    db.delete(productCategories).where(eq(productCategories.id, id)).run();
+  }
+  async reorderProductCategories(orderedIds: number[]): Promise<void> {
+    orderedIds.forEach((id, i) => {
+      db.update(productCategories).set({ sortOrder: i }).where(eq(productCategories.id, id)).run();
+    });
   }
 
   async createOrder(
@@ -1953,6 +2006,37 @@ export function seedFixedCostItems() {
     db.insert(fixedCostItems).values({ name, sortOrder: i, active: 1, createdAt: now }).run();
   });
   console.log("[seed] 고정비 항목 기본 10개 생성 완료");
+}
+
+// ===== 상품 카테고리 기본 시드 (비어있을 때만) =====
+export function seedProductCategories() {
+  const existing = db.select().from(productCategories).all();
+  if (existing.length > 0) return;
+  const now = Date.now();
+  // 사용자 요청 순서: 블렌드, 디카페인, 싱글 에스프레소, 싱글 필터, 드립백
+  // 기존 상품 호환을 위해 'single'(싱글 오리진)은 유지하되 맨 뒤에 둠.
+  const defaults: Array<{ key: string; label: string; isBean: number; sample: number }> = [
+    { key: "blend", label: "블렌드", isBean: 1, sample: 1 },
+    { key: "decaf", label: "디카페인", isBean: 1, sample: 1 },
+    { key: "single_espresso", label: "싱글 오리진 에스프레소", isBean: 1, sample: 0 },
+    { key: "single_filter", label: "싱글 오리진 필터", isBean: 1, sample: 0 },
+    { key: "dripbag", label: "드립백", isBean: 0, sample: 0 },
+    { key: "single", label: "싱글 오리진", isBean: 1, sample: 0 },
+  ];
+  defaults.forEach((c, i) => {
+    db.insert(productCategories)
+      .values({
+        key: c.key,
+        label: c.label,
+        sortOrder: i,
+        isBean: c.isBean,
+        sampleEligible: c.sample,
+        active: 1,
+        createdAt: now,
+      })
+      .run();
+  });
+  console.log("[seed] 상품 카테고리 기본 6개 생성 완료");
 }
 
 // ===== E: 개인 가계부 카테고리 기본 시드 (비어있을 때만) =====
