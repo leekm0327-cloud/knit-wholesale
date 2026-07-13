@@ -1547,6 +1547,20 @@ export async function registerRoutes(
     res.json(await storage.getFinancialStatement(from, to));
   });
 
+  // 품목별 기간 집계 (주문/발주) — 직원도 조회 가능
+  app.get("/api/admin/orders/item-summary", requireAdmin, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    res.json(await storage.getOrderItemSummary(from, to));
+  });
+  app.get("/api/admin/purchases/item-summary", requireAdmin, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    res.json(await storage.getPurchaseItemSummary(from, to));
+  });
+
   // ===== E: 개인 가계부 (owner 전용, 사업 재무와 완전 분리) =====
   app.get("/api/personal-categories", requireOwner, async (_req, res) => {
     res.json(await storage.listPersonalCategories());

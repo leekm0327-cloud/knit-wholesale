@@ -44,6 +44,7 @@ import type {
   InsertExpense,
   DashboardSummary,
   FinancialStatement,
+  ItemSummaryRow,
   DashboardGranularity,
   Sector,
   SectorPnl,
@@ -711,6 +712,8 @@ export interface IStorage {
   deleteExpense(id: number): Promise<void>;
   getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
   getFinancialStatement(from: string, to: string): Promise<FinancialStatement>;
+  getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
+  getPurchaseItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
   // E: 개인 가계부
   listPersonalCategories(): Promise<PersonalCategory[]>;
   createPersonalCategory(c: InsertPersonalCategory): Promise<PersonalCategory>;
@@ -1554,6 +1557,45 @@ export class DatabaseStorage implements IStorage {
       totals,
       workingCapital: { receivables, payables, net: receivables - payables },
     };
+  }
+
+  // ===== 품목별 기간 집계 =====
+  async getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]> {
+    const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
+    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
+    const orders = (await this.listOrders()).filter(
+      (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
+    );
+    const map = new Map<string, ItemSummaryRow>();
+    for (const o of orders) {
+      let items: any[] = [];
+      try { items = JSON.parse(o.items); } catch { /* noop */ }
+      for (const it of items) {
+        const name = String(it.name ?? "(이름없음)");
+        const cur = map.get(name) ?? { name, category: String(it.category ?? ""), qty: 0, amount: 0 };
+        cur.qty += Number(it.qty) || 0;
+        cur.amount += Number(it.amount) || 0;
+        map.set(name, cur);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.qty - a.qty || b.amount - a.amount);
+  }
+
+  async getPurchaseItemSummary(from: string, to: string): Promise<ItemSummaryRow[]> {
+    const purchaseRows = (await this.listPurchases()).filter((p) => p.purchaseDate >= from && p.purchaseDate <= to);
+    const map = new Map<string, ItemSummaryRow>();
+    for (const p of purchaseRows) {
+      let items: any[] = [];
+      try { items = JSON.parse(p.items); } catch { /* noop */ }
+      for (const it of items) {
+        const name = String(it.name ?? "(이름없음)");
+        const cur = map.get(name) ?? { name, category: String(it.category ?? ""), qty: 0, amount: 0 };
+        cur.qty += Number(it.qty) || 0;
+        cur.amount += Number(it.amount) || 0;
+        map.set(name, cur);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.qty - a.qty || b.amount - a.amount);
   }
 
   // ===== E: 개인 가계부 =====
