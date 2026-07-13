@@ -37,6 +37,7 @@ import {
   CalendarCheck,
   ExternalLink,
   Tags,
+  FileSpreadsheet,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -86,6 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "경영·재무",
     items: [
       { href: "/admin/dashboard-pnl", label: "경영 대시보드", icon: LineChart, ownerOnly: true },
+      { href: "/admin/financials", label: "재무제표", icon: FileSpreadsheet, ownerOnly: true },
       // 방문자 통계 — Cloudflare 토큰 이슈로 우선 중단(메뉴 숨김). 토큰 수정 후 이 줄을 되살리면 재개.
       // { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity, ownerOnly: true },
       { href: "/admin/store-sales", label: "매장매출", icon: Store, ownerOnly: true },
