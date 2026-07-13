@@ -86,7 +86,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: "경영·재무",
     items: [
       { href: "/admin/dashboard-pnl", label: "경영 대시보드", icon: LineChart, ownerOnly: true },
-      { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity, ownerOnly: true },
+      // 방문자 통계 — Cloudflare 토큰 이슈로 우선 중단(메뉴 숨김). 토큰 수정 후 이 줄을 되살리면 재개.
+      // { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity, ownerOnly: true },
       { href: "/admin/store-sales", label: "매장매출", icon: Store, ownerOnly: true },
       { href: "/admin/money", label: "지출·가계부", icon: Receipt, ownerOnly: true },
       { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
