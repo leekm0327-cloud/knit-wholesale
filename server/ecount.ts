@@ -5,7 +5,7 @@
  */
 import crypto from "crypto";
 import { storage } from "./storage";
-import type { EcountSettings, EcountVerifyResult, Order, OrderItem, Customer, Payment } from "@shared/schema";
+import type { EcountSettings, EcountVerifyResult, Order, OrderItem, Customer, Payment, Purchase, PurchaseItem } from "@shared/schema";
 
 // ===== 로그 기록 헬퍼 =====
 type LogInput = {
@@ -1039,4 +1039,170 @@ export async function sendCustomerToEcount(customerId: number): Promise<{
     });
     return { ok: false, steps, custCode };
   }
+}
+
+// ============================================================
+// 발주(매입) → ECOUNT 구매입력 전송 (발주 관리의 수동 버튼에서 호출)
+// ============================================================
+
+async function savePurchaseOnEcount(
+  ctx: { s: EcountSettings; sid: string; host: string },
+  purchase: Purchase,
+  custCode: string,
+  items: PurchaseItem[],
+  productCodeMap: Map<number, string>,
+  deliver: { name: string; code: string },
+): Promise<{ ok: boolean; message: string; res: any }> {
+  const ioDate =
+    purchase.purchaseDate && purchase.purchaseDate.trim()
+      ? purchase.purchaseDate.replace(/-/g, "")
+      : ymdFromDate(new Date(purchase.createdAt));
+  const url = `${ctx.host}/OAPI/V2/Purchases/SavePurchases?SESSION_ID=${ctx.sid}`;
+  // 납품거래처(출처 거래처)는 우선 적요(비고)에 담아 확실히 기록. 전용 필드는 로그 확인 후 연결.
+  const remark = `발주 ${purchase.purchaseNo}` + (deliver.name ? ` / 납품:${deliver.name}` : "");
+  const PurchasesList = items.map((it, idx) => ({
+    Line: String(idx + 1),
+    BulkDatas: {
+      IO_DATE: ioDate,
+      UPLOAD_SER_NO: "1",
+      CUST: custCode,
+      WH_CD: ctx.s.warehouseCode,
+      PROD_CD: (productCodeMap.get(it.productId as number) || "").trim(),
+      QTY: String(it.qty),
+      PRICE: String(it.unitPrice),
+      SUPPLY_AMT: String(it.amount),
+      VAT_AMT: String(Math.round(it.amount * 0.1)),
+      REMARKS_WIN: remark,
+    },
+  }));
+  const body = { PurchasesList };
+  const res = await post(url, body);
+  const { error: errStr } = extractRealError(res);
+  const status = String(res?.Status) === "200";
+  const succ = res?.Data?.SuccessCnt;
+  const fail = res?.Data?.FailCnt;
+  const noFail = fail === undefined || fail === 0 || fail === "0";
+  const ok = status && !errStr && noFail;
+  const message = ok
+    ? `구매전표 ${succ ?? items.length}건 등록 완료`
+    : `실패: ${errStr ?? `Status ${res?.Status ?? "?"}`}`;
+  return { ok, message, res };
+}
+
+export async function sendPurchaseToEcount(purchaseId: number): Promise<{
+  ok: boolean;
+  steps: Array<{ step: string; ok: boolean; message: string }>;
+}> {
+  const purchase = await storage.getPurchase(purchaseId);
+  if (!purchase) throw new Error(`발주 ${purchaseId} 을 찾을 수 없습니다.`);
+  const supplier = await storage.getSupplier(purchase.supplierId);
+  if (!supplier) throw new Error(`발주의 공급처를 찾을 수 없습니다.`);
+
+  const steps: Array<{ step: string; ok: boolean; message: string }> = [];
+
+  // 0) 공급처 이카운트 거래처코드 확인
+  const custCode = (supplier.ecountCode || "").trim();
+  if (!custCode) {
+    steps.push({
+      step: "사전 검증",
+      ok: false,
+      message: `공급처 '${supplier.name}'의 이카운트 거래처코드가 없습니다. 공급처 관리에서 먼저 입력해주세요.`,
+    });
+    return { ok: false, steps };
+  }
+
+  // 0.5) 품목 검증 + 코드맵 (직접입력/품목코드 없는 품목이 있으면 전송 차단)
+  const items: PurchaseItem[] = JSON.parse(purchase.items);
+  const productCodeMap = new Map<number, string>();
+  const missing: string[] = [];
+  for (const it of items) {
+    if (it.productId == null) {
+      missing.push(`${it.name}(직접입력)`);
+      continue;
+    }
+    const p = await storage.getProduct(it.productId);
+    const code = (p?.ecountCode || "").trim();
+    if (!code) missing.push(it.name);
+    else productCodeMap.set(it.productId, code);
+  }
+  if (missing.length > 0) {
+    steps.push({
+      step: "품목 검증",
+      ok: false,
+      message: `이카운트 품목코드가 없어 전송할 수 없는 품목이 있습니다: ${missing.join(", ")}. 해당 품목을 상품으로 연결하거나 상품 관리에서 품목코드를 입력해주세요.`,
+    });
+    return { ok: false, steps };
+  }
+
+  // 출처(납품) 거래처 조회 — order.autoPurchaseId 로 매칭
+  const deliver = { name: "", code: "" };
+  try {
+    const orders = await storage.listOrders();
+    const src = orders.find((o) => o.autoPurchaseId === purchaseId);
+    if (src) {
+      try {
+        deliver.name = JSON.parse(src.customerSnapshot)?.businessName ?? "";
+      } catch {}
+      const cust = await storage.getCustomer(src.customerId);
+      deliver.code = (cust?.bizRegNo || "").replace(/[^0-9]/g, "");
+    }
+  } catch {}
+
+  // 세션발급
+  let ctx: { s: EcountSettings; sid: string; host: string };
+  const loginT0 = Date.now();
+  try {
+    ctx = await ensureSession();
+    await recordLog({ action: "login", label: "세션발급", refKind: "purchase", refId: purchase.purchaseNo, ok: true, message: "OK", durationMs: Date.now() - loginT0 });
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    steps.push({ step: "세션발급", ok: false, message: msg });
+    await recordLog({ action: "login", label: "세션발급", refKind: "purchase", refId: purchase.purchaseNo, ok: false, message: msg, durationMs: Date.now() - loginT0 });
+    return { ok: false, steps };
+  }
+
+  // 품목 등록(upsert) — 판매 로직 재사용
+  {
+    const t0 = Date.now();
+    try {
+      const orderLike = items
+        .filter((it) => it.productId != null)
+        .map((it) => ({ productId: it.productId as number, name: it.name, category: "", unitPrice: it.unitPrice, qty: it.qty, amount: it.amount })) as OrderItem[];
+      const r = await upsertProductsOnEcount(ctx, orderLike, productCodeMap);
+      steps.push({ step: "품목 등록", ok: r.ok, message: r.message });
+      await recordLog({ action: "product", label: "품목 등록", refKind: "purchase", refId: purchase.purchaseNo, summary: r.codes.join(", "), ok: r.ok, message: r.message, response: r.res, durationMs: Date.now() - t0 });
+      if (!r.ok) return { ok: false, steps };
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      steps.push({ step: "품목 등록", ok: false, message: msg });
+      await recordLog({ action: "product", label: "품목 등록", refKind: "purchase", refId: purchase.purchaseNo, ok: false, message: msg, durationMs: Date.now() - t0 });
+      return { ok: false, steps };
+    }
+  }
+
+  // 구매전표 등록
+  {
+    const t0 = Date.now();
+    try {
+      const r = await savePurchaseOnEcount(ctx, purchase, custCode, items, productCodeMap, deliver);
+      steps.push({ step: "구매전표 등록", ok: r.ok, message: r.message });
+      await recordLog({
+        action: "purchase",
+        label: "구매전표 등록",
+        refKind: "purchase",
+        refId: purchase.purchaseNo,
+        summary: `${supplier.name} · ${items.length}건 · ${purchase.totalAmount.toLocaleString()}원${deliver.name ? ` · 납품:${deliver.name}` : ""}`,
+        ok: r.ok,
+        message: r.message,
+        response: r.res,
+        durationMs: Date.now() - t0,
+      });
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      steps.push({ step: "구매전표 등록", ok: false, message: msg });
+      await recordLog({ action: "purchase", label: "구매전표 등록", refKind: "purchase", refId: purchase.purchaseNo, summary: supplier.name, ok: false, message: msg, durationMs: Date.now() - t0 });
+    }
+  }
+
+  return { ok: steps.every((s) => s.ok), steps };
 }

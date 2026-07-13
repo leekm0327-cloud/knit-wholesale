@@ -231,6 +231,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
   name TEXT NOT NULL,
   contact TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL DEFAULT '',
+  ecount_code TEXT NOT NULL DEFAULT '',
   memo TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 );
@@ -546,6 +547,17 @@ for (const col of [
   } catch (e: any) {
     if (!/duplicate column/i.test(String(e?.message ?? ""))) {
       console.warn("[products migration]", e?.message);
+    }
+  }
+}
+
+// 공급처 이카운트 거래처코드 컬럼 (기존 DB 대비 멱등 ALTER)
+for (const col of ["ecount_code TEXT NOT NULL DEFAULT ''"]) {
+  try {
+    sqlite.exec(`ALTER TABLE suppliers ADD COLUMN ${col};`);
+  } catch (e: any) {
+    if (!/duplicate column/i.test(String(e?.message ?? ""))) {
+      console.warn("[suppliers migration]", e?.message);
     }
   }
 }
@@ -982,6 +994,7 @@ export class DatabaseStorage implements IStorage {
         name: s.name,
         contact: s.contact ?? "",
         phone: s.phone ?? "",
+        ecountCode: s.ecountCode ?? "",
         memo: s.memo ?? "",
         createdAt: Date.now(),
       })

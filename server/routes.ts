@@ -9,7 +9,7 @@ import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
-import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, __ecountLogDebug } from "./ecount";
+import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, sendPurchaseToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
 import multer from "multer";
@@ -1131,7 +1131,7 @@ export async function registerRoutes(
   app.patch("/api/admin/suppliers/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
-    const allowed = ["name", "contact", "phone", "memo"];
+    const allowed = ["name", "contact", "phone", "ecountCode", "memo"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     const updated = await storage.updateSupplier(id, patch);
@@ -2050,6 +2050,18 @@ export async function registerRoutes(
         ok: false,
         message: e?.message ?? String(e),
       });
+    }
+  });
+
+  // 발주(매입) → ECOUNT 구매입력 전송
+  app.post("/api/admin/ecount/purchases/:id/send", requireAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, message: "잘못된 발주 ID" });
+      const result = await sendPurchaseToEcount(id);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ ok: false, steps: [], message: e?.message ?? String(e) });
     }
   });
 
