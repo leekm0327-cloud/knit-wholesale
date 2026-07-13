@@ -55,6 +55,7 @@ import AdminStoreSales from "@/pages/admin/AdminStoreSales";
 import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
 import AdminProductCategories from "@/pages/admin/AdminProductCategories";
 import AdminMoneyEntry from "@/pages/admin/AdminMoneyEntry";
+import AdminFinancials from "@/pages/admin/AdminFinancials";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
 import AdminVisitSetups from "@/pages/admin/AdminVisitSetups";
@@ -162,6 +163,7 @@ function AppRouter() {
       <Route path="/admin/supplier-payments" component={AdminSupplierPayments} />
       <Route path="/admin/supplier-balances" component={AdminSupplierBalances} />
       <Route path="/admin/dashboard-pnl" component={AdminDashboardPnl} />
+      <Route path="/admin/financials" component={AdminFinancials} />
       <Route path="/admin/store-sales" component={AdminStoreSales} />
       <Route path="/admin/money" component={AdminMoneyEntry} />
       {/* 통합 이전 경로 — 북마크 호환을 위해 통합 페이지로 연결 */}
