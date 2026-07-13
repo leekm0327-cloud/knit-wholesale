@@ -839,8 +839,8 @@ export type DashboardSummary = {
   wholesaleSales: number; // 도매매출 (취소 제외 주문 합)
   storeSales: number; // 매장매출 합
   totalIncome: number;
-  // 지출
-  supplierPaid: number; // 공장지급 합
+  // 지출 (발생주의: 공장 매입=발주액을 지출로 인식. 공장 지급/지불은 지출 아님)
+  purchaseTotal: number; // 공장 매입(발주) 합
   otherExpense: number; // 기타지출(고정비 포함) 합
   totalExpense: number;
   // 손익
