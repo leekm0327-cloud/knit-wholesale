@@ -22,12 +22,12 @@ type NewsSummary = {
   publishedAt: number;
 };
 
-// 카테고리 순서
-const CATEGORY_ORDER = [
+// 카테고리 순서 — 서버(/api/product-categories)가 원본. 로딩 전 폴백용 기본값.
+const DEFAULT_CATEGORY_ORDER = [
   { key: "blend", label: "블렌드" },
   { key: "decaf", label: "디카페인" },
   { key: "single", label: "싱글 오리진" },
-] as const;
+];
 
 // ===== detailJson에서 컬럼별 값 추출 =====
 type ProductFields = {
@@ -130,6 +130,15 @@ function getCoffeeInfo(product: Product): {
 
 export default function Catalog() {
   const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  // 카테고리(순서·표시 여부)는 관리자 설정을 따른다.
+  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
+  const CATEGORY_ORDER = useMemo(() => {
+    if (!categoryRows || categoryRows.length === 0) return DEFAULT_CATEGORY_ORDER;
+    return categoryRows
+      .filter((c) => c.active !== 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+      .map((c) => ({ key: c.key, label: c.label }));
+  }, [categoryRows]);
   // ③ 니트커피 소식 (발행분). 최신 4개만 상단 카드로 노출.
   const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });
   const topNews = (newsList ?? []).slice(0, 4);
@@ -169,7 +178,7 @@ export default function Catalog() {
       ...cat,
       items: all.filter((p) => p.category === cat.key && p.available !== 0),
     })).filter((g) => g.items.length > 0);
-  }, [products]);
+  }, [products, CATEGORY_ORDER]);
 
   // #1 즐겨찾기 품목 (카테고리 무관, sortOrder 순 유지)
   const favoriteItems = useMemo(() => {
@@ -180,7 +189,7 @@ export default function Catalog() {
   const anchorCats = useMemo(() => {
     if (!products) return [];
     return CATEGORY_ORDER.filter((cat) => (products ?? []).some((p) => p.category === cat.key && p.available !== 0));
-  }, [products]);
+  }, [products, CATEGORY_ORDER]);
 
   // 누적 합계
   const totals = useMemo(() => {
