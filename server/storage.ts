@@ -688,6 +688,7 @@ export interface IStorage {
   deleteFixedCostItem(id: number): Promise<void>;
   listExpenses(from?: string, to?: string): Promise<Expense[]>;
   createExpense(e: InsertExpense): Promise<Expense>;
+  updateExpense(id: number, patch: Partial<Expense>): Promise<Expense | undefined>;
   deleteExpense(id: number): Promise<void>;
   getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
   // E: 개인 가계부
@@ -1304,6 +1305,9 @@ export class DatabaseStorage implements IStorage {
       })
       .returning()
       .get();
+  }
+  async updateExpense(id: number, patch: Partial<Expense>): Promise<Expense | undefined> {
+    return db.update(expenses).set(patch).where(eq(expenses.id, id)).returning().get();
   }
   async deleteExpense(id: number): Promise<void> {
     db.delete(expenses).where(eq(expenses.id, id)).run();

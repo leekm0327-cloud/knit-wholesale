@@ -1479,6 +1479,25 @@ export async function registerRoutes(
     res.json(expense);
   });
 
+  app.patch("/api/admin/expenses/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = insertExpenseSchema.partial().safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const expense = await storage.updateExpense(id, parsed.data);
+    if (!expense) return res.status(404).json({ message: "지출 내역을 찾을 수 없습니다." });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "expense.update",
+      targetType: "expense",
+      targetId: String(id),
+      summary: `지출 #${id} 수정 → ${expense.category} ${expense.amount}원`,
+    });
+    res.json(expense);
+  });
+
   app.delete("/api/admin/expenses/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
