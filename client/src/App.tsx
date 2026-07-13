@@ -53,6 +53,7 @@ import AdminSupplierLedger from "@/pages/admin/AdminSupplierLedger";
 import AdminDashboardPnl from "@/pages/admin/AdminDashboardPnl";
 import AdminStoreSales from "@/pages/admin/AdminStoreSales";
 import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
+import AdminProductCategories from "@/pages/admin/AdminProductCategories";
 import AdminMoneyEntry from "@/pages/admin/AdminMoneyEntry";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
@@ -142,6 +143,7 @@ function AppRouter() {
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/orders/new" component={AdminOrderNew} />
       <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin/product-categories" component={AdminProductCategories} />
       <Route path="/admin/customers" component={AdminCustomers} />
       <Route path="/admin/customers/:id/ledger" component={AdminCustomerLedger} />
       <Route path="/admin/balances" component={AdminBalances} />
