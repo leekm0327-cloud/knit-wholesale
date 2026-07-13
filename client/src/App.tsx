@@ -52,9 +52,8 @@ import AdminSupplierBalances from "@/pages/admin/AdminSupplierBalances";
 import AdminSupplierLedger from "@/pages/admin/AdminSupplierLedger";
 import AdminDashboardPnl from "@/pages/admin/AdminDashboardPnl";
 import AdminStoreSales from "@/pages/admin/AdminStoreSales";
-import AdminExpenses from "@/pages/admin/AdminExpenses";
 import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
-import AdminPersonalLedger from "@/pages/admin/AdminPersonalLedger";
+import AdminMoneyEntry from "@/pages/admin/AdminMoneyEntry";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
 import AdminVisitSetups from "@/pages/admin/AdminVisitSetups";
@@ -162,9 +161,11 @@ function AppRouter() {
       <Route path="/admin/supplier-balances" component={AdminSupplierBalances} />
       <Route path="/admin/dashboard-pnl" component={AdminDashboardPnl} />
       <Route path="/admin/store-sales" component={AdminStoreSales} />
-      <Route path="/admin/expenses" component={AdminExpenses} />
+      <Route path="/admin/money" component={AdminMoneyEntry} />
+      {/* 통합 이전 경로 — 북마크 호환을 위해 통합 페이지로 연결 */}
+      <Route path="/admin/expenses" component={AdminMoneyEntry} />
+      <Route path="/admin/personal-ledger" component={AdminMoneyEntry} />
       <Route path="/admin/fixed-cost-items" component={AdminFixedCostItems} />
-      <Route path="/admin/personal-ledger" component={AdminPersonalLedger} />
       <Route path="/admin/kakao" component={AdminKakao} />
       <Route path="/admin/inquiries" component={AdminInquiries} />
       <Route path="/admin/visit-setups" component={AdminVisitSetups} />
