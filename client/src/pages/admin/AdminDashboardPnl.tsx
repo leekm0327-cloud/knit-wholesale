@@ -198,7 +198,7 @@ export default function AdminDashboardPnl() {
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Kpi label="도매매출" value={data.wholesaleSales} />
               <Kpi label="매장매출" value={data.storeSales} />
-              <Kpi label="공장지급" value={data.supplierPaid} />
+              <Kpi label="공장 매입(발주)" value={data.purchaseTotal} />
               <Kpi label="기타지출(고정비 포함)" value={data.otherExpense} />
             </div>
 
