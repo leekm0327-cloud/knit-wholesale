@@ -136,7 +136,7 @@ export default function AdminEcount() {
         <div className="eyebrow">ERP Integration</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">ECOUNT 연동</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          이카운트 API 인증키를 저장하고 4개 API(거래처등록·품목등록·판매입력·회계자동분개)를 1회 호출로 검증합니다. 수금·입금보고서·채권채무는 판매·회계자동분개 전표를 통해 ECOUNT에서 자동으로 생성됩니다.
+          이카운트 API 인증키를 저장하고 5개 API(거래처등록·품목등록·판매입력·구매입력·회계자동분개)를 1회 호출로 검증합니다. 수금·입금보고서·채권채무는 판매·회계자동분개 전표를 통해 ECOUNT에서 자동으로 생성됩니다.
         </p>
 
         {/* 안내 카드 */}
