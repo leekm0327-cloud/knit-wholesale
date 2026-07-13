@@ -1102,7 +1102,12 @@ async function savePurchaseOnEcount(
       PRICE: String(it.unitPrice),
       SUPPLY_AMT: String(it.amount),
       VAT_AMT: String(Math.round(it.amount * 0.1)),
-      U_MEMO1: deliver.name || "",
+      U_MEMO1: deliver.name ? `${deliver.name} [M1]` : "",
+      U_MEMO2: deliver.name ? `${deliver.name} [M2]` : "",
+      U_MEMO3: deliver.name ? `${deliver.name} [M3]` : "",
+      U_MEMO4: deliver.name ? `${deliver.name} [M4]` : "",
+      U_MEMO5: deliver.name ? `${deliver.name} [M5]` : "",
+      U_TXT1: deliver.name ? `${deliver.name} [T1]` : "",
       REMARKS: `발주 ${purchase.purchaseNo}`,
     },
   }));
