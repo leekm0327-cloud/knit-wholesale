@@ -355,7 +355,13 @@ export default function AdminPurchases() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {purchases.map((p) => {
+                  {[...purchases]
+                    .sort(
+                      (a, b) =>
+                        (b.purchaseDate || "").localeCompare(a.purchaseDate || "") ||
+                        b.id - a.id,
+                    )
+                    .map((p) => {
                     let itemCount = 0;
                     try {
                       itemCount = (JSON.parse(p.items) as PurchaseItem[]).length;
