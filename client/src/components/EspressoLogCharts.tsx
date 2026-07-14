@@ -2,8 +2,48 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
-import type { EspressoStats, EspressoSetupItem } from "@shared/schema";
+import type { EspressoStats, EspressoSetupItem, EspressoBinRow } from "@shared/schema";
 import { Coffee } from "lucide-react";
+
+function BinCard({ title, rows }: { title: string; rows: EspressoBinRow[] }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b px-5 py-3">
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-5 py-8 text-center text-xs text-muted-foreground">데이터가 아직 없습니다.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[380px] text-sm">
+            <thead className="bg-muted/40 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">구간</th>
+                <th className="px-3 py-2 text-right font-medium">도징</th>
+                <th className="px-3 py-2 text-right font-medium">추출량</th>
+                <th className="px-3 py-2 text-right font-medium">시간</th>
+                <th className="px-3 py-2 text-right font-medium">비율</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.map((b) => (
+                <tr key={b.label}>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-foreground">
+                    {b.label} <span className="text-[11px] text-muted-foreground/70">n={b.count}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular text-foreground">{b.avgDose}g</td>
+                  <td className="px-3 py-2.5 text-right tabular text-foreground">{b.avgYield}g</td>
+                  <td className="px-3 py-2.5 text-right tabular text-foreground">{b.avgTime}초</td>
+                  <td className="px-3 py-2.5 text-right tabular font-semibold text-foreground">1:{b.ratio}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export function EspressoLogCharts() {
   const { data: stats, isLoading } = useQuery<EspressoStats>({
@@ -18,6 +58,8 @@ export function EspressoLogCharts() {
 
   const setupItems = setup ?? [];
   const recipes = stats?.byBeanRecipe ?? [];
+  const hum = stats?.byHumidity ?? [];
+  const temp = stats?.byTemp ?? [];
 
   return (
     <div className="space-y-8">
@@ -92,6 +134,20 @@ export function EspressoLogCharts() {
           </div>
         )}
       </Card>
+
+      {/* 환경 구간별 성공 레시피 (습도 · 실내온도) */}
+      {(hum.length > 0 || temp.length > 0) && (
+        <div>
+          <h3 className="mb-1 text-sm font-semibold text-foreground">환경별 성공 레시피</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            '긍정'·'매우 긍정' 기록을 습도·실내온도 구간으로 나눈 평균 레시피입니다. 표본 수(n)가 적은 구간은 참고용이에요.
+          </p>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <BinCard title="습도 구간별" rows={hum} />
+            <BinCard title="실내온도 구간별" rows={temp} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
