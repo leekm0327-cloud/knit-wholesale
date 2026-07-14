@@ -11,9 +11,33 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import type { EspressoSetupItem } from "@shared/schema";
+import { ESPRESSO_ICON_OPTIONS, resolveEspressoIcon } from "@/lib/espressoIcons";
 import { Trash2, Plus, Loader2, ChevronUp, ChevronDown, Check } from "lucide-react";
 
 type Draft = { icon: string; label: string; value: string };
+
+function IconPicker({ value, onChange, testid }: { value: string; onChange: (v: string) => void; testid?: string }) {
+  const Icon = resolveEspressoIcon(value);
+  const known = ESPRESSO_ICON_OPTIONS.some((o) => o.key === value);
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-foreground">
+        <Icon className="h-4 w-4" strokeWidth={1.5} />
+      </span>
+      <select
+        value={known ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testid}
+        className="h-9 w-28 rounded-md border border-input bg-transparent px-2 text-sm"
+      >
+        <option value="">아이콘 선택</option>
+        {ESPRESSO_ICON_OPTIONS.map((o) => (
+          <option key={o.key} value={o.key}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export default function AdminEspresso() {
   const { toast } = useToast();
@@ -128,7 +152,7 @@ export default function AdminEspresso() {
                         <ChevronDown className="h-4 w-4" />
                       </button>
                     </div>
-                    <Input value={d.icon} onChange={(e) => setDraft(it.id, { icon: e.target.value })} placeholder="😀" className="w-14 text-center text-lg" data-testid={`input-setup-icon-${it.id}`} />
+                    <IconPicker value={d.icon} onChange={(v) => setDraft(it.id, { icon: v })} testid={`select-setup-icon-${it.id}`} />
                     <Input value={d.label} onChange={(e) => setDraft(it.id, { label: e.target.value })} placeholder="카테고리" className="w-40" data-testid={`input-setup-label-${it.id}`} />
                     <Input value={d.value} onChange={(e) => setDraft(it.id, { value: e.target.value })} placeholder="내용" className="min-w-[8rem] flex-1" data-testid={`input-setup-value-${it.id}`} />
                     <Button size="icon" variant={dirty ? "default" : "ghost"} onClick={() => saveRow(it)} aria-label="저장" data-testid={`button-setup-save-${it.id}`}>
@@ -144,7 +168,7 @@ export default function AdminEspresso() {
           )}
           {/* 추가 */}
           <div className="flex flex-wrap items-center gap-2 border-t bg-muted/20 p-4">
-            <Input value={newItem.icon} onChange={(e) => setNewItem((s) => ({ ...s, icon: e.target.value }))} placeholder="😀" className="w-14 text-center text-lg" data-testid="input-newsetup-icon" />
+            <IconPicker value={newItem.icon} onChange={(v) => setNewItem((s) => ({ ...s, icon: v }))} testid="select-newsetup-icon" />
             <Input value={newItem.label} onChange={(e) => setNewItem((s) => ({ ...s, label: e.target.value }))} placeholder="카테고리 (예: TAMPER)" className="w-40" data-testid="input-newsetup-label" />
             <Input value={newItem.value} onChange={(e) => setNewItem((s) => ({ ...s, value: e.target.value }))} placeholder="내용" className="min-w-[8rem] flex-1" data-testid="input-newsetup-value" />
             <Button onClick={addItem} disabled={busy} data-testid="button-add-setup">
