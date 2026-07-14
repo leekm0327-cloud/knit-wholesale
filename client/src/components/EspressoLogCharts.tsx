@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import type { EspressoStats, EspressoSetupItem, EspressoBinRow } from "@shared/schema";
+import { resolveEspressoIcon } from "@/lib/espressoIcons";
 import { Coffee } from "lucide-react";
 
 function BinCard({ title, rows }: { title: string; rows: EspressoBinRow[] }) {
@@ -68,19 +69,22 @@ export function EspressoLogCharts() {
         <div>
           <h3 className="mb-3 text-sm font-semibold text-foreground">추출 환경</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {setupItems.map((s) => (
-              <Card key={s.id} className="flex items-center gap-4 p-4" data-testid={`setup-${s.id}`}>
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-2xl">
-                  {s.icon || "☕"}
-                </div>
-                <div className="min-w-0">
-                  <div className="font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    {s.label}
+            {setupItems.map((s) => {
+              const Icon = resolveEspressoIcon(s.icon);
+              return (
+                <Card key={s.id} className="flex items-center gap-4 p-4" data-testid={`setup-${s.id}`}>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-foreground">
+                    <Icon className="h-5 w-5" strokeWidth={1.5} />
                   </div>
-                  <div className="mt-0.5 truncate text-sm font-semibold text-foreground">{s.value || "-"}</div>
-                </div>
-              </Card>
-            ))}
+                  <div className="min-w-0">
+                    <div className="font-ui text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      {s.label}
+                    </div>
+                    <div className="mt-0.5 truncate text-sm font-semibold text-foreground">{s.value || "-"}</div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}
