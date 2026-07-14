@@ -50,9 +50,37 @@ function num(s: string): number {
   return Number.isFinite(v) ? v : NaN;
 }
 
+// 환경 구간(습도/온도)별 누산기
+type BinAcc = { count: number; dose: number; doseN: number; yield: number; yieldN: number; time: number; timeN: number };
+const HUM_BINS: { label: string; max: number }[] = [
+  { label: "~49%", max: 50 },
+  { label: "50–59%", max: 60 },
+  { label: "60–69%", max: 70 },
+  { label: "70–79%", max: 80 },
+  { label: "80%+", max: Infinity },
+];
+const TEMP_BINS: { label: string; max: number }[] = [
+  { label: "~21℃", max: 22 },
+  { label: "22–23℃", max: 24 },
+  { label: "24–25℃", max: 26 },
+  { label: "26–27℃", max: 28 },
+  { label: "28℃+", max: Infinity },
+];
+function binIndex(bins: { label: string; max: number }[], v: number): number {
+  for (let i = 0; i < bins.length; i++) if (v < bins[i].max) return i;
+  return bins.length - 1;
+}
+function newAcc(): BinAcc { return { count: 0, dose: 0, doseN: 0, yield: 0, yieldN: 0, time: 0, timeN: 0 }; }
+function addRecipe(a: BinAcc, d: number, y: number, t: number) {
+  a.count++;
+  if (Number.isFinite(d)) { a.dose += d; a.doseN++; }
+  if (Number.isFinite(y)) { a.yield += y; a.yieldN++; }
+  if (Number.isFinite(t)) { a.time += t; a.timeN++; }
+}
+
 function aggregate(csv: string): EspressoStats {
   const rows = parseCsv(csv);
-  const empty: EspressoStats = { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [] };
+  const empty: EspressoStats = { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [], byHumidity: [], byTemp: [] };
   if (rows.length < 2) return empty;
   const header = rows[0].map((h) => h.trim());
   const col = (kw: string) => header.findIndex((h) => h.includes(kw));
@@ -62,6 +90,10 @@ function aggregate(csv: string): EspressoStats {
   const cYield = col("추출량");
   const cTime = col("추출 시간") >= 0 ? col("추출 시간") : col("추출시간");
   const cRating = col("종합 평가") >= 0 ? col("종합 평가") : col("평가");
+  const cHum = col("실내 습도") >= 0 ? col("실내 습도") : col("습도");
+  const cTemp = col("실내 온도") >= 0 ? col("실내 온도") : col("실내온도");
+  const humAcc = HUM_BINS.map(newAcc);
+  const tempAcc = TEMP_BINS.map(newAcc);
 
   const ratingMap = new Map<string, number>();
   const dateMap = new Map<string, number>();
@@ -82,17 +114,23 @@ function aggregate(csv: string): EspressoStats {
     if (rating) ratingMap.set(rating, (ratingMap.get(rating) ?? 0) + 1);
     if (dISO) { dateMap.set(dISO, (dateMap.get(dISO) ?? 0) + 1); dates.push(dISO); }
 
-    // 평균 레시피: 긍정/매우 긍정 평가 기록만 반영
-    if (bean && POSITIVE_RATINGS.includes(rating)) {
-      const b = beanMap.get(bean) ?? { count: 0, dose: 0, yield: 0, time: 0, doseN: 0, yieldN: 0, timeN: 0 };
-      b.count++;
+    // 평균 레시피 · 환경 구간별 집계: 긍정/매우 긍정 평가 기록만 반영
+    if (POSITIVE_RATINGS.includes(rating)) {
       const d = cDose >= 0 ? num(r[cDose]) : NaN;
       const y = cYield >= 0 ? num(r[cYield]) : NaN;
       const t = cTime >= 0 ? num(r[cTime]) : NaN;
-      if (Number.isFinite(d)) { b.dose += d; b.doseN++; }
-      if (Number.isFinite(y)) { b.yield += y; b.yieldN++; }
-      if (Number.isFinite(t)) { b.time += t; b.timeN++; }
-      beanMap.set(bean, b);
+      if (bean) {
+        const b = beanMap.get(bean) ?? { count: 0, dose: 0, yield: 0, time: 0, doseN: 0, yieldN: 0, timeN: 0 };
+        b.count++;
+        if (Number.isFinite(d)) { b.dose += d; b.doseN++; }
+        if (Number.isFinite(y)) { b.yield += y; b.yieldN++; }
+        if (Number.isFinite(t)) { b.time += t; b.timeN++; }
+        beanMap.set(bean, b);
+      }
+      const hum = cHum >= 0 ? num(r[cHum]) : NaN;
+      const temp = cTemp >= 0 ? num(r[cTemp]) : NaN;
+      if (Number.isFinite(hum)) addRecipe(humAcc[binIndex(HUM_BINS, hum)], d, y, t);
+      if (Number.isFinite(temp)) addRecipe(tempAcc[binIndex(TEMP_BINS, temp)], d, y, t);
     }
   }
 
@@ -125,6 +163,24 @@ function aggregate(csv: string): EspressoStats {
     })
     .sort((a, b) => b.count - a.count);
 
+  const binRows = (bins: { label: string; max: number }[], acc: BinAcc[]) =>
+    bins
+      .map((bin, i) => {
+        const a = acc[i];
+        const avgDose = a.doseN ? a.dose / a.doseN : 0;
+        const avgYield = a.yieldN ? a.yield / a.yieldN : 0;
+        const avgTime = a.timeN ? a.time / a.timeN : 0;
+        return {
+          label: bin.label,
+          count: a.count,
+          avgDose: r1(avgDose),
+          avgYield: r1(avgYield),
+          avgTime: r1(avgTime),
+          ratio: avgDose > 0 ? r1(avgYield / avgDose) : 0,
+        };
+      })
+      .filter((b) => b.count > 0);
+
   const sortedDates = dates.slice().sort();
   return {
     totalLogs: total,
@@ -133,6 +189,8 @@ function aggregate(csv: string): EspressoStats {
     byRating,
     byDate,
     byBeanRecipe,
+    byHumidity: binRows(HUM_BINS, humAcc),
+    byTemp: binRows(TEMP_BINS, tempAcc),
   };
 }
 
@@ -149,6 +207,6 @@ export async function fetchEspressoStats(): Promise<EspressoStats> {
   } catch (e: any) {
     // 실패 시 이전 캐시라도 반환, 없으면 에러 표시
     if (cache) return cache;
-    return { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [], error: e?.message ?? String(e) };
+    return { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [], byHumidity: [], byTemp: [], error: e?.message ?? String(e) };
   }
 }
