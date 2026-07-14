@@ -15,6 +15,7 @@ export type DetailFields = {
   country: string;
   region: string;
   farm: string;
+  farmer: string;
   variety: string;
   process: string;
   altitude: string;
@@ -52,6 +53,7 @@ export const emptyDetailFields: DetailFields = {
   country: "",
   region: "",
   farm: "",
+  farmer: "",
   variety: "",
   process: "",
   altitude: "",
@@ -245,6 +247,15 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
                 onChange={(e) => setDetail("farm", e.target.value)}
                 placeholder="예: 코케 워시드 스테이션"
                 data-testid="input-detail-farm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">농부</Label>
+              <Input
+                value={detail.farmer}
+                onChange={(e) => setDetail("farmer", e.target.value)}
+                placeholder="예: Thiago Family"
+                data-testid="input-detail-farmer"
               />
             </div>
             <div className="space-y-1.5">

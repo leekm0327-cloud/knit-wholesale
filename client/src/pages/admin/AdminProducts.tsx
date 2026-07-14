@@ -176,6 +176,7 @@ export default function AdminProducts() {
               country: d.country,
               region: d.region,
               farm: d.farm,
+              farmer: d.farmer,
               variety: d.variety,
               process: d.process,
               altitude: d.altitude,
