@@ -642,6 +642,7 @@ export const productDetailSingleSchema = z.object({
   country: z.string().optional().default(""),
   region: z.string().optional().default(""),
   farm: z.string().optional().default(""),
+  farmer: z.string().optional().default(""),
   variety: z.string().optional().default(""),
   process: z.string().optional().default(""),
   altitude: z.string().optional().default(""),
