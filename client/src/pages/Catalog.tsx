@@ -277,13 +277,25 @@ export default function Catalog() {
           <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
             수량을 입력하고 담아 주세요. 단가는 공급가액 기준이며, 부가세 10%가 별도로 가산됩니다.
           </p>
-          <Link
-            href="/visit-setup"
-            data-testid="link-catalog-visit-setup"
-            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-foreground bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background"
-          >
-            커피 세팅이 필요하신가요? <span aria-hidden="true">→</span>
-          </Link>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/visit-setup"
+              data-testid="link-catalog-visit-setup"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-foreground bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background"
+            >
+              커피 세팅이 필요하신가요? <span aria-hidden="true">→</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() =>
+                document.getElementById("espresso-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              data-testid="button-catalog-recipe"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              니트커피 레시피 <span aria-hidden="true">→</span>
+            </button>
+          </div>
         </div>
 
         {/* 출고 안내 박스 */}
@@ -404,7 +416,7 @@ export default function Catalog() {
         )}
 
         {/* 에스프레소 추출 로그 (공개 집계) */}
-        <section className="mt-12 mb-24" data-testid="section-espresso">
+        <section id="espresso-section" className="mt-12 mb-24 scroll-mt-20" data-testid="section-espresso">
           <h2 className="mb-1 font-display text-lg font-semibold text-foreground">에스프레소 추출 로그</h2>
           <p className="mb-4 text-sm text-muted-foreground">매장에서 매 세팅마다 기록한 추출 데이터를 집계했습니다.</p>
           <EspressoLogCharts />
