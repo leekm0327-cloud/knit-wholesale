@@ -297,6 +297,16 @@ export const kakaoTokens = sqliteTable("kakao_tokens", {
   updatedAt: integer("updated_at").notNull().default(0),
 });
 
+// ===== 에스프레소 추출 환경 (인포그래픽, 관리자 수정) =====
+export const espressoSetup = sqliteTable("espresso_setup", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  icon: text("icon").notNull().default(""), // 이모지
+  label: text("label").notNull(), // 카테고리 (예: ESPRESSO MACHINE)
+  value: text("value").notNull().default(""), // 내용 (예: LA MARZOCCO LINEA PB)
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(0),
+});
+
 // ===== ③ 니트커피 소식 (블로그형 매거진) =====
 // 기존 게시판(posts)과 완전 별개. 관리자가 발행하는 콘텐츠, 로그인 거래처 모두 열람.
 export const news = sqliteTable("news", {
@@ -896,6 +906,15 @@ export type EspressoStats = {
   byBeanRecipe: { bean: string; count: number; avgDose: number; avgYield: number; avgTime: number; ratio: number }[];
   error?: string;
 };
+
+export type EspressoSetupItem = typeof espressoSetup.$inferSelect;
+export const insertEspressoSetupSchema = z.object({
+  icon: z.string().optional().default(""),
+  label: z.string().min(1, "카테고리명을 입력해 주세요."),
+  value: z.string().optional().default(""),
+  sortOrder: z.number().int().optional().default(0),
+});
+export type InsertEspressoSetup = z.infer<typeof insertEspressoSetupSchema>;
 
 // 품목별 기간 집계 (주문/발주 공용)
 export type ItemSummaryRow = {
