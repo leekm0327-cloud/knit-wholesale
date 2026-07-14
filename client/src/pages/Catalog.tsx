@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { KakaoChannelButton } from "@/components/KakaoChannelButton";
+import { EspressoLogCharts } from "@/components/EspressoLogCharts";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -401,6 +402,13 @@ export default function Catalog() {
             ))}
           </div>
         )}
+
+        {/* 에스프레소 추출 로그 (공개 집계) */}
+        <section className="mt-12 mb-24" data-testid="section-espresso">
+          <h2 className="mb-1 font-display text-lg font-semibold text-foreground">에스프레소 추출 로그</h2>
+          <p className="mb-4 text-sm text-muted-foreground">매장에서 매 세팅마다 기록한 추출 데이터를 집계했습니다.</p>
+          <EspressoLogCharts />
+        </section>
       </main>
 
       {/* 하단 합계바 — 미니멀 */}
