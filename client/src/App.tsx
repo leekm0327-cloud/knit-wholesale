@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Inquiry from "@/pages/Inquiry";
+import Espresso from "@/pages/Espresso";
 import VisitSetup from "@/pages/VisitSetup";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
@@ -56,6 +57,7 @@ import AdminFixedCostItems from "@/pages/admin/AdminFixedCostItems";
 import AdminProductCategories from "@/pages/admin/AdminProductCategories";
 import AdminMoneyEntry from "@/pages/admin/AdminMoneyEntry";
 import AdminFinancials from "@/pages/admin/AdminFinancials";
+import AdminEspresso from "@/pages/admin/AdminEspresso";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
 import AdminVisitSetups from "@/pages/admin/AdminVisitSetups";
@@ -97,6 +99,7 @@ function AppRouter() {
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password/:token" component={ResetPassword} />
       <Route path="/inquiry" component={Inquiry} />
+      <Route path="/espresso" component={Espresso} />
 
       <Route path="/catalog">
         <RequireCustomer><Catalog /></RequireCustomer>
@@ -164,6 +167,7 @@ function AppRouter() {
       <Route path="/admin/supplier-balances" component={AdminSupplierBalances} />
       <Route path="/admin/dashboard-pnl" component={AdminDashboardPnl} />
       <Route path="/admin/financials" component={AdminFinancials} />
+      <Route path="/admin/espresso" component={AdminEspresso} />
       <Route path="/admin/store-sales" component={AdminStoreSales} />
       <Route path="/admin/money" component={AdminMoneyEntry} />
       {/* 통합 이전 경로 — 북마크 호환을 위해 통합 페이지로 연결 */}
