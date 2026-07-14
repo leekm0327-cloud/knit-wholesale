@@ -7,6 +7,8 @@ const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOzlZaaBn2KW8ACr1ay9szUwuUYAHGbKs7DMkfb-E5OlumlGjettN2XQ4oKFeNGsb8-0zTZ40mu_DO/pub?output=csv";
 
 const RATING_ORDER = ["매우 긍정", "긍정", "보통", "부정", "매우 부정"];
+// 평균 레시피는 '긍정'/'매우 긍정' 평가 기록만으로 계산 (좋았던 세팅의 레시피)
+const POSITIVE_RATINGS = ["긍정", "매우 긍정"];
 const TTL_MS = 10 * 60 * 1000; // 10분 캐시
 
 let cache: EspressoStats | null = null;
@@ -80,7 +82,8 @@ function aggregate(csv: string): EspressoStats {
     if (rating) ratingMap.set(rating, (ratingMap.get(rating) ?? 0) + 1);
     if (dISO) { dateMap.set(dISO, (dateMap.get(dISO) ?? 0) + 1); dates.push(dISO); }
 
-    if (bean) {
+    // 평균 레시피: 긍정/매우 긍정 평가 기록만 반영
+    if (bean && POSITIVE_RATINGS.includes(rating)) {
       const b = beanMap.get(bean) ?? { count: 0, dose: 0, yield: 0, time: 0, doseN: 0, yieldN: 0, timeN: 0 };
       b.count++;
       const d = cDose >= 0 ? num(r[cDose]) : NaN;

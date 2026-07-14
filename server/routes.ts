@@ -4,7 +4,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, db, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
@@ -30,6 +30,7 @@ import {
   updateOrderItemsSchema,
   insertProductSchema,
   insertProductCategorySchema,
+  insertEspressoSetupSchema,
   insertPaymentSchema,
   ecountSettingsInputSchema,
   forgotPasswordSchema,
@@ -117,6 +118,7 @@ export async function registerRoutes(
   seedFixedCostItems();
   seedPersonalCategories();
   seedProductCategories();
+  seedEspressoSetup();
 
   // 샌드박스 iframe 쿠키 동작을 위한 설정
   app.set("trust proxy", 1);
@@ -1551,6 +1553,46 @@ export async function registerRoutes(
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
   app.get("/api/espresso-log-stats", async (_req, res) => {
     res.json(await fetchEspressoStats());
+  });
+
+  // 에스프레소 추출 환경 (공개 조회, 관리자 수정)
+  app.get("/api/espresso-setup", async (_req, res) => {
+    res.json(await storage.listEspressoSetup());
+  });
+  app.post("/api/admin/espresso-setup", requireAdmin, async (req, res) => {
+    const parsed = insertEspressoSetupSchema.safeParse(req.body);
+    if (!parsed.success)
+      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const existing = await storage.listEspressoSetup();
+    const maxOrder = existing.reduce((m, c) => Math.max(m, c.sortOrder), -1);
+    const item = await storage.createEspressoSetup({ ...parsed.data, sortOrder: parsed.data.sortOrder ?? maxOrder + 1 });
+    res.json(item);
+  });
+  app.patch("/api/admin/espresso-setup/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const patch: Record<string, any> = {};
+    if (typeof req.body.icon === "string") patch.icon = req.body.icon;
+    if (typeof req.body.label === "string") patch.label = req.body.label.trim();
+    if (typeof req.body.value === "string") patch.value = req.body.value;
+    if (typeof req.body.sortOrder === "number") patch.sortOrder = req.body.sortOrder;
+    if (patch.label === "") return res.status(400).json({ message: "카테고리명을 입력해 주세요." });
+    const item = await storage.updateEspressoSetup(id, patch);
+    if (!item) return res.status(404).json({ message: "항목을 찾을 수 없습니다." });
+    res.json(item);
+  });
+  app.delete("/api/admin/espresso-setup/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await storage.deleteEspressoSetup(id);
+    res.json({ ok: true });
+  });
+  app.post("/api/admin/espresso-setup/reorder", requireAdmin, async (req, res) => {
+    const ids = req.body?.orderedIds;
+    if (!Array.isArray(ids) || ids.some((x) => typeof x !== "number"))
+      return res.status(400).json({ message: "orderedIds 배열이 필요합니다." });
+    await storage.reorderEspressoSetup(ids);
+    res.json({ ok: true });
   });
 
   // 품목별 기간 집계 (주문/발주) — 직원도 조회 가능

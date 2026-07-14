@@ -1,4 +1,4 @@
-import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests } from "@shared/schema";
+import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -6,6 +6,8 @@ import type {
   InsertProduct,
   ProductCategory,
   InsertProductCategory,
+  EspressoSetupItem,
+  InsertEspressoSetup,
   Order,
   OrderItem,
   Payment,
@@ -282,6 +284,14 @@ CREATE TABLE IF NOT EXISTS product_categories (
   is_bean INTEGER NOT NULL DEFAULT 1,
   sample_eligible INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS espresso_setup (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  icon TEXT NOT NULL DEFAULT '',
+  label TEXT NOT NULL,
+  value TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS expenses (
@@ -601,6 +611,12 @@ export interface IStorage {
   updateProductCategory(id: number, patch: Partial<ProductCategory>): Promise<ProductCategory | undefined>;
   deleteProductCategory(id: number): Promise<void>;
   reorderProductCategories(orderedIds: number[]): Promise<void>;
+  // espresso setup (추출 환경)
+  listEspressoSetup(): Promise<EspressoSetupItem[]>;
+  createEspressoSetup(c: InsertEspressoSetup): Promise<EspressoSetupItem>;
+  updateEspressoSetup(id: number, patch: Partial<EspressoSetupItem>): Promise<EspressoSetupItem | undefined>;
+  deleteEspressoSetup(id: number): Promise<void>;
+  reorderEspressoSetup(orderedIds: number[]): Promise<void>;
   // orders
   createOrder(
     o: Omit<Order, "id" | "cancelledAt" | "cancelledBy" | "autoPurchaseId"> &
@@ -865,6 +881,35 @@ export class DatabaseStorage implements IStorage {
   async reorderProductCategories(orderedIds: number[]): Promise<void> {
     orderedIds.forEach((id, i) => {
       db.update(productCategories).set({ sortOrder: i }).where(eq(productCategories.id, id)).run();
+    });
+  }
+
+  // ===== 에스프레소 추출 환경 =====
+  async listEspressoSetup(): Promise<EspressoSetupItem[]> {
+    return db.select().from(espressoSetup).orderBy(asc(espressoSetup.sortOrder), asc(espressoSetup.id)).all();
+  }
+  async createEspressoSetup(c: InsertEspressoSetup): Promise<EspressoSetupItem> {
+    return db
+      .insert(espressoSetup)
+      .values({
+        icon: c.icon ?? "",
+        label: c.label,
+        value: c.value ?? "",
+        sortOrder: c.sortOrder ?? 0,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async updateEspressoSetup(id: number, patch: Partial<EspressoSetupItem>): Promise<EspressoSetupItem | undefined> {
+    return db.update(espressoSetup).set(patch).where(eq(espressoSetup.id, id)).returning().get();
+  }
+  async deleteEspressoSetup(id: number): Promise<void> {
+    db.delete(espressoSetup).where(eq(espressoSetup.id, id)).run();
+  }
+  async reorderEspressoSetup(orderedIds: number[]): Promise<void> {
+    orderedIds.forEach((id, i) => {
+      db.update(espressoSetup).set({ sortOrder: i }).where(eq(espressoSetup.id, id)).run();
     });
   }
 
@@ -2162,6 +2207,23 @@ export function seedProductCategories() {
       .run();
   });
   console.log("[seed] 상품 카테고리 기본 6개 생성 완료");
+}
+
+// ===== 에스프레소 추출 환경 기본 시드 (비어있을 때만) =====
+export function seedEspressoSetup() {
+  const existing = db.select().from(espressoSetup).all();
+  if (existing.length > 0) return;
+  const now = Date.now();
+  const defaults = [
+    { icon: "☕", label: "ESPRESSO MACHINE", value: "LA MARZOCCO LINEA PB" },
+    { icon: "⚙️", label: "GRINDER", value: "MAHLKONIG E80S, MAHLKONIG EK43S" },
+    { icon: "💧", label: "WATER FILTER", value: "EVERPURE 4FC-LS" },
+    { icon: "🧩", label: "PORTAFILTER BASKET", value: "IMS 26.5 58mm" },
+  ];
+  defaults.forEach((d, i) => {
+    db.insert(espressoSetup).values({ icon: d.icon, label: d.label, value: d.value, sortOrder: i, createdAt: now }).run();
+  });
+  console.log("[seed] 에스프레소 추출 환경 기본 4개 생성 완료");
 }
 
 // ===== E: 개인 가계부 카테고리 기본 시드 (비어있을 때만) =====
