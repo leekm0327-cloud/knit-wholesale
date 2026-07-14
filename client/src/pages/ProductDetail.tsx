@@ -411,21 +411,45 @@ function DetailFields({
     );
   }
 
-  const d = detail as Extract<ProductDetail, { template: "single" }>;
+  const d = detail as Extract<ProductDetail, { template: "single" }> & { farmer?: string; originProcess?: string };
+  const specs = [
+    { label: "REGION", value: d.region },
+    { label: "FARM", value: d.farm },
+    { label: "FARMER", value: d.farmer },
+    { label: "ALTITUDE", value: d.altitude },
+    { label: "VARIETY", value: d.variety },
+    { label: "PROCESS", value: d.process },
+    { label: "ROAST", value: d.roastLevel },
+  ].filter((s) => s.value && String(s.value).trim());
+  const story = (d.originProcess || "").trim();
   return (
     <section>
-      <h2 className="mb-4 font-display text-lg font-semibold tracking-tight text-foreground">싱글 오리진 정보</h2>
-      <dl>
-        <Field label="국가" value={d.country} />
-        <Field label="지역" value={d.region} />
-        <Field label="농장" value={d.farm} />
-        <Field label="품종" value={d.variety} />
-        <Field label="가공 방식" value={d.process} />
-        <Field label="고도" value={d.altitude} />
-        <Field label="향미 노트" value={d.flavorNotes} />
-        <Field label="로스팅 레벨" value={d.roastLevel} />
-        <EnrichedFields detail={d} />
-      </dl>
+      {/* 인포메이션 카드형 (올리브 톤) */}
+      <div className="overflow-hidden rounded-2xl bg-[#6b6a45] px-6 py-7 text-[#f4f2e9] sm:px-8 sm:py-9">
+        <p className="font-ui text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f4f2e9]/70">
+          {d.country?.trim() ? d.country : "Single Origin"}
+        </p>
+        {d.flavorNotes?.trim() && (
+          <p className="mt-3 text-[15px] font-medium leading-relaxed text-[#f4f2e9] sm:text-base">
+            {d.flavorNotes}
+          </p>
+        )}
+        {specs.length > 0 && (
+          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-[#f4f2e9]/20 pt-6">
+            {specs.map((s) => (
+              <div key={s.label}>
+                <dt className="font-ui text-[10px] font-semibold uppercase tracking-[0.14em] text-[#f4f2e9]/60">{s.label}</dt>
+                <dd className="mt-0.5 text-sm font-medium">{s.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {story && (
+          <div className="mt-6 whitespace-pre-line border-t border-[#f4f2e9]/20 pt-6 text-sm leading-relaxed text-[#f4f2e9]/90">
+            {story}
+          </div>
+        )}
+      </div>
       <RecipeSection detail={d} />
     </section>
   );
