@@ -897,6 +897,14 @@ export type FinancialStatement = {
 };
 
 // 에스프레소 추출 로그 집계 (구글시트 게시 데이터 기반, 공개)
+export type EspressoBinRow = {
+  label: string; // 구간 (예: "70–79%")
+  count: number; // 표본 수 (긍정 기록)
+  avgDose: number;
+  avgYield: number;
+  avgTime: number;
+  ratio: number;
+};
 export type EspressoStats = {
   totalLogs: number;
   from: string;
@@ -904,6 +912,8 @@ export type EspressoStats = {
   byRating: { rating: string; count: number }[];
   byDate: { date: string; count: number }[];
   byBeanRecipe: { bean: string; count: number; avgDose: number; avgYield: number; avgTime: number; ratio: number }[];
+  byHumidity: EspressoBinRow[]; // 습도 구간별 성공 레시피
+  byTemp: EspressoBinRow[]; // 실내온도 구간별 성공 레시피
   error?: string;
 };
 
