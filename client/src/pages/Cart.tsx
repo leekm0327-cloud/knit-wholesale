@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
@@ -24,11 +25,27 @@ export default function Cart() {
   const vat = Math.round(supplyAmount * 0.1);
   const total = supplyAmount + vat;
 
-  // A-4: 원두(블렌드/디카페인/싱글) 수량 합 최소 5kg(5개) 검증
+  // 카테고리(원두 여부)·상품(최소수량)은 서버 기준을 그대로 따른다.
+  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
+  const { data: productRows } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const beanKeys = new Set(
+    (categoryRows && categoryRows.length > 0
+      ? categoryRows.filter((c) => c.isBean).map((c) => c.key)
+      : ["blend", "decaf", "single", "single_espresso", "single_filter"]),
+  );
+  const minMap = new Map<number, number>((productRows ?? []).map((p) => [p.id, p.minOrderQty ?? 0]));
+
+  // A-4: 원두 수량 합 최소 5kg(5개) 검증 (원두 = 카테고리 관리의 isBean)
   const beanQty = items
-    .filter((i) => ["blend", "decaf", "single"].includes(i.category))
+    .filter((i) => beanKeys.has(i.category))
     .reduce((s, i) => s + i.qty, 0);
   const belowMin = beanQty > 0 && beanQty < 5;
+
+  // 상품별 최소 주문 수량 위반 목록
+  const minViolations = items
+    .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get((i as any).productId) ?? 0 }))
+    .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
+  const blocked = belowMin || minViolations.length > 0;
 
   async function submitOrder() {
     if (items.length === 0) return;
@@ -36,6 +53,15 @@ export default function Cart() {
       toast({
         title: "주문 불가",
         description: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (minViolations.length > 0) {
+      const v = minViolations[0];
+      toast({
+        title: "주문 불가",
+        description: `'${v.name}'은(는) 최소 ${v.min}개부터 주문 가능합니다.`,
         variant: "destructive",
       });
       return;
@@ -221,11 +247,16 @@ export default function Cart() {
                     원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQty}개.
                   </div>
                 )}
+                {minViolations.map((v) => (
+                  <div key={v.name} className="rounded-none border border-destructive/60 bg-destructive/5 px-3 py-2 text-xs text-destructive" data-testid="text-min-item-warning">
+                    '{v.name}'은(는) 최소 {v.min}개부터 주문 가능합니다. 현재 {v.qty}개.
+                  </div>
+                ))}
                 <Button
                   className="w-full"
                   size="lg"
                   onClick={submitOrder}
-                  disabled={loading || belowMin}
+                  disabled={loading || blocked}
                   data-testid="button-submit-order"
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
