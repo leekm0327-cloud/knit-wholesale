@@ -46,6 +46,7 @@ type FormState = {
   price: string;
   costPrice: string;
   available: boolean;
+  minOrderQty: string;
   sortOrder: string;
   ecountCode: string;
   detailTemplate: "blend" | "single";
@@ -60,6 +61,7 @@ const empty: FormState = {
   price: "",
   costPrice: "",
   available: true,
+  minOrderQty: "",
   sortOrder: "99",
   ecountCode: "",
   detailTemplate: "blend",
@@ -122,6 +124,7 @@ export default function AdminProducts() {
       price: String(p.price ?? 0),
       costPrice: String((p as any).costPrice ?? 0),
       available: p.available === 1,
+      minOrderQty: String((p as any).minOrderQty ?? 0),
       sortOrder: String(p.sortOrder),
       ecountCode: p.ecountCode || "",
       detailTemplate: template,
@@ -191,6 +194,7 @@ export default function AdminProducts() {
         price: Number(form.price) || 0,
         costPrice: Number(form.costPrice) || 0,
         available: form.available ? 1 : 0,
+        minOrderQty: Number(form.minOrderQty) || 0,
         sortOrder: Number(form.sortOrder) || 0,
         ecountCode: form.ecountCode.trim(),
         detailTemplate: tpl,
@@ -332,6 +336,18 @@ export default function AdminProducts() {
                 <Label className="text-xs">정렬 순서</Label>
                 <Input type="number" value={form.sortOrder} onChange={(e) => set("sortOrder", e.target.value)} data-testid="input-product-sort" />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">최소 주문 수량 (0이면 제한 없음)</Label>
+              <Input
+                type="number"
+                min="0"
+                value={form.minOrderQty}
+                onChange={(e) => set("minOrderQty", e.target.value)}
+                placeholder="예: 드립백 6"
+                data-testid="input-product-min-order"
+              />
+              <p className="text-[11px] text-muted-foreground">이 상품을 주문할 때 요구되는 최소 개수입니다. (원두 5kg 규칙과 별개)</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">단가 (원)</Label>

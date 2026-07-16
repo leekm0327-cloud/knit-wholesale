@@ -45,6 +45,8 @@ export default function AdminOrderNew() {
   const { data: products, isLoading: loadingProducts } = useQuery<Product[]>({
     queryKey: ["/api/products"],
   });
+  // 카테고리(원두 여부)
+  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
   // 선택 거래처의 등록 단가 오버라이드
   const numericCustomerId = customerId ? Number(customerId) : 0;
   const { data: prices } = useQuery<CustomerPrice[]>({
@@ -100,11 +102,23 @@ export default function AdminOrderNew() {
   const vat = Math.round(supplyAmount * 0.1);
   const totalAmount = supplyAmount + vat;
 
+  // 원두 = 카테고리 관리의 isBean (싱글 오리진 포함). 로딩 전 폴백 포함.
+  const beanKeys = new Set(
+    categoryRows && categoryRows.length > 0
+      ? categoryRows.filter((c) => c.isBean).map((c) => c.key)
+      : BEAN_CATEGORIES,
+  );
   // 원두 수량 합계 (샘플 제외 — 관리자 대리주문은 일반 도매)
   const beanQtyTotal = cartRows
-    .filter((r) => BEAN_CATEGORIES.includes(r.product.category))
+    .filter((r) => beanKeys.has(r.product.category))
     .reduce((s, r) => s + r.qty, 0);
   const beanShortage = beanQtyTotal > 0 && beanQtyTotal < 5;
+
+  // 상품별 최소 주문 수량 위반
+  const minViolations = cartRows
+    .map((r) => ({ name: r.product.name, qty: r.qty, min: (r.product as any).minOrderQty ?? 0 }))
+    .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
+  const orderBlocked = beanShortage || minViolations.length > 0;
 
   function addLine() {
     const pid = Number(addProductId);
@@ -134,6 +148,11 @@ export default function AdminOrderNew() {
     }
     if (beanShortage) {
       toast({ variant: "destructive", title: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
+      return;
+    }
+    if (minViolations.length > 0) {
+      const v = minViolations[0];
+      toast({ variant: "destructive", title: `'${v.name}'은(는) 최소 ${v.min}개부터 주문 가능합니다.` });
       return;
     }
     setSubmitting(true);
@@ -300,6 +319,11 @@ export default function AdminOrderNew() {
                   원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQtyTotal}개.
                 </p>
               )}
+              {minViolations.map((v) => (
+                <p key={v.name} className="mt-2 text-sm text-destructive">
+                  '{v.name}'은(는) 최소 {v.min}개부터 주문 가능합니다. 현재 {v.qty}개.
+                </p>
+              ))}
 
               {cartRows.length > 0 && (
                 <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
@@ -355,7 +379,7 @@ export default function AdminOrderNew() {
               </Button>
               <Button
                 onClick={submit}
-                disabled={submitting || !numericCustomerId || cartRows.length === 0 || beanShortage}
+                disabled={submitting || !numericCustomerId || cartRows.length === 0 || orderBlocked}
                 data-testid="button-admin-order-submit"
               >
                 {submitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
