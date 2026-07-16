@@ -94,6 +94,10 @@ async function recomputeOrderItems(
   for (const it of rawItems) {
     const prod = await storage.getProduct(it.productId);
     if (!prod) return { ok: false, message: `상품을 찾을 수 없습니다: ${it.productId}` };
+    const minQ = (prod as any).minOrderQty ?? 0;
+    if (minQ > 0 && it.qty > 0 && it.qty < minQ) {
+      return { ok: false, message: `'${prod.name}'은(는) 최소 ${minQ}개부터 주문 가능합니다. (현재 ${it.qty}개)` };
+    }
     const unitPrice = overrideMap.get(it.productId) ?? prod.price;
     items.push({
       productId: it.productId,
@@ -444,11 +448,17 @@ export async function registerRoutes(
     const beanKeys = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
     if (beanKeys.size === 0) ["blend", "decaf", "single"].forEach((k) => beanKeys.add(k)); // 방어적 폴백
     let beanQtyTotal = 0;
+    const isSampleOrder = !!(parsed.data as any).isSample;
     for (const it of rawItems) {
       const prod = await storage.getProduct(it.productId);
       if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${it.productId}` });
       const unitPrice = overrideMap.get(it.productId) ?? prod.price;
       if (beanKeys.has(prod.category)) beanQtyTotal += it.qty;
+      // 상품별 최소 주문 수량 검증 (샘플 제외)
+      const minQ = (prod as any).minOrderQty ?? 0;
+      if (!isSampleOrder && minQ > 0 && it.qty > 0 && it.qty < minQ) {
+        return res.status(400).json({ message: `'${prod.name}'은(는) 최소 ${minQ}개부터 주문 가능합니다. (현재 ${it.qty}개)` });
+      }
       newItems.push({ ...it, category: prod.category, productName: prod.name, unitPrice, amount: unitPrice * it.qty });
     }
 
@@ -1904,7 +1914,7 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
-    const allowed = ["name", "category", "origin", "price", "costPrice", "available", "sortOrder", "ecountCode", "detailTemplate", "detailJson", "detailImages"];
+    const allowed = ["name", "category", "origin", "price", "costPrice", "available", "minOrderQty", "sortOrder", "ecountCode", "detailTemplate", "detailJson", "detailImages"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     const updated = await storage.updateProduct(Number(req.params.id), patch);
