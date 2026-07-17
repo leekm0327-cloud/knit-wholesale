@@ -914,7 +914,16 @@ export type EspressoStats = {
   to: string;
   byRating: { rating: string; count: number }[];
   byDate: { date: string; count: number }[];
-  byBeanRecipe: { bean: string; count: number; avgDose: number; avgYield: number; avgTime: number; ratio: number }[];
+  byBeanRecipe: {
+    bean: string;
+    count: number;
+    avgDose: number;
+    avgYield: number;
+    avgTime: number;
+    ratio: number;
+    tags: { label: string; count: number }[]; // 맛 태그 (긍정 코멘트에서 자동 추출)
+    notes: string[]; // 대표 코멘트 (직원 이름·세팅 메모 제외, 맛 위주)
+  }[];
   byHumidity: EspressoBinRow[]; // 습도 구간별 성공 레시피
   byTemp: EspressoBinRow[]; // 실내온도 구간별 성공 레시피
   error?: string;
