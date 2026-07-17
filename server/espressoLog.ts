@@ -11,6 +11,96 @@ const RATING_ORDER = ["매우 긍정", "긍정", "보통", "부정", "매우 부
 const POSITIVE_RATINGS = ["긍정", "매우 긍정"];
 const TTL_MS = 10 * 60 * 1000; // 10분 캐시
 
+// 맛 코멘트에서 뽑아낼 '긍정 맛 표현' 사전 (부정·중립 표현은 넣지 않는다)
+const FLAVOR_TAGS: { label: string; patterns: string[] }[] = [
+  { label: "단맛", patterns: ["단맛", "달달", "단 맛", "단맛좋"] },
+  { label: "산미", patterns: ["산미", "신맛", "새콤", "시트러스", "상큼"] },
+  { label: "견과", patterns: ["견과", "너티", "너트", "아몬드", "호두", "땅콩"] },
+  { label: "고소함", patterns: ["고소"] },
+  { label: "밸런스", patterns: ["밸런스", "밸런", "균형", "조화"] },
+  { label: "바디감", patterns: ["바디", "무게감", "질감", "묵직", "라운드"] },
+  { label: "클린컵", patterns: ["클린", "깔끔", "깨끗", "클리어"] },
+  { label: "초콜릿", patterns: ["초콜릿", "초코", "카카오"] },
+  { label: "감칠맛", patterns: ["감칠"] },
+  { label: "긴 여운", patterns: ["여운", "후미", "애프터", "피니시"] },
+  { label: "과일 향", patterns: ["복숭아", "망고", "자두", "베리", "자몽", "오렌지", "딸기", "과일", "플로럴", "꽃", "플레이버"] },
+];
+
+// 세팅 메모(내부 작업 노트) 신호 — 이런 표현이 들어간 코멘트는 대표 코멘트에서 제외
+const MEMO_RE = /\d\s*도|낮춤|낮춰|낮췄|높였|높임|올림|조정|세팅|추출\s*온도|그라인더|디개싱|디게싱|분쇄도|클릭|D\s*\+|노력/;
+
+function hasFlavor(note: string): boolean {
+  return FLAVOR_TAGS.some((t) => t.patterns.some((p) => note.includes(p)));
+}
+
+// 긍정 코멘트 묶음에서 맛 태그 상위 N개 추출 ("~없음" 등 부정 표현은 제외)
+function extractTags(notes: string[]): { label: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const note of notes) {
+    const seen = new Set<string>();
+    for (const t of FLAVOR_TAGS) {
+      let matched = false;
+      for (const p of t.patterns) {
+        let from = 0;
+        while (from <= note.length) {
+          const idx = note.indexOf(p, from);
+          if (idx < 0) break;
+          const after = note.slice(idx + p.length, idx + p.length + 5);
+          if (!after.includes("없")) { matched = true; break; } // '신맛 없음' 등 부정은 건너뜀
+          from = idx + p.length;
+        }
+        if (matched) break;
+      }
+      if (matched && !seen.has(t.label)) {
+        seen.add(t.label);
+        counts.set(t.label, (counts.get(t.label) ?? 0) + 1);
+      }
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+}
+
+// 직원 이름 제거 (담당자 컬럼에서 수집한 이름 + 존칭 접미사)
+function anonymize(note: string, nameSet: Set<string>): string {
+  let s = note;
+  for (const nm of nameSet) {
+    if (nm.length < 2) continue;
+    s = s.split(nm).join("");
+  }
+  return s.replace(/(이|씨|님|형|누나|쌤)\s/g, " ").replace(/\s{2,}/g, " ").replace(/^[\s,·]+|[\s,·]+$/g, "").trim();
+}
+
+// 원두별 대표 코멘트 1~2개 선별 (맛 위주, 세팅 메모·이름 제외)
+function pickNotes(comments: { veryPos: boolean; note: string }[], nameSet: Set<string>): string[] {
+  const clean = comments
+    .map((c) => ({ veryPos: c.veryPos, note: anonymize(c.note.trim(), nameSet) }))
+    .filter((c) => {
+      const n = c.note;
+      if (n.length < 8 || n.length > 70) return false; // 너무 짧거나 긴 서술 제외
+      if (MEMO_RE.test(n)) return false; // 세팅 메모 제외
+      return true;
+    });
+  clean.sort((a, b) => {
+    if (a.veryPos !== b.veryPos) return a.veryPos ? -1 : 1; // 매우 긍정 우선
+    const ha = hasFlavor(a.note), hb = hasFlavor(b.note);
+    if (ha !== hb) return ha ? -1 : 1; // 맛 표현 있는 코멘트 우선
+    return a.note.length - b.note.length; // 간결한 것 우선
+  });
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const c of clean) {
+    const key = c.note.slice(0, 10);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c.note);
+    if (out.length >= 2) break;
+  }
+  return out;
+}
+
 let cache: EspressoStats | null = null;
 let cacheAt = 0;
 
@@ -92,12 +182,16 @@ function aggregate(csv: string): EspressoStats {
   const cRating = col("종합 평가") >= 0 ? col("종합 평가") : col("평가");
   const cHum = col("실내 습도") >= 0 ? col("실내 습도") : col("습도");
   const cTemp = col("실내 온도") >= 0 ? col("실내 온도") : col("실내온도");
+  const cNote = col("코멘트") >= 0 ? col("코멘트") : col("NOTE");
+  const cStaff = col("담당자");
   const humAcc = HUM_BINS.map(newAcc);
   const tempAcc = TEMP_BINS.map(newAcc);
 
   const ratingMap = new Map<string, number>();
   const dateMap = new Map<string, number>();
   const beanMap = new Map<string, { count: number; dose: number; yield: number; time: number; doseN: number; yieldN: number; timeN: number }>();
+  const beanComments = new Map<string, { veryPos: boolean; note: string }[]>();
+  const nameSet = new Set<string>();
   let total = 0;
   const dates: string[] = [];
 
@@ -110,6 +204,15 @@ function aggregate(csv: string): EspressoStats {
     const rating = cRating >= 0 ? String(r[cRating] ?? "").trim() : "";
     if (!dISO && !bean && !rating) continue;
     total++;
+
+    // 담당자 이름 수집 (대표 코멘트 익명화용) — 전체 이름 + 성 뗀 이름
+    if (cStaff >= 0) {
+      const nm = String(r[cStaff] ?? "").trim();
+      if (nm.length >= 2) {
+        nameSet.add(nm);
+        if (nm.length >= 3) nameSet.add(nm.slice(1)); // '박대건' → '대건'
+      }
+    }
 
     if (rating) ratingMap.set(rating, (ratingMap.get(rating) ?? 0) + 1);
     if (dISO) { dateMap.set(dISO, (dateMap.get(dISO) ?? 0) + 1); dates.push(dISO); }
@@ -126,6 +229,13 @@ function aggregate(csv: string): EspressoStats {
         if (Number.isFinite(y)) { b.yield += y; b.yieldN++; }
         if (Number.isFinite(t)) { b.time += t; b.timeN++; }
         beanMap.set(bean, b);
+        // 맛 코멘트 수집
+        const note = cNote >= 0 ? String(r[cNote] ?? "").trim() : "";
+        if (note) {
+          const arr = beanComments.get(bean) ?? [];
+          arr.push({ veryPos: rating === "매우 긍정", note });
+          beanComments.set(bean, arr);
+        }
       }
       const hum = cHum >= 0 ? num(r[cHum]) : NaN;
       const temp = cTemp >= 0 ? num(r[cTemp]) : NaN;
@@ -152,6 +262,7 @@ function aggregate(csv: string): EspressoStats {
       const avgDose = b.doseN ? b.dose / b.doseN : 0;
       const avgYield = b.yieldN ? b.yield / b.yieldN : 0;
       const avgTime = b.timeN ? b.time / b.timeN : 0;
+      const comments = beanComments.get(bean) ?? [];
       return {
         bean,
         count: b.count,
@@ -159,6 +270,8 @@ function aggregate(csv: string): EspressoStats {
         avgYield: r1(avgYield),
         avgTime: r1(avgTime),
         ratio: avgDose > 0 ? r1(avgYield / avgDose) : 0,
+        tags: extractTags(comments.map((c) => c.note)),
+        notes: pickNotes(comments, nameSet),
       };
     })
     .sort((a, b) => b.count - a.count);
