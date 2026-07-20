@@ -20,7 +20,7 @@ export function KakaoChannelButton() {
       rel="noopener noreferrer"
       aria-label="카카오톡 채널로 문의하기"
       data-testid="button-kakao-channel"
-      className="group fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-foreground px-4 py-3.5 text-background shadow-lg ring-1 ring-foreground/10 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl sm:bottom-7 sm:right-7"
+      className="group fixed bottom-16 right-5 z-50 flex items-center gap-2 rounded-full bg-foreground px-4 py-3.5 text-background shadow-lg ring-1 ring-foreground/10 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl sm:bottom-7 sm:right-7"
     >
       <KakaoBubbleIcon className="h-5 w-5 shrink-0" />
       <span className="hidden pr-0.5 font-ui text-xs font-semibold tracking-wide sm:inline">
