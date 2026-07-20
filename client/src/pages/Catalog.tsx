@@ -140,6 +140,12 @@ export default function Catalog() {
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
       .map((c) => ({ key: c.key, label: c.label }));
   }, [categoryRows]);
+  // 카테고리 키 → 라벨 (상품 행 카테고리 칩용)
+  const catLabelMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    (categoryRows ?? []).forEach((c: any) => { m[c.key] = c.label; });
+    return m;
+  }, [categoryRows]);
   // ③ 니트커피 소식 (발행분). 최신 4개만 상단 카드로 노출.
   const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });
   const topNews = (newsList ?? []).slice(0, 4);
@@ -277,13 +283,13 @@ export default function Catalog() {
           <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
             수량을 입력하고 담아 주세요. 단가는 공급가액 기준이며, 부가세 10%가 별도로 가산됩니다.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <Link
               href="/visit-setup"
               data-testid="link-catalog-visit-setup"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-foreground bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#6b6a45] bg-[#f2f1e9] px-4 py-2.5 text-sm font-semibold text-[#6b6a45] transition-colors hover:bg-[#6b6a45] hover:text-white sm:px-6"
             >
-              커피 세팅이 필요하신가요? <span aria-hidden="true">→</span>
+              커피 세팅 문의 <span aria-hidden="true">→</span>
             </Link>
             <button
               type="button"
@@ -291,7 +297,7 @@ export default function Catalog() {
                 document.getElementById("espresso-section")?.scrollIntoView({ behavior: "smooth", block: "start" })
               }
               data-testid="button-catalog-recipe"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-input bg-background px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#6b6a45] bg-[#f2f1e9] px-4 py-2.5 text-sm font-semibold text-[#6b6a45] transition-colors hover:bg-[#6b6a45] hover:text-white sm:px-6"
             >
               니트커피 레시피 <span aria-hidden="true">→</span>
             </button>
@@ -300,25 +306,26 @@ export default function Catalog() {
 
         {/* 출고 안내 박스 */}
         <div
-          className="mb-8 border-l-2 border-teal-600 bg-muted/40 px-4 py-3"
+          className="mb-6 flex items-start gap-2 rounded-lg bg-[#f2f1e9] px-4 py-3"
           data-testid="shipping-notice"
         >
-          <p className="text-xs leading-relaxed text-foreground">
-            평일 기준, <span className="font-semibold">12:00 이전 주문</span>은 택배(대한통운)로 당일 출고되며, 주문량에 따라 지연될 수 있습니다.
+          <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#6b6a45]" />
+          <p className="text-xs leading-relaxed text-[#5c5b3e]">
+            평일 <span className="font-semibold">12:00 이전 주문</span>은 택배(대한통운)로 당일 출고 · 주문량에 따라 지연될 수 있습니다.
           </p>
         </div>
 
-        {/* 미니멀 앵커 바 */}
+        {/* 카테고리 바로가기 — 알약 칩 (모바일 가로 스크롤 한 줄) */}
         {!isLoading && (anchorCats.length > 1 || favoriteItems.length > 0) && (
           <div
-            className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-1"
+            className="mb-8 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             data-testid="anchor-bar"
           >
             {favoriteItems.length > 0 && (
               <button
                 onClick={() => scrollToSection("favorites")}
                 data-testid="anchor-favorites"
-                className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-600 transition-colors hover:text-amber-500"
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500 px-3.5 py-1.5 text-xs font-semibold text-amber-600 transition-colors hover:bg-amber-50"
               >
                 <Star className="h-3 w-3 fill-current" />
                 즐겨찾기
@@ -329,7 +336,7 @@ export default function Catalog() {
                 key={cat.key}
                 onClick={() => scrollToSection(cat.key)}
                 data-testid={`anchor-${cat.key}`}
-                className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground"
+                className="shrink-0 whitespace-nowrap rounded-full border border-input px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-[#6b6a45] hover:text-[#6b6a45]"
               >
                 {cat.label}
               </button>
@@ -348,28 +355,28 @@ export default function Catalog() {
             판매 중인 상품이 없습니다.
           </div>
         ) : (
-          <div>
-            {/* #1 즐겨찾기 섹션 — 최상단 고정 */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* #1 즐겨찾기 섹션 — 최상단 전체 폭 카드 */}
             {favoriteItems.length > 0 && (
               <section
                 ref={(el) => { sectionRefs.current["favorites"] = el; }}
-                className="mb-10"
+                className="rounded-2xl border border-[#eeece4] bg-[#fbfbf9] p-4 sm:p-5 lg:col-span-2"
                 data-testid="section-favorites"
               >
                 <h2
-                  className="mb-2 flex items-center gap-1.5 text-sm font-semibold tracking-tight text-foreground"
+                  className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight text-foreground"
                   data-testid="section-title-favorites"
                 >
                   <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
                   즐겨찾기
                 </h2>
-                <div className="mb-2 h-px bg-border" />
-                <ul className="divide-y divide-border">
+                <ul className="divide-y divide-[#efede6]">
                   {favoriteItems.map((p) => (
                     <ProductRow
                       key={`fav-${p.id}`}
                       product={p}
                       qty={qtyMap[p.id] ?? 0}
+                      categoryLabel={catLabelMap[p.category] ?? p.category}
                       onQtyChange={(q) => setQty(p.id, q)}
                       onToggleFavorite={() => toggleFavorite(p)}
                     />
@@ -377,34 +384,29 @@ export default function Catalog() {
                 </ul>
               </section>
             )}
-            {grouped.map((group, gi) => (
+            {grouped.map((group) => (
               <section
                 key={group.key}
                 ref={(el) => { sectionRefs.current[group.key] = el; }}
-                className={gi > 0 ? "mt-10" : ""}
+                className="rounded-2xl border border-[#eeece4] bg-[#fbfbf9] p-4 sm:p-5"
                 data-testid={`section-${group.key}`}
               >
-                {/* 카테고리 헤더 — 작은 폰트 */}
+                {/* 카테고리 헤더 — 올리브 액센트 바 */}
                 <h2
-                  className="mb-2 text-sm font-semibold tracking-tight text-foreground"
+                  className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
                   data-testid={`section-title-${group.key}`}
                 >
+                  <span className="h-3.5 w-[3px] rounded-full bg-[#6b6a45]" />
                   {group.label}
                 </h2>
-                <div className="mb-2 h-px bg-border" />
 
-                {/* 목록 헤더 (데스크탑) — 상세 정보는 각 상품의 Coffee Information에서 확인 */}
-                <div className="hidden items-center justify-between border-b border-border pb-2 font-ui text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:flex">
-                  <span>상품명</span>
-                  <span>공급가액 · 수량</span>
-                </div>
-
-                <ul className="divide-y divide-border">
+                <ul className="divide-y divide-[#efede6]">
                   {group.items.map((p) => (
                     <ProductRow
                       key={p.id}
                       product={p}
                       qty={qtyMap[p.id] ?? 0}
+                      categoryLabel={catLabelMap[p.category] ?? p.category}
                       onQtyChange={(q) => setQty(p.id, q)}
                       onToggleFavorite={() => toggleFavorite(p)}
                     />
@@ -423,8 +425,8 @@ export default function Catalog() {
         </section>
       </main>
 
-      {/* 하단 합계바 — 미니멀 */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/97 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+      {/* 하단 합계바 — 미니멀 (모바일은 하단 탭바 위로 재배치) */}
+      <div className="fixed bottom-11 left-0 right-0 z-40 border-t border-border bg-background/97 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:bottom-0">
         <div className="mx-auto flex max-w-[1200px] flex-col gap-1 px-5 py-3 sm:px-8 sm:py-4">
           <div className="flex items-baseline justify-between text-xs text-muted-foreground">
             <span>공급가액</span>
@@ -492,11 +494,13 @@ function StarButton({
 function ProductRow({
   product,
   qty,
+  categoryLabel,
   onQtyChange,
   onToggleFavorite,
 }: {
   product: Product;
   qty: number;
+  categoryLabel?: string;
   onQtyChange: (qty: number) => void;
   onToggleFavorite: () => void;
 }) {
@@ -507,15 +511,27 @@ function ProductRow({
   const isFavorite = Boolean((product as any).isFavorite);
   const info = getCoffeeInfo(product);
   const hasInfo = info.components.length > 0 || info.rows.length > 0 || info.recipe !== null;
+  // 썸네일: 상세 이미지 첫 장이 있으면 사용, 없으면 올리브 플레이스홀더
+  const thumb = (() => {
+    try {
+      const a = JSON.parse(product.detailImages || "[]");
+      return Array.isArray(a) && a.length > 0 ? a[0] : null;
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <li
       className={`py-3 transition-colors ${soldOut ? "opacity-50" : ""}`}
       data-testid={`row-product-${product.id}`}
     >
-      {/* 상단: 상품명 / 가격 / 수량 (한 줄, 반응형 공통) */}
+      {/* 상단: 썸네일 / 상품명·카테고리 / 가격 / 수량 (한 줄, 반응형 공통) */}
       <div className="flex items-center gap-3">
         <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
+        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-[#e6e3d8] bg-gradient-to-br from-[#cdbfa3] to-[#8a7856]">
+          {thumb && <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />}
+        </div>
         <div className="min-w-0 flex-1">
           {soldOut && (
             <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
@@ -530,6 +546,11 @@ function ProductRow({
               {product.name}
             </a>
           </Link>
+          {categoryLabel && (
+            <span className="mt-0.5 inline-block rounded-full bg-[#f2f1e9] px-2 py-0.5 text-[10px] font-semibold text-[#6b6a45]">
+              {categoryLabel}
+            </span>
+          )}
         </div>
         <div className="shrink-0 text-right" data-testid={`text-price-${product.id}`}>
           <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
