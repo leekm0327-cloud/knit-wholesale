@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Wordmark } from "./Logo";
 import { AccountSwitcher } from "./AccountSwitcher";
+import { MobileTabBar } from "./MobileTabBar";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift, Newspaper, Wrench } from "lucide-react";
@@ -29,6 +30,7 @@ export function AppHeader() {
   const testId = (href: string) => `link-${href.slice(1)}`;
 
   return (
+    <>
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
       {/* 상단 행: 모바일 = 로고 + 액션 / 데스크톱 = 메뉴 + 로고 + 액션 */}
       <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-5 sm:grid sm:grid-cols-3 sm:px-10">
@@ -88,30 +90,12 @@ export function AppHeader() {
             }}
             aria-label="로그아웃"
             data-testid="button-logout"
-            className="text-muted-foreground transition-colors hover:text-foreground"
+            className="hidden text-muted-foreground transition-colors hover:text-foreground sm:block"
           >
             <LogOut className="h-[18px] w-[18px]" />
           </button>
         </div>
       </div>
-
-      {/* 모바일 메뉴 행 — 로고 아래에 별도로 표시 (데스크톱 숨김) */}
-      <nav className="flex items-center justify-center gap-6 border-t border-border px-4 py-2 sm:hidden">
-        {navItems.map((n) => {
-          const Icon = n.icon;
-          return (
-            <button
-              key={n.href}
-              onClick={() => navigate(n.href)}
-              data-testid={`m-${testId(n.href)}`}
-              aria-label={n.label}
-              className={`transition-colors ${n.active ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Icon className="h-5 w-5" />
-            </button>
-          );
-        })}
-      </nav>
 
       {user && (
         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-t border-border px-5 py-1.5 text-center font-ui text-[11px] tracking-wide text-muted-foreground sm:px-10">
@@ -123,5 +107,7 @@ export function AppHeader() {
         </div>
       )}
     </header>
+    <MobileTabBar />
+    </>
   );
 }
