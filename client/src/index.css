@@ -157,6 +157,13 @@
     @apply font-sans antialiased bg-background text-foreground;
     line-height: 1.6;
   }
+
+  /* 모바일 하단 탭바(약 44px) 높이만큼 본문 하단 여백 확보 (데스크톱은 탭바 없음) */
+  @media (max-width: 639px) {
+    body {
+      padding-bottom: 3.25rem;
+    }
+  }
 }
 
 @layer utilities {
