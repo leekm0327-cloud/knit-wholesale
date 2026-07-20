@@ -140,12 +140,6 @@ export default function Catalog() {
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
       .map((c) => ({ key: c.key, label: c.label }));
   }, [categoryRows]);
-  // 카테고리 키 → 라벨 (상품 행 카테고리 칩용)
-  const catLabelMap = useMemo(() => {
-    const m: Record<string, string> = {};
-    (categoryRows ?? []).forEach((c: any) => { m[c.key] = c.label; });
-    return m;
-  }, [categoryRows]);
   // ③ 니트커피 소식 (발행분). 최신 4개만 상단 카드로 노출.
   const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });
   const topNews = (newsList ?? []).slice(0, 4);
@@ -376,7 +370,6 @@ export default function Catalog() {
                       key={`fav-${p.id}`}
                       product={p}
                       qty={qtyMap[p.id] ?? 0}
-                      categoryLabel={catLabelMap[p.category] ?? p.category}
                       onQtyChange={(q) => setQty(p.id, q)}
                       onToggleFavorite={() => toggleFavorite(p)}
                     />
@@ -406,7 +399,6 @@ export default function Catalog() {
                       key={p.id}
                       product={p}
                       qty={qtyMap[p.id] ?? 0}
-                      categoryLabel={catLabelMap[p.category] ?? p.category}
                       onQtyChange={(q) => setQty(p.id, q)}
                       onToggleFavorite={() => toggleFavorite(p)}
                     />
@@ -494,13 +486,11 @@ function StarButton({
 function ProductRow({
   product,
   qty,
-  categoryLabel,
   onQtyChange,
   onToggleFavorite,
 }: {
   product: Product;
   qty: number;
-  categoryLabel?: string;
   onQtyChange: (qty: number) => void;
   onToggleFavorite: () => void;
 }) {
@@ -511,27 +501,15 @@ function ProductRow({
   const isFavorite = Boolean((product as any).isFavorite);
   const info = getCoffeeInfo(product);
   const hasInfo = info.components.length > 0 || info.rows.length > 0 || info.recipe !== null;
-  // 썸네일: 상세 이미지 첫 장이 있으면 사용, 없으면 올리브 플레이스홀더
-  const thumb = (() => {
-    try {
-      const a = JSON.parse(product.detailImages || "[]");
-      return Array.isArray(a) && a.length > 0 ? a[0] : null;
-    } catch {
-      return null;
-    }
-  })();
 
   return (
     <li
       className={`py-3 transition-colors ${soldOut ? "opacity-50" : ""}`}
       data-testid={`row-product-${product.id}`}
     >
-      {/* 상단: 썸네일 / 상품명·카테고리 / 가격 / 수량 (한 줄, 반응형 공통) */}
+      {/* 상단: 상품명 / 가격 / 수량 (한 줄, 반응형 공통) */}
       <div className="flex items-center gap-3">
         <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
-        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-[#e6e3d8] bg-gradient-to-br from-[#cdbfa3] to-[#8a7856]">
-          {thumb && <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />}
-        </div>
         <div className="min-w-0 flex-1">
           {soldOut && (
             <span className="mb-0.5 inline-flex border border-muted-foreground/40 px-1.5 py-0.5 font-ui text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
@@ -540,17 +518,12 @@ function ProductRow({
           )}
           <Link href={`/products/${product.id}`}>
             <a
-              className="block truncate text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
+              className="block text-sm font-medium text-foreground underline decoration-transparent underline-offset-4 transition-colors hover:decoration-current"
               data-testid={`link-product-${product.id}`}
             >
               {product.name}
             </a>
           </Link>
-          {categoryLabel && (
-            <span className="mt-0.5 inline-block rounded-full bg-[#f2f1e9] px-2 py-0.5 text-[10px] font-semibold text-[#6b6a45]">
-              {categoryLabel}
-            </span>
-          )}
         </div>
         <div className="shrink-0 text-right" data-testid={`text-price-${product.id}`}>
           <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
