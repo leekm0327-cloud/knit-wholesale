@@ -45,6 +45,7 @@ interface TransactionOrder {
   id: number;
   orderNo: string;
   createdAt: number;
+  ecountDate?: string; // 관리자 지정 주문 일자 (YYYY-MM-DD). 있으면 이 값이 유효 주문일자.
   status: string;
   totalAmount: number;
   supplyAmount: number;
@@ -246,7 +247,11 @@ export default function AdminTransactions() {
                       order.parsedItems.map((item, itemIdx) => (
                         <tr key={`${order.id}-${itemIdx}`} className="hover:bg-muted/10">
                           <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                            {itemIdx === 0 ? fmtDate(order.createdAt).split(" ")[0] : ""}
+                            {itemIdx === 0
+                              ? (order.ecountDate && order.ecountDate.trim()
+                                  ? order.ecountDate.replace(/-/g, ".")
+                                  : fmtDate(order.createdAt).split(" ")[0])
+                              : ""}
                           </td>
                           <td className="px-3 py-2.5">
                             {itemIdx === 0 ? (
