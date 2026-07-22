@@ -15,7 +15,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg, won, CATEGORY_LABEL } from "@/lib/format";
-import type { Order, OrderItem, Product } from "@shared/schema";
+import type { Order, OrderItem, Product, Customer, CustomerPrice } from "@shared/schema";
 import { Plus, Minus, Trash2, Loader2, X } from "lucide-react";
 
 interface EditItem {
@@ -37,6 +37,35 @@ interface Props {
 export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const { toast } = useToast();
   const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+
+  // 관리자 수정 시: 이 주문 거래처의 등록단가(커스텀) + 매장 내부 계정 여부를 반영해 단가 결정
+  const isAdmin = mode === "admin";
+  const { data: adminPrices } = useQuery<CustomerPrice[]>({
+    queryKey: [`/api/admin/customers/${order.customerId}/prices`],
+    enabled: isAdmin,
+  });
+  const { data: adminCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/admin/customers"],
+    enabled: isAdmin,
+  });
+  const overrideMap = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const p of adminPrices ?? []) m.set(p.productId, p.price);
+    return m;
+  }, [adminPrices]);
+  const isStoreCustomer = useMemo(
+    () => !!((adminCustomers ?? []).find((c) => c.id === order.customerId) as any)?.isStore,
+    [adminCustomers, order.customerId],
+  );
+
+  // 품목 추가 시 단가: 관리자+매장 → 매입원가, 관리자 → 등록단가 ?? 기본가, 거래처 → effectivePrice ?? 기본가
+  function priceOf(p: Product): number {
+    if (isAdmin) {
+      if (isStoreCustomer) return (p as any).costPrice ?? 0;
+      return overrideMap.get(p.id) ?? p.price;
+    }
+    return (p as any).effectivePrice ?? p.price;
+  }
 
   const initialItems: OrderItem[] = useMemo(() => {
     try {
@@ -83,7 +112,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
     }
     const p = products?.find((pp) => pp.id === pid);
     if (!p) return;
-    const unitPrice = (p as any).effectivePrice ?? p.price;
+    const unitPrice = priceOf(p);
     setItems((prev) => [
       ...prev,
       { productId: p.id, name: p.name, category: p.category, unitPrice, qty: 1 },
@@ -216,7 +245,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
               ) : (
                 availableToAdd.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
-                    {p.name} · {won((p as any).effectivePrice ?? p.price)}
+                    {p.name} · {won(priceOf(p))}
                   </SelectItem>
                 ))
               )}
