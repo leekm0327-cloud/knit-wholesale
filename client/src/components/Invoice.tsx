@@ -42,9 +42,12 @@ export function Invoice({ order }: { order: Order }) {
         </div>
       </div>
 
-      {/* 발행 정보 */}
+      {/* 발행 정보 — 관리자가 지정한 주문 일자(ecountDate)가 있으면 그 날짜, 없으면 생성일 */}
       <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
-        <InfoRow label="발행일" value={fmtDate(order.createdAt)} />
+        <InfoRow
+          label="발행일"
+          value={order.ecountDate && order.ecountDate.trim() ? order.ecountDate.replace(/-/g, ".") : fmtDate(order.createdAt)}
+        />
         {order.trackingNo ? <InfoRow label="송장번호" value={order.trackingNo} mono /> : null}
       </div>
 
