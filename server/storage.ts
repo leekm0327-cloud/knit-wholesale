@@ -1,4 +1,4 @@
-import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup } from "@shared/schema";
+import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -225,6 +225,16 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at DESC);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '',
+  read_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL,
@@ -2047,6 +2057,34 @@ export class DatabaseStorage implements IStorage {
       })
       .returning()
       .get();
+  }
+
+  // ===== 관리자 알림 센터 =====
+  async createNotification(n: { type: string; title: string; body?: string; link?: string }) {
+    return db
+      .insert(notifications)
+      .values({
+        type: n.type,
+        title: n.title,
+        body: n.body ?? "",
+        link: n.link ?? "",
+        readAt: null,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+  async listNotifications(limit = 30) {
+    return db.select().from(notifications).orderBy(desc(notifications.createdAt), desc(notifications.id)).limit(limit).all();
+  }
+  async countUnreadNotifications(): Promise<number> {
+    return db.select().from(notifications).all().filter((r) => r.readAt == null).length;
+  }
+  async markNotificationRead(id: number): Promise<void> {
+    db.update(notifications).set({ readAt: Date.now() }).where(eq(notifications.id, id)).run();
+  }
+  async markAllNotificationsRead(): Promise<void> {
+    db.update(notifications).set({ readAt: Date.now() }).run();
   }
 
   // ===== 비밀번호 재설정 토큰 (#26) =====

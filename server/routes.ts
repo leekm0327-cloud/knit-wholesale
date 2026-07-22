@@ -6,7 +6,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
-import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail } from "./email";
+import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { fetchEspressoStats } from "./espressoLog";
@@ -236,6 +236,21 @@ export async function registerRoutes(
         ? `신규 거래처 가입(사업자번호 검증 통과, 자동승인): ${customer.businessName}`
         : `신규 거래처 가입(사업자번호 미검증, 승인대기): ${customer.businessName}`,
     });
+    // 관리자 알림 센터 + 이메일 (실패해도 가입 흐름은 정상 진행)
+    storage.createNotification({
+      type: "customer_register",
+      title: `새 거래처 가입 · ${customer.businessName}`,
+      body: bizVerified ? "자동 승인됨" : "승인 대기 (사업자번호 확인 필요)",
+      link: "/admin/customers",
+    }).catch((e) => console.error("[notif] 가입 알림 저장 실패:", e));
+    sendNewCustomerEmail({
+      businessName: customer.businessName,
+      managerName: customer.managerName,
+      phone: customer.phone,
+      email: customer.email,
+      bizRegNo: customer.bizRegNo,
+      bizVerified: !!bizVerified,
+    }).catch((e) => console.error("[email] 거래처 가입 알림 메일 실패:", e));
     req.session.userId = customer.id;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
@@ -535,6 +550,13 @@ export async function registerRoutes(
         newTotalAmount,
       }).catch((e) => console.error("[email] 주문 추가 알림 메일 실패:", e));
 
+      storage.createNotification({
+        type: "order_merged",
+        title: `주문 추가 · ${customer.businessName}`,
+        body: `${todayPending.orderNo} · 총 ${newTotalAmount.toLocaleString("ko-KR")}원`,
+        link: `/admin/orders/${todayPending.id}`,
+      }).catch((e) => console.error("[notif] 주문추가 알림 저장 실패:", e));
+
       return res.json({ ...(updatedOrder ?? todayPending), merged: true, orderId: todayPending.id });
     }
 
@@ -586,6 +608,13 @@ export async function registerRoutes(
       `[니트커피] 새 도매 주문이 접수되었습니다.\n주문번호: ${order.orderNo}\n거래처: ${customer.businessName}\n금액: ${(supplyAmount + vat).toLocaleString("ko-KR")}원`,
       "https://wholesale.knitcoffee.co.kr/#/admin",
     ).catch((e) => console.warn("[kakao] 주문 알림 발송 실패:", e?.message ?? e));
+
+    storage.createNotification({
+      type: "order_new",
+      title: `새 주문 · ${customer.businessName}`,
+      body: `${order.orderNo} · 총 ${(supplyAmount + vat).toLocaleString("ko-KR")}원`,
+      link: `/admin/orders/${order.id}`,
+    }).catch((e) => console.error("[notif] 신규주문 알림 저장 실패:", e));
 
     res.json({ ...order, merged: false, orderId: order.id });
   });
@@ -2031,7 +2060,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/admin/managers", requireOwner, async (req, res) => {
-    const { email, name, password, phone } = req.body;
+    const { email, password, phone } = req.body;
+    const name = req.body.name ?? req.body.managerName; // 클라이언트가 managerName으로 보냄
     if (!email || !name || !password)
       return res.status(400).json({ message: "이메일, 이름, 비밀번호는 필수입니다." });
     const existing = await storage.getCustomerByEmail(email);
@@ -2066,7 +2096,8 @@ export async function registerRoutes(
     const target = await storage.getCustomer(id);
     if (!target || target.role !== "admin") return res.status(404).json({ message: "매니저를 찾을 수 없습니다." });
     const patch: any = {};
-    if (req.body.name) patch.managerName = req.body.name;
+    const nm = req.body.name ?? req.body.managerName; // 생성/수정 모두 managerName 사용
+    if (nm) patch.managerName = nm;
     if (req.body.phone !== undefined) patch.phone = req.body.phone;
     if (req.body.password) patch.password = bcrypt.hashSync(req.body.password, 10);
     const updated = await storage.updateCustomer(id, patch);
@@ -2105,6 +2136,23 @@ export async function registerRoutes(
 
     const result = await storage.listActivityLogs({ action, actorEmail, targetType, from, to, page, limit });
     res.json(result);
+  });
+
+  // ===== 관리자 알림 센터 =====
+  app.get("/api/admin/notifications", requireAdmin, async (_req, res) => {
+    const items = await storage.listNotifications(30);
+    const unread = await storage.countUnreadNotifications();
+    res.json({ items, unread });
+  });
+  app.post("/api/admin/notifications/:id/read", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await storage.markNotificationRead(id);
+    res.json({ ok: true });
+  });
+  app.post("/api/admin/notifications/read-all", requireAdmin, async (_req, res) => {
+    await storage.markAllNotificationsRead();
+    res.json({ ok: true });
   });
 
   // ===== #32 거래내역서 =====
@@ -2543,6 +2591,12 @@ export async function registerRoutes(
     } catch (e: any) {
       console.warn("[inquiry] 알림 메일 실패:", e?.message ?? e);
     }
+    storage.createNotification({
+      type: "inquiry",
+      title: `홀세일 납품 문의 · ${d.businessName}`,
+      body: `${d.contactName || "-"} · ${d.phone}`,
+      link: "/admin/inquiries",
+    }).catch((e) => console.error("[notif] 문의 알림 저장 실패:", e));
     res.json({ ok: true, id: item.id });
   });
   // 관리자 목록
@@ -2593,6 +2647,12 @@ export async function registerRoutes(
     } catch (e: any) {
       console.warn("[visit-request] 알림 메일 실패:", e?.message ?? e);
     }
+    storage.createNotification({
+      type: "visit_request",
+      title: `방문 세팅 신청 · ${item.businessName}`,
+      body: `${item.contactName || "-"} · ${VISIT_PURPOSE_LABELS[d.purpose] ?? d.purpose}`,
+      link: "/admin/visit-setups",
+    }).catch((e) => console.error("[notif] 방문신청 알림 저장 실패:", e));
     res.json({ ok: true, id: item.id });
   });
   // 관리자 목록

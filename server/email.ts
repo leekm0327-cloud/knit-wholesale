@@ -496,6 +496,45 @@ export async function sendWholesaleInquiryEmail(payload: {
   await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] 홀세일 납품 문의 — ${payload.businessName}`, html, text });
 }
 
+// 신규 거래처 가입 알림 (관리자 수신)
+export async function sendNewCustomerEmail(payload: {
+  businessName: string;
+  managerName: string;
+  phone: string;
+  email: string;
+  bizRegNo: string;
+  bizVerified: boolean;
+}) {
+  if (!NOTIFY_TO) {
+    console.warn("[email] NOTIFY_TO 미설정 — 거래처 가입 알림 건너뜀");
+    return;
+  }
+  const esc = (s: string) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const statusText = payload.bizVerified ? "자동 승인됨" : "승인 대기 (사업자번호 미검증/미입력)";
+  const rows: [string, string][] = [
+    ["상호", payload.businessName],
+    ["담당자", payload.managerName || "-"],
+    ["연락처", payload.phone || "-"],
+    ["이메일", payload.email || "-"],
+    ["사업자등록번호", payload.bizRegNo || "-"],
+    ["승인 상태", statusText],
+  ];
+  const html = `<div style="font-family:sans-serif;max-width:560px">
+    <h2 style="margin:0 0 12px">새 거래처 가입</h2>
+    <table style="border-collapse:collapse;width:100%;font-size:14px">
+    ${rows
+      .map(
+        ([k, v]) =>
+          `<tr><td style="padding:6px 10px;color:#888;white-space:nowrap">${k}</td><td style="padding:6px 10px;font-weight:600">${esc(v)}</td></tr>`,
+      )
+      .join("")}
+    </table>
+    <p style="margin-top:16px"><a href="${PUBLIC_BASE}/#/admin/customers" style="display:inline-block;padding:10px 22px;background:#111;color:#fff;text-decoration:none;font-size:13px">거래처 관리에서 보기</a></p>
+  </div>`;
+  const text = `새 거래처 가입\n상호: ${payload.businessName}\n담당자: ${payload.managerName || "-"}\n연락처: ${payload.phone || "-"}\n이메일: ${payload.email || "-"}\n사업자등록번호: ${payload.bizRegNo || "-"}\n승인 상태: ${statusText}\n\n관리자 > 거래처 관리에서 확인하세요.`;
+  await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] 새 거래처 가입 — ${payload.businessName}`, html, text });
+}
+
 // 방문 커피 세팅 신청 알림
 export async function sendVisitRequestEmail(payload: {
   businessName: string;
