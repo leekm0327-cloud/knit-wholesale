@@ -69,8 +69,15 @@ export default function AdminOrderNew() {
     return m;
   }, [prices]);
 
-  // 거래처 단가(있으면) 아니면 기본가
+  // 선택 거래처가 '매장 내부 계정'이면 매입원가(costPrice) 기준으로 계상
+  const selectedIsStore = useMemo(
+    () => !!((customers ?? []).find((c) => c.id === numericCustomerId) as any)?.isStore,
+    [customers, numericCustomerId],
+  );
+
+  // 매장 계정 = 매입원가 / 그 외 = 거래처 등록단가(있으면) ?? 기본가
   function unitPriceOf(product: Product): number {
+    if (selectedIsStore) return (product as any).costPrice ?? 0;
     return priceMap.get(product.id) ?? product.price;
   }
 
@@ -112,12 +119,15 @@ export default function AdminOrderNew() {
   const beanQtyTotal = cartRows
     .filter((r) => beanKeys.has(r.product.category))
     .reduce((s, r) => s + r.qty, 0);
-  const beanShortage = beanQtyTotal > 0 && beanQtyTotal < 5;
+  // 매장 내부 계정은 도매 최소주문(5kg)·상품별 최소수량에서 제외 (내부 소비용)
+  const beanShortage = !selectedIsStore && beanQtyTotal > 0 && beanQtyTotal < 5;
 
   // 상품별 최소 주문 수량 위반
-  const minViolations = cartRows
-    .map((r) => ({ name: r.product.name, qty: r.qty, min: (r.product as any).minOrderQty ?? 0 }))
-    .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
+  const minViolations = selectedIsStore
+    ? []
+    : cartRows
+        .map((r) => ({ name: r.product.name, qty: r.qty, min: (r.product as any).minOrderQty ?? 0 }))
+        .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
   const orderBlocked = beanShortage || minViolations.length > 0;
 
   function addLine() {
