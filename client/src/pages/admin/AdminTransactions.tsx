@@ -53,15 +53,31 @@ interface TransactionOrder {
   parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }>;
 }
 
+interface TransactionPayment {
+  id: number;
+  paidAt: string; // YYYY-MM-DD
+  amount: number;
+  method: string; // transfer | cash | card | other
+  memo: string;
+}
+
 interface TransactionResult {
   customer: { id: number; businessName: string; managerName: string; phone: string };
   startDate: string;
   endDate: string;
   orders: TransactionOrder[];
+  payments: TransactionPayment[];
   totalAmount: number;
   paidAmount: number;
   unpaidAmount: number;
 }
+
+const PAY_METHOD_LABEL: Record<string, string> = {
+  transfer: "계좌이체",
+  cash: "현금",
+  card: "카드",
+  other: "기타",
+};
 
 export default function AdminTransactions() {
   const presets = useMemo(() => getPresets(), []);
@@ -199,7 +215,7 @@ export default function AdminTransactions() {
             ))}
           </div>
         ) : result ? (
-          <div className="space-y-6">
+          <div className="space-y-6 print-area">
             {/* 인쇄용 헤더 */}
             <div className="hidden print:block mb-6">
               <h1 className="text-2xl font-bold">거래내역서</h1>
@@ -283,23 +299,50 @@ export default function AdminTransactions() {
                 </table>
               </div>
             )}
+
+            {/* 입금 내역 */}
+            <div>
+              <h2 className="mb-2 text-sm font-semibold text-foreground">입금 내역</h2>
+              {(!result.payments || result.payments.length === 0) ? (
+                <div className="rounded-lg border border-border py-8 text-center text-sm text-muted-foreground">
+                  해당 기간에 입금 내역이 없습니다.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-y border-border bg-muted/30">
+                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">입금일</th>
+                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">방법</th>
+                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">메모</th>
+                        <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">입금액</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {result.payments.map((p) => (
+                        <tr key={p.id} className="hover:bg-muted/10">
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground">{p.paidAt.replace(/-/g, ".")}</td>
+                          <td className="px-3 py-2.5 text-xs text-foreground">{PAY_METHOD_LABEL[p.method] ?? p.method}</td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground">{p.memo || "—"}</td>
+                          <td className="px-3 py-2.5 text-right text-xs font-medium tabular text-emerald-600">{won(p.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-foreground">
+                        <td colSpan={3} className="px-3 py-3 text-right text-sm font-semibold">입금 합계</td>
+                        <td className="px-3 py-3 text-right text-sm font-bold tabular text-emerald-600">{won(result.paidAmount)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         ) : queryKey != null ? (
           <div className="py-16 text-center text-sm text-muted-foreground">조회 중 오류가 발생했습니다.</div>
         ) : null}
       </div>
-
-      {/* 인쇄 스타일 */}
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          .print\\:block, .print\\:block * { visibility: visible; }
-          table, table * { visibility: visible; }
-          .overflow-x-auto { visibility: visible; }
-          .space-y-6 { visibility: visible; }
-          .space-y-6 * { visibility: visible; }
-        }
-      `}</style>
     </AdminLayout>
   );
 }
