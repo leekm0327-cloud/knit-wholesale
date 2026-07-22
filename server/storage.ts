@@ -2074,25 +2074,29 @@ export class DatabaseStorage implements IStorage {
     paidAmount: number;
     unpaidAmount: number;
   }> {
-    // startDate / endDate: YYYY-MM-DD (KST 기준)
-    const startTs = new Date(startDate + "T00:00:00+09:00").getTime();
-    const endTs = new Date(endDate + "T23:59:59+09:00").getTime();
+    // 유효 주문일자 = 관리자 지정 주문 일자(ecountDate, YYYY-MM-DD) 있으면 그것, 없으면 생성일(KST)
+    const effYmd = (o: any): string =>
+      o.ecountDate && String(o.ecountDate).trim()
+        ? String(o.ecountDate).trim()
+        : new Date(o.createdAt + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
-    const allOrders = await db
+    const custOrders = await db
       .select()
       .from(orders)
-      .where(
-        and(
-          eq(orders.customerId, customerId),
-          gte(orders.createdAt, startTs),
-          lte(orders.createdAt, endTs),
-        ),
-      )
-      .orderBy(asc(orders.createdAt))
+      .where(eq(orders.customerId, customerId))
       .all();
 
-    // 취소된 주문 제외
-    const activeOrders = allOrders.filter((o) => o.status !== "cancelled");
+    // 취소 제외 + 유효 주문일자 기준 기간 필터 + 유효 주문일자 오름차순 정렬
+    const activeOrders = custOrders
+      .filter((o) => o.status !== "cancelled")
+      .filter((o) => {
+        const d = effYmd(o);
+        return d >= startDate && d <= endDate;
+      })
+      .sort((a, b) => {
+        const da = effYmd(a), dbb = effYmd(b);
+        return da < dbb ? -1 : da > dbb ? 1 : a.createdAt - b.createdAt;
+      });
 
     const resultOrders = activeOrders.map((o) => {
       let parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> = [];
