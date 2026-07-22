@@ -2066,6 +2066,9 @@ export async function registerRoutes(
       return res.status(400).json({ message: "이메일, 이름, 비밀번호는 필수입니다." });
     const existing = await storage.getCustomerByEmail(email);
     if (existing) return res.status(409).json({ message: "이미 사용 중인 이메일입니다." });
+    // 상호명(business_name)은 유일해야 함 — 소유자가 "니트커피"를 쓰므로 매니저는 유일한 값으로.
+    let bizName = `니트커피 · ${name}`;
+    if (await storage.getCustomerByBusinessName(bizName)) bizName = `니트커피 · ${name} · ${email}`;
     const hashed = bcrypt.hashSync(password, 10);
     const actor = await getActor(req);
     const manager = await storage.createCustomer({
@@ -2073,7 +2076,7 @@ export async function registerRoutes(
       password: hashed,
       role: "admin",
       adminRole: "manager",
-      businessName: "니트커피",
+      businessName: bizName,
       managerName: name,
       phone: phone ?? "",
       bizRegNo: "",
