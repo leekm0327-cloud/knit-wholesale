@@ -333,7 +333,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">
       {/* 데스크톱 사이드바 */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar md:flex print:hidden">
         <div className="border-b border-border p-5">
           <Wordmark size={26} />
           {roleBadge}
@@ -372,7 +372,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       {/* 본문 영역 */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* 모바일 상단바 */}
-        <div className="flex items-center justify-between border-b border-border bg-sidebar px-3 py-3 md:hidden">
+        <div className="flex items-center justify-between border-b border-border bg-sidebar px-3 py-3 md:hidden print:hidden">
           <Button
             variant="ghost"
             size="icon"
