@@ -27,6 +27,9 @@ export const customers = sqliteTable("customers", {
   taxEmail: text("tax_email").notNull().default(""), // 세금계산서 이메일
   defaultAddress: text("default_address").notNull().default(""), // 기본 배송지
   paymentMethod: text("payment_method").notNull().default("transfer"), // transfer | card | deferred
+  // 매장 내부 계정 여부. 1이면 이 계정의 주문은 '매장 내부 발주'로 처리 —
+  // 도매 매출/세금계산서(ECOUNT)에서 제외하고, 그 자동발주는 매장(음식점업) 매출원가로 집계.
+  isStore: integer("is_store").notNull().default(0),
   // B-3: 사업자번호 검증/승인 여부 (1=승인, 0=승인대기). 샘플 신청 가능 조건.
   bizVerified: integer("biz_verified").notNull().default(0),
   // B-3: 샘플 사용 여부 (1=이미 샘플 주문함). 승인 고객당 1회 제한.
@@ -221,6 +224,8 @@ export const purchases = sqliteTable("purchases", {
   items: text("items").notNull(), // 품목 라인 JSON 배열
   totalAmount: integer("total_amount").notNull(), // 발주 합계 금액 (원)
   memo: text("memo").notNull().default(""),
+  // 부문: "wholesale"(도매 매출원가) | "store"(매장 내부 발주 → 음식점업 매출원가)
+  segment: text("segment").notNull().default("wholesale"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -705,6 +710,7 @@ export const insertPurchaseSchema = z.object({
   purchaseDate: z.string().min(1, "발주일을 선택해 주세요."),
   items: z.array(purchaseItemSchema).min(1, "품목을 1개 이상 추가해 주세요."),
   memo: z.string().optional().default(""),
+  segment: z.enum(["wholesale", "store"]).optional().default("wholesale"),
 });
 export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
 
