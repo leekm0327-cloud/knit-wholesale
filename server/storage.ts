@@ -2070,6 +2070,7 @@ export class DatabaseStorage implements IStorage {
   // #32 거래내역서
   async listTransactions(customerId: number, startDate: string, endDate: string): Promise<{
     orders: Array<Order & { parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> }>;
+    payments: Array<{ id: number; paidAt: string; amount: number; method: string; memo: string }>;
     totalAmount: number;
     paidAmount: number;
     unpaidAmount: number;
@@ -2108,14 +2109,17 @@ export class DatabaseStorage implements IStorage {
 
     const totalAmount = resultOrders.reduce((s, o) => s + o.totalAmount, 0);
 
-    // 기간 내 입금 조회 (paidAt이 해당 기간 내)
+    // 기간 내 입금 조회 (paidAt이 해당 기간 내) — 개별 내역도 함께 반환
     const allPayments = await this.listPaymentsByCustomer(customerId);
-    const paidAmount = allPayments
+    const periodPayments = allPayments
       .filter((p) => p.paidAt >= startDate && p.paidAt <= endDate)
-      .reduce((s, p) => s + p.amount, 0);
+      .sort((a, b) => (a.paidAt < b.paidAt ? -1 : a.paidAt > b.paidAt ? 1 : a.id - b.id))
+      .map((p) => ({ id: p.id, paidAt: p.paidAt, amount: p.amount, method: p.method, memo: p.memo }));
+    const paidAmount = periodPayments.reduce((s, p) => s + p.amount, 0);
 
     return {
       orders: resultOrders,
+      payments: periodPayments,
       totalAmount,
       paidAmount,
       unpaidAmount: Math.max(0, totalAmount - paidAmount),
