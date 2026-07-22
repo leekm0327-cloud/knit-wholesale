@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Wordmark } from "./Logo";
+import { NotificationBell } from "./NotificationBell";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useQuery } from "@tanstack/react-query";
@@ -335,7 +336,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       {/* 데스크톱 사이드바 */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar md:flex print:hidden">
         <div className="border-b border-border p-5">
-          <Wordmark size={26} />
+          <div className="flex items-start justify-between">
+            <Wordmark size={26} />
+            <NotificationBell />
+          </div>
           {roleBadge}
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">{renderNav()}</nav>
@@ -388,17 +392,20 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             )}
           </Button>
           <Wordmark size={22} />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={async () => {
-              await logout();
-              navigate("/admin/login");
-            }}
-            aria-label="로그아웃"
-          >
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <NotificationBell />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={async () => {
+                await logout();
+                navigate("/admin/login");
+              }}
+              aria-label="로그아웃"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <main className="flex-1 overflow-x-hidden">{children}</main>
