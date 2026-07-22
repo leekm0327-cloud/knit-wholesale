@@ -88,17 +88,25 @@ async function recomputeOrderItems(
   | { ok: true; items: any[]; supplyAmount: number; vat: number; totalAmount: number }
   | { ok: false; message: string }
 > {
+  const customer = await storage.getCustomer(customerId);
+  const isStore = !!(customer as any)?.isStore;
   const overrides = await storage.listCustomerPrices(customerId);
   const overrideMap = new Map(overrides.map((o) => [o.productId, o.price]));
   const items: any[] = [];
   for (const it of rawItems) {
     const prod = await storage.getProduct(it.productId);
     if (!prod) return { ok: false, message: `상품을 찾을 수 없습니다: ${it.productId}` };
-    const minQ = (prod as any).minOrderQty ?? 0;
-    if (minQ > 0 && it.qty > 0 && it.qty < minQ) {
-      return { ok: false, message: `'${prod.name}'은(는) 최소 ${minQ}개부터 주문 가능합니다. (현재 ${it.qty}개)` };
+    // 매장 내부 계정은 상품별 최소수량 검증도 생략(내부 소비용)
+    if (!isStore) {
+      const minQ = (prod as any).minOrderQty ?? 0;
+      if (minQ > 0 && it.qty > 0 && it.qty < minQ) {
+        return { ok: false, message: `'${prod.name}'은(는) 최소 ${minQ}개부터 주문 가능합니다. (현재 ${it.qty}개)` };
+      }
     }
-    const unitPrice = overrideMap.get(it.productId) ?? prod.price;
+    // 매장 내부 계정 = 매입원가(costPrice)로 계상, 그 외 = 거래처 등록단가(override) ?? 기본가
+    const unitPrice = isStore
+      ? ((prod as any).costPrice ?? 0)
+      : (overrideMap.get(it.productId) ?? prod.price);
     items.push({
       productId: it.productId,
       name: prod.name,
@@ -603,7 +611,8 @@ export async function registerRoutes(
     const beanQtyTotal = recomputed.items
       .filter((i: any) => beanKeys2.has(i.category))
       .reduce((s: number, i: any) => s + i.qty, 0);
-    if (beanQtyTotal > 0 && beanQtyTotal < 5)
+    // 매장 내부 계정은 도매 최소주문(5kg) 규칙에서 제외 (내부 소비용)
+    if (!(customer as any).isStore && beanQtyTotal > 0 && beanQtyTotal < 5)
       return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
 
     const order = await storage.createOrder({
