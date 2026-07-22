@@ -215,7 +215,7 @@ export default function AdminTransactions() {
             ))}
           </div>
         ) : result ? (
-          <div className="space-y-6 print-area">
+          <div className="space-y-6 print-area txn-print">
             {/* 인쇄용 헤더 */}
             <div className="hidden print:block mb-6">
               <h1 className="text-2xl font-bold">거래내역서</h1>
@@ -343,6 +343,27 @@ export default function AdminTransactions() {
           <div className="py-16 text-center text-sm text-muted-foreground">조회 중 오류가 발생했습니다.</div>
         ) : null}
       </div>
+
+      {/* 인쇄 전용 레이아웃 보정 — 숫자 줄바꿈 방지, 상품/메모만 줄바꿈 허용 */}
+      <style>{`
+        @media print {
+          @page { size: A4; margin: 12mm; }
+          .txn-print table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+          .txn-print th, .txn-print td {
+            padding: 4px 6px !important;
+            white-space: nowrap;              /* 기본: 줄바꿈 금지 (숫자·날짜·상태) */
+            border-bottom: 1px solid #e5e5e5;
+            vertical-align: top;
+          }
+          /* 3번째 칸만 줄바꿈 허용 (주문표=상품명, 입금표=메모) */
+          .txn-print th:nth-child(3), .txn-print td:nth-child(3) { white-space: normal; }
+          .txn-print thead th { border-bottom: 1px solid #999; }
+          .txn-print tfoot td { border-top: 2px solid #333; border-bottom: none; white-space: nowrap; }
+          .txn-print h2 { font-size: 13px; margin-top: 14px; }
+          /* 요약 카드 3열 유지 + 압축 */
+          .txn-print .grid { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        }
+      `}</style>
     </AdminLayout>
   );
 }
