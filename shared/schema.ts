@@ -343,6 +343,19 @@ export const activityLogs = sqliteTable("activity_logs", {
   createdAt: integer("created_at").notNull(),
 });
 
+// ===== 관리자 알림 센터 (종 아이콘 드롭다운) =====
+// 주요 이벤트(거래처 가입/신규 주문/주문 병합/문의/방문 신청)를 모아서 보여준다.
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  type: text("type").notNull(), // customer_register | order_new | order_merged | inquiry | visit_request
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  link: text("link").notNull().default(""), // 해시 라우트 (예: /admin/orders/123)
+  readAt: integer("read_at"), // 읽은 시각(ms). null이면 안 읽음
+  createdAt: integer("created_at").notNull(),
+});
+export type Notification = typeof notifications.$inferSelect;
+
 // ===== Insert schemas =====
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
