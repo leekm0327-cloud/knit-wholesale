@@ -225,6 +225,9 @@ export default function AdminCustomers() {
                             >
                               {c.businessName}
                             </button>
+                            {(c as any).isStore ? (
+                              <span className="rounded-full bg-[#f2f1e9] px-2 py-0.5 text-[10px] font-semibold text-[#6b6a45]">매장</span>
+                            ) : null}
                             <ApprovalBadge verified={c.bizVerified === 1} />
                           </div>
                         </td>
@@ -364,6 +367,7 @@ const EMPTY_FORM = {
   bizRegNo: "",
   defaultAddress: "",
   password: "",
+  isStore: false,
 };
 
 function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -375,7 +379,7 @@ function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () =>
     if (open) setForm({ ...EMPTY_FORM });
   }, [open]);
 
-  const set = (k: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (k: Exclude<keyof typeof EMPTY_FORM, "isStore">) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [k]: e.target.value }));
 
   const createMut = useMutation({
@@ -388,6 +392,7 @@ function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () =>
         bizRegNo: form.bizRegNo.trim(),
         defaultAddress: form.defaultAddress.trim(),
         password: form.password,
+        isStore: form.isStore,
       });
       return res.json();
     },
@@ -439,6 +444,21 @@ function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () =>
           <Field label="초기 비밀번호 (비워두면 사업자등록번호로 자동 설정)">
             <Input type="password" value={form.password} onChange={set("password")} placeholder="비워두면 사업자등록번호" data-testid="input-new-password" />
           </Field>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-muted/30 p-3">
+            <input
+              type="checkbox"
+              checked={form.isStore}
+              onChange={(e) => setForm((prev) => ({ ...prev, isStore: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 accent-[#6b6a45]"
+              data-testid="input-new-is-store"
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-foreground">매장 내부 계정</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                니트커피 매장처럼 '내부용' 계정입니다. 이 계정의 주문은 도매 매출·세금계산서(ECOUNT)에서 제외되고, 발주는 매장(음식점업) 매출원가로 집계됩니다.
+              </span>
+            </span>
+          </label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={createMut.isPending} data-testid="button-create-customer-cancel">
@@ -464,6 +484,7 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
     email: "",
     bizRegNo: "",
     defaultAddress: "",
+    isStore: false,
   });
 
   useEffect(() => {
@@ -475,11 +496,12 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
         email: customer.email ?? "",
         bizRegNo: customer.bizRegNo ?? "",
         defaultAddress: customer.defaultAddress ?? "",
+        isStore: !!(customer as any).isStore,
       });
     }
   }, [customer]);
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (k: Exclude<keyof typeof form, "isStore">) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [k]: e.target.value }));
 
   const editMut = useMutation({
@@ -492,6 +514,7 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
         email: form.email.trim(),
         bizRegNo: form.bizRegNo.trim(),
         defaultAddress: form.defaultAddress.trim(),
+        isStore: form.isStore,
       });
       return res.json();
     },
@@ -540,6 +563,21 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
           <Field label="기본 배송지">
             <Input value={form.defaultAddress} onChange={set("defaultAddress")} placeholder="배송지 주소" data-testid="input-edit-default-address" />
           </Field>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-muted/30 p-3">
+            <input
+              type="checkbox"
+              checked={form.isStore}
+              onChange={(e) => setForm((prev) => ({ ...prev, isStore: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 accent-[#6b6a45]"
+              data-testid="input-edit-is-store"
+            />
+            <span className="text-sm">
+              <span className="font-semibold text-foreground">매장 내부 계정</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                이 계정의 주문은 도매 매출·세금계산서(ECOUNT)에서 제외되고, 발주는 매장(음식점업) 매출원가로 집계됩니다.
+              </span>
+            </span>
+          </label>
           <div className="space-y-1.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] text-muted-foreground">비밀번호는 이 화면에서 변경할 수 없습니다.</p>
             <ResetPasswordButton customer={customer} />
