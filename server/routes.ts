@@ -915,6 +915,7 @@ export async function registerRoutes(
   // 거래처 생성 (Owner+Manager)
   app.post("/api/admin/customers", requireAdmin, async (req, res) => {
     const { email, businessName, managerName, phone, bizRegNo, defaultAddress, paymentMethod } = req.body;
+    const isStore = req.body.isStore ? 1 : 0;
     let { password } = req.body;
     if (!email || !businessName || !managerName || !phone)
       return res.status(400).json({ message: "필수 입력값이 없습니다." });
@@ -942,6 +943,7 @@ export async function registerRoutes(
       taxEmail: email ?? "", // #43 이메일 통합: taxEmail = email
       defaultAddress: defaultAddress ?? "",
       paymentMethod: paymentMethod ?? "transfer",
+      isStore,
     });
     await storage.logActivity({
       ...actor,
@@ -956,7 +958,8 @@ export async function registerRoutes(
     try {
       const settings = await storage.getEcountSettings();
       const cleanBizNo = (customer.bizRegNo || "").replace(/[^0-9]/g, "");
-      if (settings && settings.autoSendCustomer && cleanBizNo) {
+      // 매장 내부 계정은 ECOUNT 거래처로 자동 등록하지 않음(동일 사업자 → 거래처코드 충돌 방지)
+      if (settings && settings.autoSendCustomer && cleanBizNo && !isStore) {
         sendCustomerToEcount(customer.id).catch((e) =>
           console.error("[ecount] 거래처 자동 등록 실패:", e),
         );
@@ -975,6 +978,8 @@ export async function registerRoutes(
     const allowed = ["businessName", "ownerName", "managerName", "phone", "bizRegNo", "email", "defaultAddress", "paymentMethod"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body && k !== "password") patch[k] = req.body[k];
+    // 매장 내부 계정 토글
+    if ("isStore" in req.body) patch.isStore = req.body.isStore ? 1 : 0;
     // email 변경 시 taxEmail도 동시 업데이트 (이메일 완전 통합 #43)
     if (typeof patch.email === "string") {
       patch.email = patch.email.trim();
@@ -1242,6 +1247,7 @@ export async function registerRoutes(
       memo: parsed.data.memo ?? "",
       items,
       totalAmount,
+      segment: parsed.data.segment ?? "wholesale",
     });
     const actor = await getActor(req);
     await storage.logActivity({
@@ -1829,12 +1835,16 @@ export async function registerRoutes(
                 const totalAmount = purchaseItems.reduce((s, i) => s + i.amount, 0);
                 const today = new Date();
                 const purchaseDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                // 매장 내부 계정의 주문이면 발주 부문을 'store'(매장 매출원가)로 태그
+                const orderCust = await storage.getCustomer(updated.customerId);
+                const purchaseSegment = (orderCust as any)?.isStore ? "store" : "wholesale";
                 const purchase = await storage.createPurchase({
                   supplierId: supplier.id,
                   purchaseDate,
                   items: purchaseItems,
                   totalAmount,
                   memo: `거래처주문 ${updated.orderNo} 자동발주`,
+                  segment: purchaseSegment,
                 });
                 await storage.updateOrder(updated.id, { autoPurchaseId: purchase.id });
                 const actor = await getActor(req);
@@ -2247,6 +2257,14 @@ export async function registerRoutes(
     try {
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ ok: false, message: "잘못된 주문 ID" });
+      // 매장 내부 주문은 자기거래(동일 사업자)라 세금계산서(ECOUNT 판매전표) 대상이 아님
+      const ord = await storage.getOrder(id);
+      if (ord) {
+        const cust = await storage.getCustomer(ord.customerId);
+        if ((cust as any)?.isStore) {
+          return res.status(400).json({ ok: false, message: "매장 내부 주문은 세금계산서(ECOUNT) 전송 대상이 아닙니다." });
+        }
+      }
       const result = await sendOrderToEcount(id);
       res.json(result);
     } catch (e: any) {

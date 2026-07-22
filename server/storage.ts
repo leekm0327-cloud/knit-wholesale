@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS customers (
   tax_email TEXT NOT NULL DEFAULT '',
   default_address TEXT NOT NULL DEFAULT '',
   payment_method TEXT NOT NULL DEFAULT 'transfer',
+  is_store INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS products (
@@ -250,6 +251,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   items TEXT NOT NULL,
   total_amount INTEGER NOT NULL,
   memo TEXT NOT NULL DEFAULT '',
+  segment TEXT NOT NULL DEFAULT 'wholesale',
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
@@ -389,6 +391,9 @@ for (const [table, col] of [
   // B-3: 사업자 검증/승인, 샘플 사용 여부
   ["customers", "biz_verified INTEGER NOT NULL DEFAULT 0"],
   ["customers", "sample_used INTEGER NOT NULL DEFAULT 0"],
+  // 매장 내부 계정 여부 / 발주 부문(매장·도매)
+  ["customers", "is_store INTEGER NOT NULL DEFAULT 0"],
+  ["purchases", "segment TEXT NOT NULL DEFAULT 'wholesale'"],
   // D: 재무 부문(sector) 컬럼. 기존행은 default 값으로 채워짐.
   ["store_sales", "sector TEXT NOT NULL DEFAULT 'store'"],
   ["expenses", "sector TEXT NOT NULL DEFAULT 'common'"],
@@ -791,7 +796,7 @@ export class DatabaseStorage implements IStorage {
   async getCustomerByBusinessName(name: string) {
     return db.select().from(customers).where(eq(customers.businessName, name)).get();
   }
-  async createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string; bizVerified?: number }) {
+  async createCustomer(c: InsertCustomer & { password: string; role?: string; adminRole?: string; bizVerified?: number; isStore?: number }) {
     return db
       .insert(customers)
       .values({
@@ -807,6 +812,7 @@ export class DatabaseStorage implements IStorage {
         defaultAddress: c.defaultAddress ?? "",
         paymentMethod: c.paymentMethod ?? "transfer",
         bizVerified: c.bizVerified ?? 0,
+        isStore: c.isStore ?? 0,
         createdAt: Date.now(),
       })
       .returning()
@@ -1150,6 +1156,7 @@ export class DatabaseStorage implements IStorage {
         items: JSON.stringify(p.items),
         totalAmount: p.totalAmount,
         memo: p.memo ?? "",
+        segment: p.segment ?? "wholesale",
         createdAt: Date.now(),
       })
       .returning()
@@ -1441,19 +1448,24 @@ export class DatabaseStorage implements IStorage {
     const purchaseRows = allPurchases.filter((p) => p.purchaseDate >= from && p.purchaseDate <= to);
     const expenseRows = await this.listExpenses(from, to);
 
+    // 매장 내부 계정(주문) / 매장 발주(segment=store) 구분 — 이중계상 방지
+    const storeIds = new Set((await this.listCustomers()).filter((c) => (c as any).isStore).map((c) => c.id));
+    const isStoreOrder = (o: any) => storeIds.has(o.customerId);
+    const segOf = (p: any) => (p.segment === "store" ? "store" : "wholesale");
+
     // D: 부문별 손익 비교 (항상 전체 부문 계산)
     const secInit = (): Record<Sector, { income: number; expense: number }> =>
       SECTORS.reduce((acc, s) => { acc[s] = { income: 0, expense: 0 }; return acc; }, {} as Record<Sector, { income: number; expense: number }>);
     const secAgg = secInit();
-    // 도매주문 → wholesale 수입
-    for (const o of orderRows) secAgg.wholesale.income += o.totalAmount;
+    // 도매주문 → wholesale 수입 (매장 내부 주문은 자기거래이므로 매출에서 제외)
+    for (const o of orderRows) { if (!isStoreOrder(o)) secAgg.wholesale.income += o.totalAmount; }
     // 매장/온라인 매출 → 행의 sector
     for (const r of storeSaleRows) {
       const s = (SECTORS as readonly string[]).includes(r.sector) ? (r.sector as Sector) : "store";
       secAgg[s].income += r.amount;
     }
-    // 공장 매입(발주) → wholesale 지출 (발생주의)
-    for (const p of purchaseRows) secAgg.wholesale.expense += p.totalAmount;
+    // 공장 매입(발주) → 부문(segment)별 지출: 매장 발주는 store, 그 외 wholesale (발생주의)
+    for (const p of purchaseRows) secAgg[segOf(p)].expense += p.totalAmount;
     // 지출 → 행의 sector
     for (const e of expenseRows) {
       const s = (SECTORS as readonly string[]).includes((e as any).sector) ? ((e as any).sector as Sector) : "common";
@@ -1471,13 +1483,14 @@ export class DatabaseStorage implements IStorage {
     const filteredStoreSales = sector === "all" ? storeSaleRows : storeSaleRows.filter((r) => (r.sector || "store") === sector);
     const filteredExpenses = sector === "all" ? expenseRows : expenseRows.filter((e) => ((e as any).sector || "common") === sector);
 
-    // 수입
-    const wholesaleSales = includeWholesale ? orderRows.reduce((s, o) => s + o.totalAmount, 0) : 0;
+    // 수입 (매장 내부 주문은 자기거래이므로 도매 매출에서 제외)
+    const wholesaleSales = includeWholesale ? orderRows.filter((o) => !isStoreOrder(o)).reduce((s, o) => s + o.totalAmount, 0) : 0;
     const storeSalesTotal = filteredStoreSales.reduce((s, r) => s + r.amount, 0);
     const totalIncome = wholesaleSales + storeSalesTotal;
 
-    // 지출 (발생주의: 공장 매입=발주액. 공장 지급은 제외)
-    const purchaseTotal = includeWholesale ? purchaseRows.reduce((s, p) => s + p.totalAmount, 0) : 0;
+    // 지출 (발생주의: 공장 매입=발주액). 부문에 맞는 발주만 — all: 전체 / wholesale: 도매 / store: 매장
+    const purchaseRowsForSector = sector === "all" ? purchaseRows : purchaseRows.filter((p) => segOf(p) === sector);
+    const purchaseTotal = purchaseRowsForSector.reduce((s, p) => s + p.totalAmount, 0);
     const otherExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
     const totalExpense = purchaseTotal + otherExpense;
 
@@ -1499,9 +1512,9 @@ export class DatabaseStorage implements IStorage {
       bucketMap.set(key, cur);
     };
     if (includeWholesale) {
-      for (const o of orderRows) bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount);
-      for (const p of purchaseRows) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", p.totalAmount);
+      for (const o of orderRows) { if (!isStoreOrder(o)) bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount); }
     }
+    for (const p of purchaseRowsForSector) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", p.totalAmount);
     for (const r of filteredStoreSales) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
     for (const e of filteredExpenses) bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
 
@@ -1550,11 +1563,17 @@ export class DatabaseStorage implements IStorage {
     const cogs: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
     const sga: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
 
-    // 매출: 도매주문 → wholesale, 매장/온라인 매출 → 행의 sector
-    for (const o of orderRows) rev.wholesale += o.totalAmount;
+    // 매장 내부 계정(주문) 구분 — 매장 주문은 자기거래이므로 도매 매출에서 제외
+    const storeIds = new Set((await this.listCustomers()).filter((c) => (c as any).isStore).map((c) => c.id));
+    // 매출: 도매주문(매장 내부 주문 제외) → wholesale, 매장/온라인 매출 → 행의 sector
+    for (const o of orderRows) { if (!storeIds.has(o.customerId)) rev.wholesale += o.totalAmount; }
     for (const r of storeSaleRows) rev[norm(r.sector, "store")] += r.amount;
-    // 매출원가: 공장 매입(발주)은 전부 원두도매(wholesale)의 매출원가
-    for (const p of purchaseRows) cogs.wholesale += p.totalAmount;
+    // 매출원가: 공장 매입(발주)을 부문(segment)별로 — 매장 발주(store)는 음식점업(store) 매출원가,
+    //  그 외는 원두도매(wholesale) 매출원가. (같은 원두가 두 부문에 이중계상되지 않도록 발주 자체를 분할)
+    for (const p of purchaseRows) {
+      const seg: Sector = (p as any).segment === "store" ? "store" : "wholesale";
+      cogs[seg] += p.totalAmount;
+    }
     // 지출 분류: '원부자재' 항목은 매출원가(원가성 비용), 그 외는 판매관리비 → 각 행의 sector
     const COGS_EXPENSE_CATEGORIES = ["원부자재"];
     for (const e of expenseRows) {
