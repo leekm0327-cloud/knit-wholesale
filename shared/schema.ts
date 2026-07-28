@@ -781,6 +781,18 @@ export type PurchaseQtyAgg = {
   totalAmount: number;
 };
 
+// 공장 채무 원장 — 선택 기간 요약 (기간 필터가 걸렸을 때만 채워짐)
+export type SupplierLedgerPeriod = {
+  from: string | null;
+  to: string | null;
+  openingBalance: number; // 기초 잔액 (기간 시작 직전까지의 채무)
+  purchased: number; // 기간 발주 합계 (부가세 포함)
+  paid: number; // 기간 지급 합계
+  net: number; // 순증감 = 발주 - 지급
+  closingBalance: number; // 기말 잔액 = 기초 + 순증감
+  count: number; // 기간 내 원장 건수
+};
+
 // ===== D: 재무 부문(sector) =====
 // 5개 고정 부문. store(매장)/wholesale(홀세일)/online(온라인)/atelier(아뜰리에)/common(공통)
 export const SECTORS = ["store", "wholesale", "online", "atelier", "common"] as const;
