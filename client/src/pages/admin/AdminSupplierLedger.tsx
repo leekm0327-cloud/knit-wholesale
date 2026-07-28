@@ -63,7 +63,10 @@ export default function AdminSupplierLedger() {
             {/* 원장 */}
             <Card className="mb-6 overflow-hidden">
               <div className="flex items-center justify-between border-b p-5">
-                <h2 className="text-sm font-semibold text-foreground">거래 원장</h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">거래 원장</h2>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">발주·채무 금액은 부가세 포함</p>
+                </div>
                 <span className="text-xs text-muted-foreground">{data!.rows.length}건</span>
               </div>
               {data!.rows.length === 0 ? (

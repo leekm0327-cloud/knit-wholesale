@@ -29,7 +29,7 @@ export default function AdminSupplierBalances() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Factory Debt</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">공장 채무 현황</h1>
-        <p className="mb-6 text-sm text-muted-foreground">OEM 공급처별 채무(미지급) 현황</p>
+        <p className="mb-6 text-sm text-muted-foreground">OEM 공급처별 채무(미지급) 현황 · 채무·발주 금액은 <span className="font-medium text-foreground">부가세 포함</span> 기준입니다.</p>
 
         {/* KPI */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">

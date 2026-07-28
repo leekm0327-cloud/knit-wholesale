@@ -309,9 +309,14 @@ export default function AdminPurchases() {
             <Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="비고" data-testid="input-purchase-memo" />
           </div>
 
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-            <div className="text-sm text-muted-foreground">
-              합계 <span className="ml-2 font-display text-lg font-semibold tabular text-foreground" data-testid="text-purchase-total">{won(total)}</span>
+          <div className="mt-4 flex items-end justify-between gap-4 border-t border-border pt-4">
+            <div className="space-y-0.5 text-xs text-muted-foreground">
+              <div className="flex justify-between gap-6"><span>공급가액</span><span className="tabular text-foreground">{won(total)}</span></div>
+              <div className="flex justify-between gap-6"><span>부가세 (10%)</span><span className="tabular text-foreground">{won(Math.round(total * 0.1))}</span></div>
+              <div className="flex justify-between gap-6 pt-0.5">
+                <span className="text-sm font-semibold text-foreground">합계 (부가세 포함)</span>
+                <span className="font-display text-lg font-semibold tabular text-foreground" data-testid="text-purchase-total">{won(total + Math.round(total * 0.1))}</span>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {editingId && (
@@ -353,7 +358,7 @@ export default function AdminPurchases() {
                     <th className="px-4 py-2 text-left font-medium">공급처</th>
                     <th className="px-4 py-2 text-left font-medium">거래처(주문)</th>
                     <th className="px-4 py-2 text-left font-medium">품목</th>
-                    <th className="px-4 py-2 text-right font-medium">합계</th>
+                    <th className="px-4 py-2 text-right font-medium">합계 (부가세 포함)</th>
                     <th className="px-4 py-2 text-right font-medium"></th>
                   </tr>
                 </thead>
@@ -387,7 +392,10 @@ export default function AdminPurchases() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{itemCount}개 품목</td>
-                        <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(p.totalAmount)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="font-display tabular font-semibold text-foreground">{won(p.totalAmount + Math.round(p.totalAmount * 0.1))}</div>
+                          <div className="text-[10px] text-muted-foreground whitespace-nowrap">공급가 {won(p.totalAmount)} · VAT {won(Math.round(p.totalAmount * 0.1))}</div>
+                        </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
                           <Button variant="ghost" size="icon" onClick={() => sendToEcount(p)} disabled={sendingId === p.id} aria-label="이카운트 전송" title="이카운트 구매전표로 전송" data-testid={`button-ecount-purchase-${p.id}`}>
                             {sendingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-teal-700" />}
