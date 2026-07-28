@@ -1399,12 +1399,11 @@ export async function registerRoutes(
     // 이번 달(KST) 발주/지급 집계
     const now = new Date();
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const allPurchases = await storage.listPurchases();
     const allPayments = await storage.listSupplierPayments();
-    // 채무 화면 일관성 위해 '이번 달 발주'도 부가세 포함
+    // '이번 달 발주'는 발주일(purchaseDate) 기준 + 부가세 포함
     const monthPurchased = allPurchases
-      .filter((p) => p.createdAt >= monthStart)
+      .filter((p) => (p.purchaseDate ?? "").slice(0, 7) === ym)
       .reduce((s, p) => s + p.totalAmount + Math.round(p.totalAmount * 0.1), 0);
     const monthPaid = allPayments
       .filter((p) => (p.paidAt ?? "").slice(0, 7) === ym)

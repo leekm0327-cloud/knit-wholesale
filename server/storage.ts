@@ -1250,7 +1250,12 @@ export class DatabaseStorage implements IStorage {
       | { kind: "purchase"; ts: number; p: Purchase }
       | { kind: "payment"; ts: number; sp: SupplierPayment };
     const raws: RawRow[] = [
-      ...myPurchases.map((p) => ({ kind: "purchase" as const, ts: p.createdAt, p })),
+      // 발주는 '발주일(purchaseDate)' 기준으로 표시·정렬 (입력 시각 createdAt 아님)
+      ...myPurchases.map((p) => ({
+        kind: "purchase" as const,
+        ts: p.purchaseDate ? (new Date(p.purchaseDate + "T00:00:00+09:00").getTime() || p.createdAt) : p.createdAt,
+        p,
+      })),
       ...myPayments.map((sp) => ({
         kind: "payment" as const,
         ts: new Date(sp.paidAt + "T00:00:00+09:00").getTime() || sp.createdAt,
