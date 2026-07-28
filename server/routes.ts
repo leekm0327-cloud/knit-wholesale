@@ -1420,7 +1420,9 @@ export async function registerRoutes(
 
   app.get("/api/admin/suppliers/:id/ledger", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
-    const ledger = await storage.getSupplierLedger(id);
+    const from = typeof req.query.from === "string" && req.query.from ? req.query.from : undefined;
+    const to = typeof req.query.to === "string" && req.query.to ? req.query.to : undefined;
+    const ledger = await storage.getSupplierLedger(id, from, to);
     if (!ledger.balance) return res.status(404).json({ message: "공급처를 찾을 수 없습니다." });
     const supplierPaymentRows = await storage.listSupplierPayments(id);
     res.json({ ...ledger, payments: supplierPaymentRows });

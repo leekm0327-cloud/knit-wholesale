@@ -37,6 +37,7 @@ import type {
   SupplierBalance,
   SupplierLedgerRow,
   PurchaseQtyAgg,
+  SupplierLedgerPeriod,
   PurchaseItem,
   StoreSale,
   InsertStoreSale,
@@ -728,7 +729,7 @@ export interface IStorage {
   createSupplierPayment(p: InsertSupplierPayment): Promise<SupplierPayment>;
   deleteSupplierPayment(id: number): Promise<void>;
   getSupplierBalances(): Promise<SupplierBalance[]>;
-  getSupplierLedger(supplierId: number): Promise<{ balance: SupplierBalance | null; rows: SupplierLedgerRow[]; qtyAgg: PurchaseQtyAgg[] }>;
+  getSupplierLedger(supplierId: number, from?: string, to?: string): Promise<{ balance: SupplierBalance | null; rows: SupplierLedgerRow[]; qtyAgg: PurchaseQtyAgg[]; period: SupplierLedgerPeriod | null }>;
   getPrimarySupplier(): Promise<Supplier | undefined>; // 클라리멘토(자동발주 대상) — 가장 먼저 생성된 공급처
   lastPurchaseUnitPrice(supplierId: number, key: { productId?: number | null; name: string }): Promise<number | null>; // 매입단가 기억
   // 경영 대시보드 (C): 매장매출 / 고정비 항목 / 지출 / 손익 요약
@@ -1239,10 +1240,10 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getSupplierLedger(supplierId: number) {
+  async getSupplierLedger(supplierId: number, from?: string, to?: string) {
     const supplier = await this.getSupplier(supplierId);
     if (!supplier)
-      return { balance: null as SupplierBalance | null, rows: [] as SupplierLedgerRow[], qtyAgg: [] as PurchaseQtyAgg[] };
+      return { balance: null as SupplierBalance | null, rows: [] as SupplierLedgerRow[], qtyAgg: [] as PurchaseQtyAgg[], period: null as SupplierLedgerPeriod | null };
     const myPurchases = await this.listPurchases(supplierId);
     const myPayments = await this.listSupplierPayments(supplierId);
 
@@ -1293,11 +1294,41 @@ export class DatabaseStorage implements IStorage {
         };
       }
     });
-    const rows = rowsAsc.slice().reverse();
+    // ===== 기간 필터 =====
+    // fromTs/toTs — 밀리초+오프셋 조합 파싱 실패(NaN) 회피를 위해 안전 형식 사용
+    const hasPeriod = !!(from || to);
+    const fromTs = from ? new Date(`${from}T00:00:00+09:00`).getTime() : -Infinity;
+    const toTs = to ? new Date(`${to}T23:59:59+09:00`).getTime() + 999 : Infinity;
+    const inWindow = (ts: number) => ts >= fromTs && ts <= toTs;
 
-    // 품목별 누계 수량·금액 집계 (품목명 기준)
+    let period: SupplierLedgerPeriod | null = null;
+    let displayRowsAsc = rowsAsc;
+    if (hasPeriod) {
+      const windowRows = rowsAsc.filter((r) => inWindow(r.date));
+      const beforeRows = rowsAsc.filter((r) => r.date < fromTs);
+      const openingBalance = beforeRows.length ? beforeRows[beforeRows.length - 1].balance : 0;
+      const purchased = windowRows.reduce((s, r) => s + r.debit, 0);
+      const paid = windowRows.reduce((s, r) => s + r.credit, 0);
+      period = {
+        from: from ?? null,
+        to: to ?? null,
+        openingBalance,
+        purchased,
+        paid,
+        net: purchased - paid,
+        closingBalance: openingBalance + purchased - paid,
+        count: windowRows.length,
+      };
+      displayRowsAsc = windowRows;
+    }
+    const rows = displayRowsAsc.slice().reverse();
+
+    // 품목별 누계 수량·금액 집계 (품목명 기준) — 기간 필터 시 해당 기간 발주만
+    const purchaseTs = (p: Purchase) =>
+      p.purchaseDate ? (new Date(p.purchaseDate + "T00:00:00+09:00").getTime() || p.createdAt) : p.createdAt;
+    const aggPurchases = hasPeriod ? myPurchases.filter((p) => inWindow(purchaseTs(p))) : myPurchases;
     const aggMap = new Map<string, PurchaseQtyAgg>();
-    for (const p of myPurchases) {
+    for (const p of aggPurchases) {
       let items: PurchaseItem[] = [];
       try {
         items = JSON.parse(p.items);
@@ -1312,7 +1343,7 @@ export class DatabaseStorage implements IStorage {
     }
     const qtyAgg = Array.from(aggMap.values()).sort((a, b) => b.totalAmount - a.totalAmount);
 
-    // 채무 요약도 부가세 포함
+    // 채무 요약(누적)은 항상 전체 기간 기준 — 부가세 포함
     const totalPurchased = myPurchases.reduce((s, p) => s + p.totalAmount + Math.round(p.totalAmount * 0.1), 0);
     const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
     return {
@@ -1329,6 +1360,7 @@ export class DatabaseStorage implements IStorage {
       } as SupplierBalance,
       rows,
       qtyAgg,
+      period,
     };
   }
 
