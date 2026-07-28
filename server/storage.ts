@@ -1453,7 +1453,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<DashboardSummary> {
     // 날짜 문자열(YYYY-MM-DD) → KST 타임스탬프 범위 (주문 createdAt 비교용)
     const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
-    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
+    const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
 
     // 원천 데이터 (기간 필터 적용)
     const allOrders = await this.listOrders();
@@ -1564,7 +1564,7 @@ export class DatabaseStorage implements IStorage {
   // ===== 재무제표 (내부 경영용): 업종별 손익계산서 + 채권·채무 요약 =====
   async getFinancialStatement(from: string, to: string): Promise<FinancialStatement> {
     const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
-    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
+    const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
 
     // 원천 데이터 (기간 필터)
     const allOrders = await this.listOrders();
@@ -1650,7 +1650,7 @@ export class DatabaseStorage implements IStorage {
   // ===== 품목별 기간 집계 =====
   async getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]> {
     const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
-    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
+    const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
     const orders = (await this.listOrders()).filter(
       (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
     );

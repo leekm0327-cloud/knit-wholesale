@@ -1604,30 +1604,6 @@ export async function registerRoutes(
     res.json(await storage.getFinancialStatement(from, to));
   });
 
-  // [임시 진단] 재무제표 매출 계산 내부값 노출 — 원인 파악 후 삭제 예정
-  app.get("/api/admin/__debug/fs-orders", requireOwner, async (req, res) => {
-    const from = typeof req.query.from === "string" ? req.query.from : "";
-    const to = typeof req.query.to === "string" ? req.query.to : "";
-    const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
-    const toTs = new Date(`${to}T23:59:59.999+09:00`).getTime();
-    const allOrders = await storage.listOrders();
-    const orderRows = allOrders.filter((o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs);
-    const storeIds = new Set((await storage.listCustomers()).filter((c: any) => c.isStore).map((c: any) => c.id));
-    const wholesaleRev = orderRows.filter((o) => !storeIds.has(o.customerId)).reduce((s, o) => s + o.totalAmount, 0);
-    const fs = await storage.getFinancialStatement(from, to);
-    const dash = await storage.getDashboardSummary(from, to, "month", "all");
-    res.json({
-      fromTs, toTs, fromTsValid: !Number.isNaN(fromTs), toTsValid: !Number.isNaN(toTs),
-      allOrdersCount: allOrders.length,
-      orderRowsCount: orderRows.length,
-      storeIds: Array.from(storeIds),
-      inlineWholesaleRev: wholesaleRev,
-      fs_wholesaleRev: (fs.lines.find((l: any) => l.sector === "wholesale") || {}).revenue,
-      dash_wholesaleSales: (dash as any).wholesaleSales,
-      sample: allOrders.slice(0, 3).map((o) => ({ no: o.orderNo, customerId: o.customerId, createdAt: o.createdAt, status: o.status, ge: o.createdAt >= fromTs, le: o.createdAt <= toTs })),
-    });
-  });
-
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
   app.get("/api/espresso-log-stats", async (_req, res) => {
     res.json(await fetchEspressoStats());
