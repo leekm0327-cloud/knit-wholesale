@@ -1402,9 +1402,10 @@ export async function registerRoutes(
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const allPurchases = await storage.listPurchases();
     const allPayments = await storage.listSupplierPayments();
+    // 채무 화면 일관성 위해 '이번 달 발주'도 부가세 포함
     const monthPurchased = allPurchases
       .filter((p) => p.createdAt >= monthStart)
-      .reduce((s, p) => s + p.totalAmount, 0);
+      .reduce((s, p) => s + p.totalAmount + Math.round(p.totalAmount * 0.1), 0);
     const monthPaid = allPayments
       .filter((p) => (p.paidAt ?? "").slice(0, 7) === ym)
       .reduce((s, p) => s + p.amount, 0);

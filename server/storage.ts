@@ -1222,7 +1222,8 @@ export class DatabaseStorage implements IStorage {
     return allSuppliers.map((s) => {
       const myPurchases = allPurchases.filter((p) => p.supplierId === s.id);
       const myPayments = allPayments.filter((p) => p.supplierId === s.id);
-      const totalPurchased = myPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
+      // 공장 채무는 부가세 포함 금액 기준 (발주 공급가 + VAT 10%)
+      const totalPurchased = myPurchases.reduce((sum, p) => sum + p.totalAmount + Math.round(p.totalAmount * 0.1), 0);
       const totalPaid = myPayments.reduce((sum, p) => sum + p.amount, 0);
       return {
         supplierId: s.id,
@@ -1260,13 +1261,15 @@ export class DatabaseStorage implements IStorage {
     let running = 0;
     const rowsAsc: SupplierLedgerRow[] = raws.map((r) => {
       if (r.kind === "purchase") {
-        running += r.p.totalAmount;
+        // 채무(원장)는 부가세 포함 금액 기준
+        const vatIncl = r.p.totalAmount + Math.round(r.p.totalAmount * 0.1);
+        running += vatIncl;
         return {
           kind: "purchase",
           id: r.p.id,
           purchaseNo: r.p.purchaseNo,
           date: r.ts,
-          debit: r.p.totalAmount,
+          debit: vatIncl,
           credit: 0,
           balance: running,
           memo: r.p.memo,
@@ -1304,7 +1307,8 @@ export class DatabaseStorage implements IStorage {
     }
     const qtyAgg = Array.from(aggMap.values()).sort((a, b) => b.totalAmount - a.totalAmount);
 
-    const totalPurchased = myPurchases.reduce((s, p) => s + p.totalAmount, 0);
+    // 채무 요약도 부가세 포함
+    const totalPurchased = myPurchases.reduce((s, p) => s + p.totalAmount + Math.round(p.totalAmount * 0.1), 0);
     const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
     return {
       balance: {
