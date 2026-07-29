@@ -18,7 +18,7 @@ import { won, fmtDate, errMsg } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PublicCustomer, Order, OrderItem, CustomerBalance, Product, CustomerPrice } from "@shared/schema";
-import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown } from "lucide-react";
+import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown, MessagesSquare } from "lucide-react";
 
 type SortKey = "businessName" | "balance" | "createdAt";
 type SortDir = "asc" | "desc";
@@ -257,6 +257,13 @@ export default function AdminCustomers() {
                               data-testid={`button-ledger-${c.id}`}
                             >
                               <Wallet className="h-3 w-3" /> 원장
+                            </button>
+                            <button
+                              onClick={() => navigate(`/admin/chat/${c.id}`)}
+                              className="inline-flex items-center gap-0.5 rounded border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted"
+                              data-testid={`button-chat-${c.id}`}
+                            >
+                              <MessagesSquare className="h-3 w-3" /> 채팅
                             </button>
                             <button
                               onClick={() => setDeleteId(c.id)}
