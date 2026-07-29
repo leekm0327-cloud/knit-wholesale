@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 // 모바일 전용 하단 탭바. 데스크톱(sm↑)에서는 숨김.
 // 핵심 4개(발주·주문내역·내정보·더보기)만 노출하고, 나머지는 '더보기' 시트로.
 const MORE_ITEMS = [
+  { href: "/chat", label: "니트커피 문의 (1:1 채팅)" },
   { href: "/sample", label: "샘플 신청" },
   { href: "/visit-setup", label: "커피 세팅" },
   { href: "/board", label: "게시판" },

@@ -1,15 +1,26 @@
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Wordmark } from "./Logo";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { MobileTabBar } from "./MobileTabBar";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
-import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift, Newspaper, Wrench } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift, Newspaper, Wrench, MessagesSquare } from "lucide-react";
 
 export function AppHeader() {
   const { user, logout } = useAuth();
   const { count } = useCart();
   const [location, navigate] = useLocation();
+
+  // 관리자 채팅 미읽음 수
+  const { data: chatUnread } = useQuery<{ unread: number }>({
+    queryKey: ["/api/account/chat/unread-count"],
+    queryFn: async () => (await apiRequest("GET", "/api/account/chat/unread-count")).json(),
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+  const chatUnreadCount = chatUnread?.unread ?? 0;
 
   // 네비게이션 항목 (데스크톱 = 텍스트 / 모바일 = 아이콘, 로고 아래 별도 행)
   const navItems = [
@@ -57,6 +68,23 @@ export function AppHeader() {
 
         {/* 우측 액션 */}
         <div className="flex items-center justify-end gap-3 sm:gap-4">
+          <button
+            onClick={() => navigate("/chat")}
+            aria-label="니트커피 문의"
+            data-testid="link-chat"
+            className="relative text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <MessagesSquare className="h-[18px] w-[18px]" />
+            {chatUnreadCount > 0 && (
+              <span
+                className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 font-ui text-[10px] font-bold text-background"
+                data-testid="badge-chat-unread"
+              >
+                {chatUnreadCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => navigate("/account")}
             aria-label="내 정보"

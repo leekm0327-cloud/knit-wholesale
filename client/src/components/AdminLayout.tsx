@@ -40,6 +40,7 @@ import {
   Tags,
   FileSpreadsheet,
   Coffee,
+  MessagesSquare,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -72,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/products", label: "상품 관리", icon: Package },
       { href: "/admin/product-categories", label: "상품 카테고리", icon: Tags, ownerOnly: true },
       { href: "/admin/customers", label: "거래처 관리", icon: Building2 },
+      { href: "/admin/chat", label: "거래처 채팅", icon: MessagesSquare },
       { href: "/admin/transactions", label: "거래내역서", icon: FileBarChart },
       { href: "/admin/balances", label: "채권 관리", icon: Wallet },
     ],
@@ -177,6 +179,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   });
   const pendingCount = (orders ?? []).filter((o) => o.status === "pending").length;
 
+  // 거래처 채팅 미읽음 수 (배지)
+  const { data: chatUnread } = useQuery<{ unread: number }>({
+    queryKey: ["/api/admin/chat/unread-count"],
+    enabled: !!user && user.role === "admin",
+    refetchInterval: 30000,
+  });
+  const chatUnreadCount = chatUnread?.unread ?? 0;
+
   const toggleGroup = (label: string) => {
     setOpenGroups((prev) => {
       const next = new Set(prev);
@@ -186,9 +196,13 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // 항목별 배지 수 (대시보드/주문 관리에 미처리 주문 수 표시)
+  // 항목별 배지 수 (대시보드/주문 관리 = 미처리 주문 / 거래처 채팅 = 미읽음)
   const badgeFor = (href: string) =>
-    href === "/admin" || href === "/admin/orders" ? pendingCount : 0;
+    href === "/admin" || href === "/admin/orders"
+      ? pendingCount
+      : href === "/admin/chat"
+        ? chatUnreadCount
+        : 0;
 
   // 단일 메뉴 링크 렌더
   const renderLink = (item: NavItem, indent: boolean, onNavigate?: () => void) => {
