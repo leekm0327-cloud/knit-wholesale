@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ensureChatNotifyPermission } from "@/hooks/use-chat-alert";
 import type { ChatThread, ChatMessage } from "@shared/schema";
 import { ArrowLeft, MessageSquare, Send } from "lucide-react";
 
@@ -33,6 +34,8 @@ export default function AdminChat() {
   const [, navigate] = useLocation();
   const [, params] = useRoute("/admin/chat/:customerId");
   const selectedId = params ? Number(params.customerId) : 0;
+
+  useEffect(() => { ensureChatNotifyPermission(); }, []);
 
   const { data: threadsData, isLoading: threadsLoading } = useQuery<ThreadsResponse>({
     queryKey: ["/api/admin/chat/threads"],
@@ -116,6 +119,7 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
   const { toast } = useToast();
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false); // 중복 전송(한글 IME Enter 이중 발생 등) 방지
 
   const { data, isLoading } = useQuery<MessagesResponse>({
     queryKey: ["/api/admin/chat", customerId],
@@ -146,8 +150,9 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
 
   const onSend = () => {
     const body = text.trim();
-    if (!body) return;
-    send.mutate(body);
+    if (!body || sendingRef.current) return;
+    sendingRef.current = true;
+    send.mutate(body, { onSettled: () => { sendingRef.current = false; } });
   };
 
   return (
@@ -199,7 +204,8 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); }
+            // 한글 IME 조합 중 Enter는 무시 (조합 확정 Enter가 이중 전송되는 문제 방지)
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSend(); }
           }}
           placeholder="메시지를 입력하세요 (Enter 전송 · Shift+Enter 줄바꿈)"
           rows={1}
