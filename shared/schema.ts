@@ -356,6 +356,30 @@ export const notifications = sqliteTable("notifications", {
 });
 export type Notification = typeof notifications.$inferSelect;
 
+// ===== 거래처 1:1 채팅 =====
+// 거래처 1곳당 스레드 1개 (customerId 기준). sender 로 관리자/거래처 구분.
+export const chatMessages = sqliteTable("chat_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(), // 대화 상대 거래처 id (스레드 키)
+  sender: text("sender").notNull(), // "admin" | "customer"
+  body: text("body").notNull(),
+  readByAdmin: integer("read_by_admin").notNull().default(0), // 관리자가 읽었나 (거래처 발신 메시지 대상)
+  readByCustomer: integer("read_by_customer").notNull().default(0), // 거래처가 읽었나 (관리자 발신 메시지 대상)
+  createdAt: integer("created_at").notNull(),
+});
+export type ChatMessage = typeof chatMessages.$inferSelect;
+
+// 관리자 채팅 스레드 목록 행
+export type ChatThread = {
+  customerId: number;
+  businessName: string;
+  managerName: string;
+  lastBody: string;
+  lastSender: string; // "admin" | "customer"
+  lastAt: number;
+  unread: number; // 거래처가 보낸 미읽음 수
+};
+
 // ===== Insert schemas =====
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
