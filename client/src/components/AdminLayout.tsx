@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useChatAlert } from "@/hooks/use-chat-alert";
 import type { Order } from "@shared/schema";
 import {
   LayoutDashboard,
@@ -186,6 +187,13 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     refetchInterval: 30000,
   });
   const chatUnreadCount = chatUnread?.unread ?? 0;
+
+  // 거래처가 보낸 새 메시지 도착 시 관리자에게 알림
+  useChatAlert(chatUnread?.unread, {
+    title: "거래처 새 메시지",
+    body: "거래처가 채팅 메시지를 보냈어요. 눌러서 확인하세요.",
+    onClick: () => navigate("/admin/chat"),
+  });
 
   const toggleGroup = (label: string) => {
     setOpenGroups((prev) => {

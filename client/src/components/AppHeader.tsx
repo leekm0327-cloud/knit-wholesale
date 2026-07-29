@@ -6,6 +6,7 @@ import { MobileTabBar } from "./MobileTabBar";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { apiRequest } from "@/lib/queryClient";
+import { useChatAlert } from "@/hooks/use-chat-alert";
 import { ShoppingBag, LogOut, ClipboardList, User, BookOpen, MessageSquare, HelpCircle, Gift, Newspaper, Wrench, MessagesSquare } from "lucide-react";
 
 export function AppHeader() {
@@ -21,6 +22,13 @@ export function AppHeader() {
     refetchInterval: 30000,
   });
   const chatUnreadCount = chatUnread?.unread ?? 0;
+
+  // 관리자가 보낸 새 메시지 도착 시 거래처에게 알림
+  useChatAlert(chatUnread?.unread, {
+    title: "니트커피 새 메시지",
+    body: "관리자가 메시지를 보냈어요. 눌러서 확인하세요.",
+    onClick: () => navigate("/chat"),
+  });
 
   // 네비게이션 항목 (데스크톱 = 텍스트 / 모바일 = 아이콘, 로고 아래 별도 행)
   const navItems = [
