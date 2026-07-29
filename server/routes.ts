@@ -2160,6 +2160,72 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // ===== 거래처 1:1 채팅 =====
+  // -- 관리자 --
+  // 스레드 목록 + 전체 미읽음 (구체 경로는 :customerId 보다 먼저 정의)
+  app.get("/api/admin/chat/threads", requireAdmin, async (_req, res) => {
+    const threads = await storage.listChatThreads();
+    const unread = await storage.countChatUnreadForAdmin();
+    res.json({ threads, unread });
+  });
+  app.get("/api/admin/chat/unread-count", requireAdmin, async (_req, res) => {
+    res.json({ unread: await storage.countChatUnreadForAdmin() });
+  });
+  // 특정 거래처와의 대화 조회 (열면서 관리자 읽음 처리)
+  app.get("/api/admin/chat/:customerId", requireAdmin, async (req, res) => {
+    const customerId = Number(req.params.customerId);
+    if (!Number.isFinite(customerId)) return res.status(400).json({ message: "잘못된 거래처" });
+    const customer = await storage.getCustomer(customerId);
+    if (!customer || customer.role === "admin") return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+    await storage.markChatRead(customerId, "admin");
+    const messages = await storage.listChatMessages(customerId);
+    res.json({
+      customer: { id: customer.id, businessName: customer.businessName, managerName: customer.managerName },
+      messages,
+    });
+  });
+  // 관리자 → 거래처 메시지 전송
+  app.post("/api/admin/chat/:customerId", requireAdmin, async (req, res) => {
+    const customerId = Number(req.params.customerId);
+    if (!Number.isFinite(customerId)) return res.status(400).json({ message: "잘못된 거래처" });
+    const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+    if (!body) return res.status(400).json({ message: "메시지를 입력해 주세요." });
+    if (body.length > 2000) return res.status(400).json({ message: "메시지가 너무 깁니다. (최대 2000자)" });
+    const customer = await storage.getCustomer(customerId);
+    if (!customer || customer.role === "admin") return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+    const msg = await storage.sendChatMessage(customerId, "admin", body);
+    res.json(msg);
+  });
+
+  // -- 거래처 --
+  app.get("/api/account/chat", requireAuth, async (req, res) => {
+    const customerId = req.session.userId!;
+    await storage.markChatRead(customerId, "customer");
+    const messages = await storage.listChatMessages(customerId);
+    res.json({ messages });
+  });
+  app.get("/api/account/chat/unread-count", requireAuth, async (req, res) => {
+    const customerId = req.session.userId!;
+    res.json({ unread: await storage.countChatUnreadForCustomer(customerId) });
+  });
+  app.post("/api/account/chat", requireAuth, async (req, res) => {
+    const customerId = req.session.userId!;
+    const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+    if (!body) return res.status(400).json({ message: "메시지를 입력해 주세요." });
+    if (body.length > 2000) return res.status(400).json({ message: "메시지가 너무 깁니다. (최대 2000자)" });
+    const msg = await storage.sendChatMessage(customerId, "customer", body);
+    // 관리자 알림센터에 표시
+    const me = await storage.getCustomer(customerId);
+    const preview = body.length > 40 ? body.slice(0, 40) + "…" : body;
+    await storage.createNotification({
+      type: "chat",
+      title: `${me?.businessName ?? "거래처"} 채팅`,
+      body: preview,
+      link: `/admin/chat/${customerId}`,
+    });
+    res.json(msg);
+  });
+
   // ===== #32 거래내역서 =====
   app.get("/api/admin/transactions", requireAdmin, async (req, res) => {
     const customerId = Number(req.query.customerId);

@@ -1,4 +1,4 @@
-import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications } from "@shared/schema";
+import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications, chatMessages } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -57,6 +57,8 @@ import type {
   InsertPersonalLedger,
   PersonalSummary,
   KakaoTokens,
+  ChatMessage,
+  ChatThread,
 } from "@shared/schema";
 import { SECTORS, SECTOR_LABEL } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -236,6 +238,16 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL,
+  sender TEXT NOT NULL,
+  body TEXT NOT NULL,
+  read_by_admin INTEGER NOT NULL DEFAULT 0,
+  read_by_customer INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_customer ON chat_messages(customer_id, created_at);
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL,
@@ -2129,6 +2141,95 @@ export class DatabaseStorage implements IStorage {
   }
   async markAllNotificationsRead(): Promise<void> {
     db.update(notifications).set({ readAt: Date.now() }).run();
+  }
+
+  // ===== 거래처 1:1 채팅 =====
+  async sendChatMessage(customerId: number, sender: "admin" | "customer", body: string): Promise<ChatMessage> {
+    return db
+      .insert(chatMessages)
+      .values({
+        customerId,
+        sender,
+        body,
+        // 보낸 쪽은 이미 읽은 상태로 저장
+        readByAdmin: sender === "admin" ? 1 : 0,
+        readByCustomer: sender === "customer" ? 1 : 0,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+
+  async listChatMessages(customerId: number): Promise<ChatMessage[]> {
+    return db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.customerId, customerId))
+      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
+      .all();
+  }
+
+  // reader가 상대방이 보낸 메시지를 읽음 처리
+  async markChatRead(customerId: number, reader: "admin" | "customer"): Promise<void> {
+    if (reader === "admin") {
+      db.update(chatMessages)
+        .set({ readByAdmin: 1 })
+        .where(and(eq(chatMessages.customerId, customerId), eq(chatMessages.sender, "customer")))
+        .run();
+    } else {
+      db.update(chatMessages)
+        .set({ readByCustomer: 1 })
+        .where(and(eq(chatMessages.customerId, customerId), eq(chatMessages.sender, "admin")))
+        .run();
+    }
+  }
+
+  // 관리자용: 전체 거래처 채팅 미읽음(거래처 발신) 총합
+  async countChatUnreadForAdmin(): Promise<number> {
+    return db
+      .select()
+      .from(chatMessages)
+      .where(and(eq(chatMessages.sender, "customer"), eq(chatMessages.readByAdmin, 0)))
+      .all().length;
+  }
+
+  // 거래처용: 자기 스레드의 관리자 발신 미읽음 수
+  async countChatUnreadForCustomer(customerId: number): Promise<number> {
+    return db
+      .select()
+      .from(chatMessages)
+      .where(and(eq(chatMessages.customerId, customerId), eq(chatMessages.sender, "admin"), eq(chatMessages.readByCustomer, 0)))
+      .all().length;
+  }
+
+  // 관리자용: 채팅이 있는 거래처 스레드 목록 (최근 메시지 순)
+  async listChatThreads(): Promise<ChatThread[]> {
+    const all = db.select().from(chatMessages).all();
+    const byCustomer = new Map<number, ChatMessage[]>();
+    for (const m of all) {
+      const arr = byCustomer.get(m.customerId) ?? [];
+      arr.push(m);
+      byCustomer.set(m.customerId, arr);
+    }
+    const threads: ChatThread[] = [];
+    for (const [customerId, msgs] of byCustomer) {
+      const cust = await this.getCustomer(customerId);
+      if (!cust) continue; // 삭제된 거래처의 채팅은 건너뜀
+      msgs.sort((a, b) => a.createdAt - b.createdAt || a.id - b.id);
+      const last = msgs[msgs.length - 1];
+      const unread = msgs.filter((m) => m.sender === "customer" && m.readByAdmin === 0).length;
+      threads.push({
+        customerId,
+        businessName: cust.businessName,
+        managerName: cust.managerName,
+        lastBody: last.body,
+        lastSender: last.sender,
+        lastAt: last.createdAt,
+        unread,
+      });
+    }
+    threads.sort((a, b) => b.lastAt - a.lastAt);
+    return threads;
   }
 
   // ===== 비밀번호 재설정 토큰 (#26) =====
