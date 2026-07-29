@@ -28,6 +28,7 @@ import Orders from "@/pages/Orders";
 import OrderDetail from "@/pages/OrderDetail";
 import Account from "@/pages/Account";
 import InvoicePage from "@/pages/InvoicePage";
+import Chat from "@/pages/Chat";
 import Help from "@/pages/Help";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import Dashboard from "@/pages/admin/Dashboard";
@@ -46,6 +47,7 @@ import AdminBackup from "@/pages/admin/AdminBackup";
 import AdminManagers from "@/pages/admin/AdminManagers";
 import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
 import AdminTransactions from "@/pages/admin/AdminTransactions";
+import AdminChat from "@/pages/admin/AdminChat";
 import AdminSuppliers from "@/pages/admin/AdminSuppliers";
 import AdminPurchases from "@/pages/admin/AdminPurchases";
 import AdminSupplierPayments from "@/pages/admin/AdminSupplierPayments";
@@ -134,6 +136,9 @@ function AppRouter() {
       <Route path="/account">
         <RequireCustomer><Account /></RequireCustomer>
       </Route>
+      <Route path="/chat">
+        <RequireCustomer><Chat /></RequireCustomer>
+      </Route>
       <Route path="/invoice/:id">
         <RequireCustomer><InvoicePage /></RequireCustomer>
       </Route>
@@ -160,6 +165,8 @@ function AppRouter() {
       <Route path="/admin/managers" component={AdminManagers} />
       <Route path="/admin/activity-logs" component={AdminActivityLogs} />
       <Route path="/admin/transactions" component={AdminTransactions} />
+      <Route path="/admin/chat" component={AdminChat} />
+      <Route path="/admin/chat/:customerId" component={AdminChat} />
       <Route path="/admin/suppliers/:id/ledger" component={AdminSupplierLedger} />
       <Route path="/admin/suppliers" component={AdminSuppliers} />
       <Route path="/admin/purchases" component={AdminPurchases} />
