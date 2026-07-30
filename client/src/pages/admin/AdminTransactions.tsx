@@ -62,7 +62,7 @@ interface TransactionPayment {
 }
 
 interface TransactionResult {
-  customer: { id: number; businessName: string; managerName: string; phone: string };
+  customer: { id: number; businessName: string; managerName: string; phone: string; bizRegNo: string; address: string };
   startDate: string;
   endDate: string;
   orders: TransactionOrder[];
@@ -78,6 +78,35 @@ const PAY_METHOD_LABEL: Record<string, string> = {
   card: "카드",
   other: "기타",
 };
+
+// 공급자(니트커피) 고정 정보 — 거래명세서 상단 공급자란
+const SELLER = {
+  name: "니트커피 (knit coffee)",
+  bizRegNo: "714-21-01743",
+  ceo: "이강민",
+  address: "서울특별시 중구 소월로2길 30 남산트라팰리스 1층 107호",
+  bizType: "도소매",
+  bizItem: "가공식품",
+  phone: "070-7717-0613",
+  bankName: "국민은행",
+  bankAccount: "098937-04-011092",
+  bankHolder: "이강민(니트커피)",
+};
+
+// 사업자등록번호 표시 형식 (XXX-XX-XXXXX)
+function fmtBizNo(raw: string): string {
+  if (!raw) return "—";
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  return raw;
+}
+
+// YYYY.MM.DD (KST 오늘)
+function todayStr(): string {
+  const now = new Date();
+  const k = new Date(now.getTime() + (now.getTimezoneOffset() + 540) * 60000);
+  return `${k.getFullYear()}.${String(k.getMonth() + 1).padStart(2, "0")}.${String(k.getDate()).padStart(2, "0")}`;
+}
 
 export default function AdminTransactions() {
   const presets = useMemo(() => getPresets(), []);
@@ -120,12 +149,6 @@ export default function AdminTransactions() {
   function handlePrint() {
     window.print();
   }
-
-  const STATUS_LABEL: Record<string, string> = {
-    pending: "대기",
-    done: "완료",
-    cancelled: "취소",
-  };
 
   return (
     <AdminLayout>
@@ -215,173 +238,218 @@ export default function AdminTransactions() {
             ))}
           </div>
         ) : result ? (
-          <div className="space-y-6 print-area txn-print">
-            {/* 인쇄용 헤더 */}
-            <div className="hidden print:block mb-6">
-              <h1 className="text-2xl font-bold">거래내역서</h1>
-              <div className="mt-2 text-sm text-gray-600">
-                <div>거래처: {result.customer.businessName}</div>
-                <div>기간: {result.startDate} ~ {result.endDate}</div>
+          (() => {
+            const supplyTotal = result.orders.reduce((s, o) => s + o.supplyAmount, 0);
+            const vatTotal = result.orders.reduce((s, o) => s + o.vat, 0);
+            return (
+          <div className="print-area txn-doc mx-auto max-w-3xl border border-foreground/70 bg-white p-6 text-foreground sm:p-8">
+            {/* 제목 + 발행 정보 */}
+            <div className="flex items-start justify-between border-b-2 border-foreground pb-3">
+              <h1 className="font-display text-2xl font-bold tracking-[0.35em]">거래명세서</h1>
+              <div className="text-right text-[11px] leading-relaxed text-muted-foreground">
+                <div>발행일자 : {todayStr()}</div>
+                <div>거래기간 : {result.startDate.replace(/-/g, ".")} ~ {result.endDate.replace(/-/g, ".")}</div>
+                <div className="mt-0.5 font-semibold text-foreground">(공급받는자 보관용)</div>
               </div>
             </div>
 
-            {/* 합계 요약 박스 */}
-            <div className="grid grid-cols-3 gap-3">
-              <SummaryCard label="총 주문금액" value={won(result.totalAmount)} />
-              <SummaryCard label="입금완료" value={won(result.paidAmount)} highlight="positive" />
-              <SummaryCard label="미수금" value={won(result.unpaidAmount)} highlight={result.unpaidAmount > 0 ? "negative" : undefined} />
+            {/* 공급자 / 공급받는자 */}
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <PartyBox
+                title="공급자"
+                rows={[
+                  ["등록번호", SELLER.bizRegNo],
+                  ["상호", SELLER.name],
+                  ["대표자", SELLER.ceo],
+                  ["사업장", SELLER.address],
+                  ["업태 / 종목", `${SELLER.bizType} / ${SELLER.bizItem}`],
+                  ["전화", SELLER.phone],
+                ]}
+              />
+              <PartyBox
+                title="공급받는자"
+                rows={[
+                  ["등록번호", fmtBizNo(result.customer.bizRegNo)],
+                  ["상호", result.customer.businessName],
+                  ["대표 / 담당", result.customer.managerName],
+                  ["사업장", result.customer.address],
+                  ["전화", result.customer.phone],
+                ]}
+              />
             </div>
 
-            {/* 거래처 정보 */}
-            <div className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{result.customer.businessName}</span>
-              {" · "}{result.customer.managerName}
-              {" · "}{result.startDate} ~ {result.endDate}
+            {/* 금액 요약 */}
+            <div className="mt-4 grid grid-cols-2 border border-border sm:grid-cols-5">
+              <AmtCell label="공급가액" value={won(supplyTotal)} />
+              <AmtCell label="세액(부가세)" value={won(vatTotal)} />
+              <AmtCell label="합계금액" value={won(result.totalAmount)} strong />
+              <AmtCell label="입금액" value={won(result.paidAmount)} tone="pos" />
+              <AmtCell label="미수 잔액" value={won(result.unpaidAmount)} tone={result.unpaidAmount > 0 ? "neg" : undefined} />
             </div>
 
-            {/* 거래 테이블 */}
-            {result.orders.length === 0 ? (
-              <div className="py-16 text-center text-sm text-muted-foreground">
-                해당 기간에 주문 내역이 없습니다.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
+            {/* 거래 명세 테이블 */}
+            <div className="mt-5 overflow-x-auto">
+              {result.orders.length === 0 ? (
+                <div className="border border-border py-16 text-center text-sm text-muted-foreground">
+                  해당 기간에 거래 내역이 없습니다.
+                </div>
+              ) : (
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-y border-border bg-muted/30">
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">날짜</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">주문번호</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">상품</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">수량</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">단가</th>
-                      <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">합계</th>
-                      <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">상태</th>
+                    <tr className="border-y-2 border-foreground bg-muted/30">
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold text-foreground">일자</th>
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold text-foreground">품목</th>
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold text-foreground">수량</th>
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold text-foreground">단가</th>
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold text-foreground">공급가액</th>
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold text-foreground">세액</th>
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold text-foreground">합계</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {result.orders.map((order) =>
-                      order.parsedItems.map((item, itemIdx) => (
-                        <tr key={`${order.id}-${itemIdx}`} className="hover:bg-muted/10">
-                          <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                            {itemIdx === 0
-                              ? (order.ecountDate && order.ecountDate.trim()
-                                  ? order.ecountDate.replace(/-/g, ".")
-                                  : fmtDate(order.createdAt).split(" ")[0])
-                              : ""}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            {itemIdx === 0 ? (
-                              <span className="font-ui text-xs font-semibold tabular text-foreground">{order.orderNo}</span>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-2.5 text-xs text-foreground">{item.name}</td>
-                          <td className="px-3 py-2.5 text-right text-xs tabular text-foreground">{item.qty}</td>
-                          <td className="px-3 py-2.5 text-right text-xs tabular text-muted-foreground">{won(item.unitPrice)}</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-medium tabular text-foreground">{won(item.amount)}</td>
-                          <td className="px-3 py-2.5 text-center">
-                            {itemIdx === 0 ? (
-                              <span className={`text-[10px] font-medium ${order.status === "done" ? "text-green-600" : order.status === "cancelled" ? "text-muted-foreground" : "text-amber-600"}`}>
-                                {STATUS_LABEL[order.status] ?? order.status}
-                              </span>
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))
+                      order.parsedItems.map((item, itemIdx) => {
+                        const lineVat = Math.round(item.amount * 0.1);
+                        return (
+                          <tr key={`${order.id}-${itemIdx}`}>
+                            <td className="px-2 py-2 text-xs text-muted-foreground">
+                              {itemIdx === 0
+                                ? (order.ecountDate && order.ecountDate.trim()
+                                    ? order.ecountDate.replace(/-/g, ".")
+                                    : fmtDate(order.createdAt).split(" ")[0])
+                                : ""}
+                            </td>
+                            <td className="px-2 py-2 text-xs text-foreground">{item.name}</td>
+                            <td className="px-2 py-2 text-right text-xs tabular text-foreground">{item.qty}</td>
+                            <td className="px-2 py-2 text-right text-xs tabular text-muted-foreground">{won(item.unitPrice)}</td>
+                            <td className="px-2 py-2 text-right text-xs tabular text-foreground">{won(item.amount)}</td>
+                            <td className="px-2 py-2 text-right text-xs tabular text-muted-foreground">{won(lineVat)}</td>
+                            <td className="px-2 py-2 text-right text-xs font-medium tabular text-foreground">{won(item.amount + lineVat)}</td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-foreground">
-                      <td colSpan={5} className="px-3 py-3 text-right text-sm font-semibold">합계</td>
-                      <td className="px-3 py-3 text-right text-sm font-bold tabular text-foreground">{won(result.totalAmount)}</td>
-                      <td />
+                    <tr className="border-t-2 border-foreground bg-muted/20">
+                      <td colSpan={4} className="px-2 py-2.5 text-right text-xs font-bold">합계</td>
+                      <td className="px-2 py-2.5 text-right text-xs font-bold tabular">{won(supplyTotal)}</td>
+                      <td className="px-2 py-2.5 text-right text-xs font-bold tabular">{won(vatTotal)}</td>
+                      <td className="px-2 py-2.5 text-right text-sm font-bold tabular">{won(result.totalAmount)}</td>
                     </tr>
                   </tfoot>
                 </table>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* 입금 내역 */}
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-foreground">입금 내역</h2>
+            <div className="mt-6">
+              <h2 className="mb-2 text-sm font-bold text-foreground">입금 내역</h2>
               {(!result.payments || result.payments.length === 0) ? (
-                <div className="rounded-lg border border-border py-8 text-center text-sm text-muted-foreground">
+                <div className="border border-border py-6 text-center text-xs text-muted-foreground">
                   해당 기간에 입금 내역이 없습니다.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="border-y border-border bg-muted/30">
-                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">입금일</th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">방법</th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">메모</th>
-                        <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">입금액</th>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-y border-foreground bg-muted/30">
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold text-foreground">입금일</th>
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold text-foreground">방법</th>
+                      <th className="px-2 py-2 text-left text-[11px] font-semibold text-foreground">메모</th>
+                      <th className="px-2 py-2 text-right text-[11px] font-semibold text-foreground">입금액</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {result.payments.map((p) => (
+                      <tr key={p.id}>
+                        <td className="px-2 py-2 text-xs text-muted-foreground">{p.paidAt.replace(/-/g, ".")}</td>
+                        <td className="px-2 py-2 text-xs text-foreground">{PAY_METHOD_LABEL[p.method] ?? p.method}</td>
+                        <td className="px-2 py-2 text-xs text-muted-foreground">{p.memo || "—"}</td>
+                        <td className="px-2 py-2 text-right text-xs font-medium tabular text-foreground">{won(p.amount)}</td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {result.payments.map((p) => (
-                        <tr key={p.id} className="hover:bg-muted/10">
-                          <td className="px-3 py-2.5 text-xs text-muted-foreground">{p.paidAt.replace(/-/g, ".")}</td>
-                          <td className="px-3 py-2.5 text-xs text-foreground">{PAY_METHOD_LABEL[p.method] ?? p.method}</td>
-                          <td className="px-3 py-2.5 text-xs text-muted-foreground">{p.memo || "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-xs font-medium tabular text-emerald-600">{won(p.amount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-foreground">
-                        <td colSpan={3} className="px-3 py-3 text-right text-sm font-semibold">입금 합계</td>
-                        <td className="px-3 py-3 text-right text-sm font-bold tabular text-emerald-600">{won(result.paidAmount)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-foreground">
+                      <td colSpan={3} className="px-2 py-2.5 text-right text-xs font-bold">입금 합계</td>
+                      <td className="px-2 py-2.5 text-right text-xs font-bold tabular">{won(result.paidAmount)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               )}
             </div>
+
+            {/* 입금계좌 안내 */}
+            <div className="mt-5 border border-border bg-muted/20 px-3 py-2.5 text-[11px] text-foreground">
+              <span className="font-semibold">입금계좌</span> · {SELLER.bankName} {SELLER.bankAccount} (예금주 : {SELLER.bankHolder})
+            </div>
+
+            {/* 확인 문구 + 발행 */}
+            <div className="mt-6 flex flex-col items-center gap-1 text-center">
+              <p className="text-xs text-muted-foreground">위와 같이 거래하였음을 확인합니다.</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{todayStr()}</p>
+              <p className="text-sm font-bold text-foreground">{SELLER.name}</p>
+            </div>
           </div>
+            );
+          })()
         ) : queryKey != null ? (
           <div className="py-16 text-center text-sm text-muted-foreground">조회 중 오류가 발생했습니다.</div>
         ) : null}
       </div>
 
-      {/* 인쇄 전용 레이아웃 보정 — 숫자 줄바꿈 방지, 상품/메모만 줄바꿈 허용 */}
+      {/* 인쇄 전용 레이아웃 보정 — 거래명세서(A4) */}
       <style>{`
         @media print {
           @page { size: A4; margin: 12mm; }
-          .txn-print table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
-          .txn-print th, .txn-print td {
-            padding: 4px 6px !important;
-            white-space: nowrap;              /* 기본: 줄바꿈 금지 (숫자·날짜·상태) */
-            border-bottom: 1px solid #e5e5e5;
+          .txn-doc {
+            max-width: none !important; border: 1px solid #333 !important;
+            padding: 10mm !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+          }
+          .txn-doc table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          .txn-doc th, .txn-doc td {
+            padding: 3px 5px !important;
+            white-space: nowrap;              /* 기본: 줄바꿈 금지 (숫자·날짜) */
             vertical-align: top;
           }
-          /* 3번째 칸만 줄바꿈 허용 (주문표=상품명, 입금표=메모) */
-          .txn-print th:nth-child(3), .txn-print td:nth-child(3) { white-space: normal; }
-          .txn-print thead th { border-bottom: 1px solid #999; }
-          .txn-print tfoot td { border-top: 2px solid #333; border-bottom: none; white-space: nowrap; }
-          .txn-print h2 { font-size: 13px; margin-top: 14px; }
-          /* 요약 카드 3열 유지 + 압축 */
-          .txn-print .grid { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+          /* 명세 테이블의 품목(2번째)·입금 메모(3번째) 칸만 줄바꿈 허용 */
+          .txn-doc td:nth-child(2), .txn-doc td:nth-child(3) { white-space: normal; }
+          .txn-doc h1 { font-size: 20px; }
+          .txn-doc h2 { font-size: 12px; }
+          /* 공급자/공급받는자 2단 유지 */
+          .txn-doc .sm\\:grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; }
+          /* 금액 요약 5칸 유지 */
+          .txn-doc .sm\\:grid-cols-5 { display: grid !important; grid-template-columns: repeat(5, 1fr) !important; }
         }
       `}</style>
     </AdminLayout>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: "positive" | "negative";
-}) {
+// 공급자/공급받는자 정보 박스
+function PartyBox({ title, rows }: { title: string; rows: [string, string][] }) {
   return (
-    <div className="rounded-lg border border-border bg-background p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
-      <div className={`mt-1.5 font-display text-lg font-bold tabular ${
-        highlight === "negative" ? "text-destructive" : highlight === "positive" ? "text-emerald-600" : "text-foreground"
+    <div className="border border-border">
+      <div className="border-b border-border bg-muted/40 px-3 py-1.5 text-xs font-bold text-foreground">{title}</div>
+      <div className="divide-y divide-border/60">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex text-[11px]">
+            <div className="w-[74px] shrink-0 bg-muted/20 px-2.5 py-1.5 font-medium text-muted-foreground">{k}</div>
+            <div className="flex-1 break-words px-2.5 py-1.5 text-foreground">{v || "—"}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 금액 요약 셀
+function AmtCell({ label, value, strong, tone }: { label: string; value: string; strong?: boolean; tone?: "pos" | "neg" }) {
+  return (
+    <div className="border-b border-r border-border px-2.5 py-2 last:border-r-0">
+      <div className="text-[10px] font-medium text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 font-display tabular ${strong ? "text-sm font-bold" : "text-xs font-semibold"} ${
+        tone === "neg" ? "text-destructive" : tone === "pos" ? "text-emerald-600" : "text-foreground"
       }`}>
         {value}
       </div>
