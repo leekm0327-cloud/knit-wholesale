@@ -2243,7 +2243,14 @@ export async function registerRoutes(
 
     const result = await storage.listTransactions(customerId, startDate, endDate);
     res.json({
-      customer: { id: customer.id, businessName: customer.businessName, managerName: customer.managerName, phone: customer.phone },
+      customer: {
+        id: customer.id,
+        businessName: customer.businessName,
+        managerName: customer.managerName,
+        phone: customer.phone,
+        bizRegNo: customer.bizRegNo,
+        address: customer.defaultAddress,
+      },
       startDate,
       endDate,
       ...result,
