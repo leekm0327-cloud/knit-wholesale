@@ -147,6 +147,22 @@ export default function AdminTransactions() {
   }
 
   function handlePrint() {
+    // 인쇄/PDF 저장 시 기본 파일명 = 문서 제목. 인쇄 직전에 바꿨다가 끝나면 원복.
+    const prevTitle = document.title;
+    if (result) {
+      const s = result.startDate.replace(/-/g, "");
+      const e = result.endDate.replace(/-/g, "");
+      // 파일명에 쓸 수 없는 문자 제거
+      const name = (result.customer.businessName || "거래처").replace(/[\\/:*?"<>|]/g, "").trim();
+      document.title = `거래명세서_${name}_${s}-${e}`;
+    }
+    const restore = () => {
+      document.title = prevTitle;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    // afterprint 미발생 브라우저 대비 안전장치
+    setTimeout(restore, 3000);
     window.print();
   }
 
