@@ -68,7 +68,7 @@ function SampleInfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// B-2: 샘플 신청 페이지 — 원두 최대 2종, 각 1kg 고정, 무료. 승인+미사용 고객만 신청 가능.
+// B-2: 샘플 신청 페이지 — 원두 최대 2종, 각 500g 고정, 무료. 승인+미사용 고객만 신청 가능.
 // 샘플 신청 대상: 블렌드 + 디카페인만 (싱글 오리진 제외)
 const BEAN_CATEGORIES = ["blend", "decaf"];
 const MAX_TYPES = 2;
@@ -149,7 +149,7 @@ export default function SampleRequest() {
         <p className="eyebrow mb-2">Sample</p>
         <h1 className="font-display mb-2 text-3xl font-medium tracking-tight text-foreground">샘플 신청</h1>
         <p className="mb-8 text-sm text-muted-foreground">
-          원두를 최대 {MAX_TYPES}종까지 각 1kg씩 무료로 받아보실 수 있습니다. 샘플은 승인된 거래처당 1회 제공됩니다.
+          원두를 최대 {MAX_TYPES}종까지 각 500g씩 무료로 받아보실 수 있습니다. 샘플은 승인된 거래처당 1회 제공됩니다.
         </p>
 
         {eligLoading ? (
@@ -206,7 +206,7 @@ export default function SampleRequest() {
                             </span>
                           </div>
                         </div>
-                        <span className="shrink-0 text-xs font-semibold text-muted-foreground">1kg · 무료</span>
+                        <span className="shrink-0 text-xs font-semibold text-muted-foreground">500g · 무료</span>
                       </div>
 
                       <button
