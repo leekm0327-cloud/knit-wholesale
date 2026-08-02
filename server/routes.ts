@@ -696,7 +696,7 @@ export async function registerRoutes(
     res.json({ eligible: bizVerified && !alreadyUsed, bizVerified, alreadyUsed, reason });
   });
 
-  // 샘플 신청 — 원두 최대 2종, 각 1kg 고정, 무료(total 0). 승인+미사용 고객만.
+  // 샘플 신청 — 원두 최대 2종, 각 500g 고정, 무료(total 0). 승인+미사용 고객만.
   app.post("/api/sample/request", requireAuth, async (req, res) => {
     const customer = await storage.getCustomer(req.session.userId!);
     if (!customer) return res.status(401).json({ message: "사용자 없음" });
@@ -723,8 +723,8 @@ export async function registerRoutes(
       if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${pid}` });
       if (!sampleKeys.has(prod.category))
         return res.status(400).json({ message: "샘플 신청이 가능한 카테고리의 상품이 아닙니다." });
-      // 각 1kg(수량 1) 고정, 무료(단가 0)
-      items.push({ productId: prod.id, name: prod.name, category: prod.category, unitPrice: 0, qty: 1, amount: 0 });
+      // 각 500g(수량 1) 고정, 무료(단가 0). 발송 규격을 주문/명세서에 명확히 표기.
+      items.push({ productId: prod.id, name: `${prod.name} (샘플 500g)`, category: prod.category, unitPrice: 0, qty: 1, amount: 0 });
     }
 
     const order = await storage.createOrder({
@@ -744,7 +744,7 @@ export async function registerRoutes(
       vat: 0,
       totalAmount: 0,
       desiredDate: "",
-      note: "샘플 신청",
+      note: "샘플 신청 (원두 각 500g)",
       status: "pending",
       isSample: 1,
       trackingNo: "",
