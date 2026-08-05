@@ -1771,7 +1771,8 @@ export class DatabaseStorage implements IStorage {
       if (!cname) cname = "(미지정)";
       rows.push({ customerName: cname, purchaseNo: p.purchaseNo, purchaseDate: p.purchaseDate, qty, amount });
     }
-    rows.sort((a, b) => a.customerName.localeCompare(b.customerName) || a.purchaseDate.localeCompare(b.purchaseDate));
+    // 날짜순 정렬 (같은 날짜면 거래처명 순)
+    rows.sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate) || a.customerName.localeCompare(b.customerName));
     return rows;
   }
 
