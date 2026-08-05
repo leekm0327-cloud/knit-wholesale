@@ -1286,6 +1286,8 @@ export async function registerRoutes(
       items,
       totalAmount,
       segment: parsed.data.segment ?? "wholesale",
+      customerId: parsed.data.customerId ?? null,
+      customerName: (parsed.data.customerName ?? "").trim(),
     });
     const actor = await getActor(req);
     await storage.logActivity({
@@ -1324,6 +1326,8 @@ export async function registerRoutes(
       memo: parsed.data.memo ?? "",
       items,
       totalAmount,
+      customerId: parsed.data.customerId ?? null,
+      customerName: (parsed.data.customerName ?? "").trim(),
     });
     if (!updated) return res.status(404).json({ message: "발주 내역을 찾을 수 없습니다." });
     const actor = await getActor(req);
@@ -1664,6 +1668,15 @@ export async function registerRoutes(
     if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
     res.json(await storage.getPurchaseItemSummary(from, to));
   });
+  // 품목별 집계 드릴다운 — 특정 품목의 거래처별 발주 내역
+  app.get("/api/admin/purchases/item-detail", requireAdmin, async (req, res) => {
+    const name = typeof req.query.name === "string" ? req.query.name : "";
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!name) return res.status(400).json({ message: "품목명이 필요합니다." });
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    res.json(await storage.getPurchaseItemDetail(name, from, to));
+  });
 
   // ===== E: 개인 가계부 (owner 전용, 사업 재무와 완전 분리) =====
   app.get("/api/personal-categories", requireOwner, async (_req, res) => {
@@ -1885,6 +1898,8 @@ export async function registerRoutes(
                   totalAmount,
                   memo: `거래처주문 ${updated.orderNo} 자동발주`,
                   segment: purchaseSegment,
+                  customerId: updated.customerId ?? null,
+                  customerName: orderCust?.businessName ?? "",
                 });
                 await storage.updateOrder(updated.id, { autoPurchaseId: purchase.id });
                 const actor = await getActor(req);

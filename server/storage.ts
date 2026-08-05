@@ -48,6 +48,7 @@ import type {
   DashboardSummary,
   FinancialStatement,
   ItemSummaryRow,
+  ItemDetailRow,
   DashboardGranularity,
   Sector,
   SectorPnl,
@@ -417,6 +418,9 @@ for (const [table, col] of [
   // 매장 내부 계정 여부 / 발주 부문(매장·도매)
   ["customers", "is_store INTEGER NOT NULL DEFAULT 0"],
   ["purchases", "segment TEXT NOT NULL DEFAULT 'wholesale'"],
+  // 발주-거래처 연결 (자동발주=주문 거래처, 직접등록=선택/입력)
+  ["purchases", "customer_id INTEGER"],
+  ["purchases", "customer_name TEXT NOT NULL DEFAULT ''"],
   // D: 재무 부문(sector) 컬럼. 기존행은 default 값으로 채워짐.
   ["store_sales", "sector TEXT NOT NULL DEFAULT 'store'"],
   ["expenses", "sector TEXT NOT NULL DEFAULT 'common'"],
@@ -760,6 +764,7 @@ export interface IStorage {
   getFinancialStatement(from: string, to: string): Promise<FinancialStatement>;
   getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
   getPurchaseItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
+  getPurchaseItemDetail(name: string, from: string, to: string): Promise<ItemDetailRow[]>;
   // E: 개인 가계부
   listPersonalCategories(): Promise<PersonalCategory[]>;
   createPersonalCategory(c: InsertPersonalCategory): Promise<PersonalCategory>;
@@ -1180,12 +1185,14 @@ export class DatabaseStorage implements IStorage {
         totalAmount: p.totalAmount,
         memo: p.memo ?? "",
         segment: p.segment ?? "wholesale",
+        customerId: p.customerId ?? null,
+        customerName: p.customerName ?? "",
         createdAt: Date.now(),
       })
       .returning()
       .get();
   }
-  async updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number }): Promise<Purchase | undefined> {
+  async updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number; customerId?: number | null; customerName?: string }): Promise<Purchase | undefined> {
     return db
       .update(purchases)
       .set({
@@ -1194,6 +1201,8 @@ export class DatabaseStorage implements IStorage {
         items: JSON.stringify(p.items),
         totalAmount: p.totalAmount,
         memo: p.memo ?? "",
+        customerId: p.customerId ?? null,
+        customerName: p.customerName ?? "",
       })
       .where(eq(purchases.id, id))
       .returning()
@@ -1728,6 +1737,42 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return Array.from(map.values()).sort((a, b) => b.qty - a.qty || b.amount - a.amount);
+  }
+
+  // 특정 품목의 거래처별 발주 내역 (품목별 집계 드릴다운)
+  async getPurchaseItemDetail(name: string, from: string, to: string): Promise<ItemDetailRow[]> {
+    const purchaseRows = (await this.listPurchases()).filter((p) => p.purchaseDate >= from && p.purchaseDate <= to);
+    // customerName 비어있는 옛 자동발주는 주문(autoPurchaseId)에서 거래처명 보정
+    const allOrders = await this.listOrders();
+    const orderByAutoPid = new Map<number, any>();
+    for (const o of allOrders) {
+      const apid = (o as any).autoPurchaseId;
+      if (apid) orderByAutoPid.set(apid, o);
+    }
+    const rows: ItemDetailRow[] = [];
+    for (const p of purchaseRows) {
+      let items: any[] = [];
+      try { items = JSON.parse(p.items); } catch { /* noop */ }
+      const matched = items.filter((it) => String(it.name ?? "") === name);
+      if (matched.length === 0) continue;
+      const qty = matched.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+      const amount = matched.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+      let cname = (p as any).customerName || "";
+      if (!cname) {
+        const ord = orderByAutoPid.get(p.id);
+        if (ord) {
+          try { cname = JSON.parse(ord.customerSnapshot)?.businessName || ""; } catch { /* noop */ }
+          if (!cname) {
+            const c = await this.getCustomer(ord.customerId);
+            cname = c?.businessName || "";
+          }
+        }
+      }
+      if (!cname) cname = "(미지정)";
+      rows.push({ customerName: cname, purchaseNo: p.purchaseNo, purchaseDate: p.purchaseDate, qty, amount });
+    }
+    rows.sort((a, b) => a.customerName.localeCompare(b.customerName) || a.purchaseDate.localeCompare(b.purchaseDate));
+    return rows;
   }
 
   // ===== E: 개인 가계부 =====
