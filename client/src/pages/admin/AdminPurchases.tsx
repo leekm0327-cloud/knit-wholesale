@@ -18,7 +18,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { won, fmtDate, errMsg } from "@/lib/format";
-import type { Supplier, Purchase, Product, PurchaseItem } from "@shared/schema";
+import type { Supplier, Purchase, Product, PurchaseItem, PublicCustomer } from "@shared/schema";
 import { PackagePlus, Plus, Trash2, Loader2, Pencil, Send } from "lucide-react";
 
 function todayStr(): string {
@@ -42,9 +42,11 @@ export default function AdminPurchases() {
   const { data: suppliers } = useQuery<Supplier[]>({ queryKey: ["/api/admin/suppliers"] });
   const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const { data: purchases, isLoading } = useQuery<Purchase[]>({ queryKey: ["/api/admin/purchases"] });
+  const { data: customers } = useQuery<PublicCustomer[]>({ queryKey: ["/api/admin/customers"] });
 
   const [supplierId, setSupplierId] = useState<string>("");
   const [purchaseDate, setPurchaseDate] = useState(todayStr());
+  const [customerName, setCustomerName] = useState("");
   const [memo, setMemo] = useState("");
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [busy, setBusy] = useState(false);
@@ -117,6 +119,11 @@ export default function AdminPurchases() {
         amount: Math.round(qty * unitPrice),
       });
     }
+    // 거래처명이 회원과 정확히 일치하면 id도 함께 저장(없으면 직접입력 텍스트만)
+    const cName = customerName.trim();
+    const matchedCustomer = cName ? (customers ?? []).find((c) => c.businessName === cName) : undefined;
+    const customerPayload = { customerId: matchedCustomer?.id ?? null, customerName: cName };
+
     const wasEditing = editingId;
     setBusy(true);
     try {
@@ -126,6 +133,7 @@ export default function AdminPurchases() {
           purchaseDate,
           items,
           memo,
+          ...customerPayload,
         });
         toast({ title: "발주가 수정되었습니다." });
       } else {
@@ -134,6 +142,7 @@ export default function AdminPurchases() {
           purchaseDate,
           items,
           memo,
+          ...customerPayload,
         });
         toast({ title: "발주가 등록되었습니다." });
       }
@@ -141,6 +150,7 @@ export default function AdminPurchases() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/supplier-balances"] });
       setLines([emptyLine()]);
       setMemo("");
+      setCustomerName("");
       if (wasEditing) {
         // 수정 완료 후 폼 초기화
         setEditingId(null);
@@ -176,6 +186,7 @@ export default function AdminPurchases() {
     setEditingNo(p.purchaseNo);
     setSupplierId(String(p.supplierId));
     setPurchaseDate(p.purchaseDate);
+    setCustomerName((p as any).customerName ?? "");
     setMemo(p.memo ?? "");
     setLines(
       its.length
@@ -228,7 +239,7 @@ export default function AdminPurchases() {
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">발주 관리</h1>
         <p className="mb-6 text-sm text-muted-foreground">OEM 공장 발주 등록 · 공장 채무 반영</p>
 
-        <ItemPeriodSummary endpoint="/api/admin/purchases/item-summary" qtyLabel="발주 수량" amountLabel="발주 금액" />
+        <ItemPeriodSummary endpoint="/api/admin/purchases/item-summary" qtyLabel="발주 수량" amountLabel="발주 금액" detailEndpoint="/api/admin/purchases/item-detail" />
 
         {/* 발주 입력 */}
         <Card className="mb-6 p-5">
@@ -252,6 +263,22 @@ export default function AdminPurchases() {
             <div className="space-y-1.5">
               <Label className="text-xs">발주일 *</Label>
               <Input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} data-testid="input-purchase-date" />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className="text-xs">거래처 (선택)</Label>
+              <Input
+                list="purchase-customer-list"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="회원 검색·선택 또는 직접 입력"
+                data-testid="input-purchase-customer"
+              />
+              <datalist id="purchase-customer-list">
+                {(customers ?? []).map((c) => (
+                  <option key={c.id} value={c.businessName} />
+                ))}
+              </datalist>
+              <p className="text-[11px] text-muted-foreground">이 발주가 어느 거래처를 위한 것인지 지정하면, 품목별 집계에서 거래처별 내역으로 볼 수 있어요.</p>
             </div>
           </div>
 
@@ -387,6 +414,8 @@ export default function AdminPurchases() {
                                 <div className="font-mono text-[11px] text-muted-foreground">{(p as any).sourceOrderNo}</div>
                               )}
                             </div>
+                          ) : (p as any).customerName ? (
+                            <div className="text-foreground">{(p as any).customerName}</div>
                           ) : (
                             <span className="text-muted-foreground">직접 등록</span>
                           )}
