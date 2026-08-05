@@ -226,6 +226,9 @@ export const purchases = sqliteTable("purchases", {
   memo: text("memo").notNull().default(""),
   // 부문: "wholesale"(도매 매출원가) | "store"(매장 내부 발주 → 음식점업 매출원가)
   segment: text("segment").notNull().default("wholesale"),
+  // 이 발주가 어느 거래처(주문)를 위한 것인지. 자동발주는 주문 거래처가 자동 기입, 직접등록은 선택/입력.
+  customerId: integer("customer_id"), // 매칭된 회원 id (없으면 null)
+  customerName: text("customer_name").notNull().default(""), // 표시용 거래처명(직접 입력 가능)
   createdAt: integer("created_at").notNull(),
 });
 
@@ -748,6 +751,8 @@ export const insertPurchaseSchema = z.object({
   items: z.array(purchaseItemSchema).min(1, "품목을 1개 이상 추가해 주세요."),
   memo: z.string().optional().default(""),
   segment: z.enum(["wholesale", "store"]).optional().default("wholesale"),
+  customerId: z.number().int().positive().nullable().optional(),
+  customerName: z.string().optional().default(""),
 });
 export type InsertPurchase = z.infer<typeof insertPurchaseSchema>;
 
@@ -997,6 +1002,15 @@ export type InsertEspressoSetup = z.infer<typeof insertEspressoSetupSchema>;
 export type ItemSummaryRow = {
   name: string;
   category: string;
+  qty: number;
+  amount: number;
+};
+
+// 품목별 집계 → 특정 품목의 거래처별 발주 내역 (드릴다운)
+export type ItemDetailRow = {
+  customerName: string; // 거래처명 (미지정이면 "(미지정)")
+  purchaseNo: string;
+  purchaseDate: string;
   qty: number;
   amount: number;
 };
