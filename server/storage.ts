@@ -1032,6 +1032,20 @@ export class DatabaseStorage implements IStorage {
         (o) => o.customerId === c.id && o.status !== "cancelled",
       );
       const myPayments = allPayments.filter((p) => p.customerId === c.id);
+      // 매장 내부 계정(isStore)은 같은 사업자 자기거래 → 채권(미수) 항상 0으로 처리
+      if ((c as any).isStore) {
+        return {
+          customerId: c.id,
+          businessName: c.businessName,
+          managerName: c.managerName,
+          phone: c.phone,
+          totalOrdered: 0,
+          totalPaid: 0,
+          balance: 0,
+          lastOrderAt: myOrders[0]?.createdAt ?? null,
+          lastPaidAt: myPayments[0]?.paidAt ?? null,
+        };
+      }
       const totalOrdered = myOrders.reduce((s, o) => s + o.totalAmount, 0);
       const totalPaid = myPayments.reduce((s, p) => s + p.amount, 0);
       return {
@@ -1066,13 +1080,16 @@ export class DatabaseStorage implements IStorage {
       })),
     ].sort((a, b) => a.ts - b.ts);
 
+    // 매장 내부 계정(같은 사업자 자기거래)은 채권(잔액) 항상 0 — 원장 잔액도 누적하지 않음
+    const isStore = (customer as any).isStore === 1;
+
     let running = 0;
     const rowsAsc: LedgerRow[] = raws.map((r) => {
       if (r.kind === "order") {
         // 취소된 주문은 원장에 표시는 하되 잔액(청구)에는 반영하지 않음
         const isCancelled = r.o.status === "cancelled";
         const debit = isCancelled ? 0 : r.o.totalAmount;
-        running += debit;
+        if (!isStore) running += debit;
         return {
           kind: "order",
           id: r.o.id,
@@ -1080,19 +1097,19 @@ export class DatabaseStorage implements IStorage {
           date: r.ts,
           debit,
           credit: 0,
-          balance: running,
+          balance: isStore ? 0 : running,
           memo: r.o.note,
           status: r.o.status,
         };
       } else {
-        running -= r.p.amount;
+        if (!isStore) running -= r.p.amount;
         return {
           kind: "payment",
           id: r.p.id,
           date: r.ts,
           debit: 0,
           credit: r.p.amount,
-          balance: running,
+          balance: isStore ? 0 : running,
           method: r.p.method,
           memo: r.p.memo,
         };
@@ -1100,7 +1117,7 @@ export class DatabaseStorage implements IStorage {
     });
     const rows = rowsAsc.slice().reverse();
 
-    // 취소 주문 제외 후 누적 청구 합산
+    // 취소 주문 제외 후 누적 청구 합산 (매장 내부 계정은 채권 0)
     const totalOrdered = myOrders
       .filter((o) => o.status !== "cancelled")
       .reduce((s, o) => s + o.totalAmount, 0);
@@ -1111,9 +1128,9 @@ export class DatabaseStorage implements IStorage {
         businessName: customer.businessName,
         managerName: customer.managerName,
         phone: customer.phone,
-        totalOrdered,
-        totalPaid,
-        balance: totalOrdered - totalPaid,
+        totalOrdered: isStore ? 0 : totalOrdered,
+        totalPaid: isStore ? 0 : totalPaid,
+        balance: isStore ? 0 : totalOrdered - totalPaid,
         lastOrderAt: myOrders[0]?.createdAt ?? null,
         lastPaidAt: myPayments[0]?.paidAt ?? null,
       } as CustomerBalance,
