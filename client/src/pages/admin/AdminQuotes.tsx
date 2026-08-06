@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { QuoteDocument } from "@/components/QuoteDocument";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { QuoteView, QuoteBean, QuoteAppendix } from "@shared/schema";
+import type { QuoteView, QuoteBean, QuoteAppendix, Product } from "@shared/schema";
+import { productToAppendix, stripWeight } from "@/lib/quoteAppendix";
 import { Plus, Trash2, X, ExternalLink, Copy, Pencil, FileText } from "lucide-react";
 
 function todayStr(): string {
@@ -38,6 +39,8 @@ const CONSULTING_OPTIONS = [
 export default function AdminQuotes() {
   const { toast } = useToast();
   const { data: quotes } = useQuery<QuoteView[]>({ queryKey: ["/api/admin/quotes"] });
+  const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const beanProducts = (products ?? []).filter((p) => ["blend", "decaf", "single", "single_espresso", "single_filter"].includes(p.category) && p.available === 1);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
@@ -85,20 +88,13 @@ export default function AdminQuotes() {
   function toggleConsulting(item: string) {
     setConsulting((c) => (c.includes(item) ? c.filter((x) => x !== item) : [...c, item]));
   }
-  // 별첨(원두 정보)
-  function addAppendix(name = "") {
-    setAppendix((a) => [...a, { name, origin: "", process: "", flavor: "", note: "" }]);
-  }
-  function seedAppendixFromBeans() {
-    const existing = new Set(appendix.map((a) => a.name));
-    const add = beans.filter((b) => b.name.trim() && !existing.has(b.name)).map((b) => ({ name: b.name, origin: "", process: "", flavor: "", note: "" }));
-    if (add.length) setAppendix((a) => [...a, ...add]);
+  // 별첨(원두 정보) — 상품 상세페이지에서 가져옴. 상품 선택 시 스냅샷 추가/제거.
+  function toggleAppendixProduct(p: Product) {
+    const name = stripWeight(p.name);
+    setAppendix((a) => (a.some((x) => x.name === name) ? a.filter((x) => x.name !== name) : [...a, productToAppendix(p)]));
   }
   function removeAppendix(i: number) {
     setAppendix((a) => a.filter((_, idx) => idx !== i));
-  }
-  function setAppendixField(i: number, key: keyof QuoteAppendix, v: string) {
-    setAppendix((a) => a.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
   }
 
   function resetForm() {
@@ -264,30 +260,36 @@ export default function AdminQuotes() {
             </div>
           </div>
 
-          {/* 별첨 · 원두 정보 */}
+          {/* 별첨 · 원두 정보 — 상품 상세페이지에서 자동 */}
           <div className="mt-6">
-            <div className="mb-2 flex items-center justify-between">
-              <Label className="text-xs">별첨 · 원두 정보 (입력한 항목만 별첨 페이지로 노출)</Label>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={seedAppendixFromBeans} data-testid="button-seed-appendix">표의 원두로 채우기</Button>
-                <Button variant="outline" size="sm" onClick={() => addAppendix()}><Plus className="mr-1 h-3.5 w-3.5" />항목</Button>
-              </div>
+            <Label className="text-xs">별첨 · 원두 정보 (상품을 선택하면 상세페이지 정보를 가져옵니다)</Label>
+            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">블렌드 구성 · 향미 노트 · 로스팅 레벨 · 권장 레시피를 상품 관리의 상세페이지에서 그대로 불러옵니다. 내용을 바꾸려면 상품 관리에서 수정하세요.</p>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {beanProducts.map((p) => {
+                const name = stripWeight(p.name);
+                const checked = appendix.some((a) => a.name === name);
+                return (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 text-sm" data-testid={`appendix-prod-${p.id}`}>
+                    <input type="checkbox" checked={checked} onChange={() => toggleAppendixProduct(p)} className="h-4 w-4 accent-[#6b6a45]" />
+                    <span className={checked ? "text-foreground" : "text-muted-foreground"}>{name}</span>
+                  </label>
+                );
+              })}
             </div>
-            {appendix.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">별첨을 넣지 않으려면 비워두세요. "표의 원두로 채우기"로 원두명을 불러온 뒤 정보를 입력하면 됩니다.</p>
-            ) : (
-              <div className="space-y-3">
+            {appendix.length > 0 && (
+              <div className="mt-3 space-y-2">
                 {appendix.map((a, i) => (
-                  <div key={i} className="rounded-md border border-border p-3" data-testid={`appendix-${i}`}>
-                    <div className="mb-2 flex items-center gap-2">
-                      <Input value={a.name} onChange={(e) => setAppendixField(i, "name", e.target.value)} placeholder="원두명" className="h-8 max-w-xs text-xs font-medium" />
-                      <button onClick={() => removeAppendix(i)} className="ml-auto text-muted-foreground hover:text-destructive" title="삭제"><Trash2 className="h-4 w-4" /></button>
+                  <div key={i} className="rounded-md border border-border p-3 text-xs" data-testid={`appendix-${i}`}>
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-medium text-foreground">{a.name}</span>
+                      <button onClick={() => removeAppendix(i)} className="ml-auto text-muted-foreground hover:text-destructive" title="제외"><X className="h-4 w-4" /></button>
                     </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <Input value={a.origin} onChange={(e) => setAppendixField(i, "origin", e.target.value)} placeholder="원산지 (예: 에티오피아 시다모)" className="h-8 text-xs" />
-                      <Input value={a.process} onChange={(e) => setAppendixField(i, "process", e.target.value)} placeholder="가공방식 (예: 워시드)" className="h-8 text-xs" />
-                      <Input value={a.flavor} onChange={(e) => setAppendixField(i, "flavor", e.target.value)} placeholder="향미 노트 (예: 자몽, 홍차, 꿀)" className="h-8 text-xs" />
-                      <Input value={a.note} onChange={(e) => setAppendixField(i, "note", e.target.value)} placeholder="한줄 설명" className="h-8 text-xs" />
+                    <div className="space-y-0.5 text-muted-foreground">
+                      {a.composition && <div><span className="text-foreground">블렌드 구성</span> · {a.composition}</div>}
+                      {a.flavor && <div><span className="text-foreground">향미 노트</span> · {a.flavor}</div>}
+                      {a.roast && <div><span className="text-foreground">로스팅 레벨</span> · {a.roast}</div>}
+                      {a.recipe && <div><span className="text-foreground">권장 레시피</span> · {a.recipe}</div>}
+                      {!a.composition && !a.flavor && !a.roast && !a.recipe && <div className="italic">상세페이지 정보가 없습니다. 상품 관리에서 입력하세요.</div>}
                     </div>
                   </div>
                 ))}
