@@ -59,6 +59,9 @@ export default function AdminQuotes() {
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
+  const [customerBizNo, setCustomerBizNo] = useState("");
+  const [customerManager, setCustomerManager] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [managerName, setManagerName] = useState("");
   const [managerPhone, setManagerPhone] = useState("");
   const [issueDate, setIssueDate] = useState(todayStr());
@@ -128,15 +131,16 @@ export default function AdminQuotes() {
   }
 
   function resetForm() {
-    setEditingId(null); setCustomerName(""); setManagerName(""); setManagerPhone("");
+    setEditingId(null); setCustomerName(""); setCustomerBizNo(""); setCustomerManager(""); setCustomerPhone(""); setManagerName(""); setManagerPhone("");
     setIssueDate(todayStr()); setValidDays("30"); setUsageHeaders(["", "", ""]);
     setBeans(defaultBeans());
     setConsulting(defaultConsulting()); setAppendix([]); setSaved(null);
   }
 
   function startEdit(q: QuoteView) {
-    setEditingId(q.id); setCustomerName(q.customerName); setManagerName(q.managerName);
-    setManagerPhone(q.managerPhone); setIssueDate(q.issueDate); setValidDays(String(q.validDays));
+    setEditingId(q.id); setCustomerName(q.customerName); setCustomerBizNo(q.customerBizNo ?? "");
+    setCustomerManager(q.customerManager ?? ""); setCustomerPhone(q.customerPhone ?? "");
+    setManagerName(q.managerName); setManagerPhone(q.managerPhone); setIssueDate(q.issueDate); setValidDays(String(q.validDays));
     setUsageHeaders(q.usageHeaders.length ? q.usageHeaders : ["", "", ""]);
     setBeans(q.beans.length ? q.beans.map((b) => ({ name: b.name, listPrice: (b as any).listPrice ?? "", prices: b.prices })) : defaultBeans());
     setConsulting(q.consulting?.length ? q.consulting : defaultConsulting()); setAppendix(q.appendix ?? []); setSaved(null);
@@ -146,7 +150,9 @@ export default function AdminQuotes() {
   async function save() {
     if (!customerName.trim()) { toast({ variant: "destructive", title: "예비 거래처명을 입력해 주세요." }); return; }
     const payload = {
-      customerName: customerName.trim(), managerName: managerName.trim(), managerPhone: managerPhone.trim(),
+      customerName: customerName.trim(), customerBizNo: customerBizNo.trim(),
+      customerManager: customerManager.trim(), customerPhone: customerPhone.trim(),
+      managerName: managerName.trim(), managerPhone: managerPhone.trim(),
       issueDate, validDays: Math.max(1, Number(validDays) || 30),
       usageHeaders, beans: beans.filter((b) => b.name.trim()),
       consulting: consulting.filter((c) => c.label.trim()),
@@ -186,7 +192,7 @@ export default function AdminQuotes() {
   // 미리보기용 견적서 객체
   const preview: QuoteView = {
     id: 0, quoteNo: saved?.quoteNo ?? "미리보기", token: saved?.token ?? "",
-    customerName, managerName, managerPhone, issueDate, validDays: Number(validDays) || 30,
+    customerName, customerBizNo, customerManager, customerPhone, managerName, managerPhone, issueDate, validDays: Number(validDays) || 30,
     usageHeaders, beans: beans.filter((b) => b.name.trim()),
     consulting: consulting.filter((c) => c.label.trim()), consultingFee: "",
     appendix: appendix.filter((a) => a.name.trim()), createdAt: 0,
@@ -208,16 +214,32 @@ export default function AdminQuotes() {
 
           {/* 기본 정보 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5"><Label className="text-xs">예비 거래처명 *</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="○○ 카페" data-testid="input-quote-customer" /></div>
             <div className="space-y-1.5"><Label className="text-xs">발행일</Label>
               <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} /></div>
+            <div className="space-y-1.5"><Label className="text-xs">유효기간(일)</Label>
+              <Input type="number" min="1" value={validDays} onChange={(e) => setValidDays(e.target.value)} className="w-28" /></div>
+          </div>
+
+          {/* 견적자(니트커피) */}
+          <div className="mt-5 mb-2 text-xs font-semibold text-muted-foreground">견적자 (니트커피)</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><Label className="text-xs">담당자</Label>
               <Input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="담당자명" /></div>
             <div className="space-y-1.5"><Label className="text-xs">연락처</Label>
               <Input value={managerPhone} onChange={(e) => setManagerPhone(e.target.value)} placeholder="010-…" /></div>
-            <div className="space-y-1.5"><Label className="text-xs">유효기간(일)</Label>
-              <Input type="number" min="1" value={validDays} onChange={(e) => setValidDays(e.target.value)} className="w-28" /></div>
+          </div>
+
+          {/* 견적 받는 분 */}
+          <div className="mt-5 mb-2 text-xs font-semibold text-muted-foreground">견적 받는 분 (사업자등록번호·담당자·연락처는 선택)</div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5"><Label className="text-xs">회사명(거래처명) *</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="○○ 카페" data-testid="input-quote-customer" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">사업자등록번호</Label>
+              <Input value={customerBizNo} onChange={(e) => setCustomerBizNo(e.target.value)} placeholder="000-00-00000" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">담당자</Label>
+              <Input value={customerManager} onChange={(e) => setCustomerManager(e.target.value)} placeholder="담당자명" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">연락처</Label>
+              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="010-…" /></div>
           </div>
 
           {/* 원두 × 사용량 매트릭스 */}
