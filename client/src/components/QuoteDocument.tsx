@@ -177,7 +177,9 @@ const QDOC_CSS = `
 @media print{
   /* 전역 .print-area(위치/가시성)와 @page A4(margin 14mm)를 그대로 사용 */
   .qdoc.print-area{position:absolute;left:0;top:0;width:100%}
-  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:0;width:100%;background:#fff;line-height:1.5}
+  /* 본문 페이지를 A4 한 장 높이로 채우고(266mm<인쇄영역 269mm) 푸터는 아래에 고정 */
+  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:266mm;padding:0;width:100%;background:#fff;line-height:1.5;display:flex;flex-direction:column}
+  .qdoc .qfoot{margin-top:auto}
   /* 본문(첫 페이지)이 A4 한 장에 들어오도록 세로 간격 압축 */
   .qdoc .qlogo{margin-bottom:14px;width:110px}
   .qdoc .qmeta{line-height:1.75}
@@ -191,8 +193,7 @@ const QDOC_CSS = `
   .qdoc .qcrow{padding:4px 0}
   .qdoc .qcdesc{font-size:8px;line-height:1.4;margin-top:1px}
   .qdoc .qvalid{margin-top:6px}
-  .qdoc .qsign{margin-top:14px}
-  .qdoc .qfoot{margin-top:12px}
+  .qdoc .qfoot{padding-top:12px}
   /* 첫 페이지 본문은 쪼개지지 않게, 별첨은 다음 장부터 */
   .qdoc .qpage2{page-break-before:always;margin-top:0}
   /* 라이트 웨이트 보정 */
