@@ -8,14 +8,23 @@ import { Label } from "@/components/ui/label";
 import { QuoteDocument } from "@/components/QuoteDocument";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { QuoteView, QuoteBean } from "@shared/schema";
+import type { QuoteView, QuoteBean, QuoteAppendix } from "@shared/schema";
 import { Plus, Trash2, X, ExternalLink, Copy, Pencil, FileText } from "lucide-react";
 
 function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-const DEFAULT_BEANS = ["울 블렌드", "코튼 블렌드", "실크 블렌드", "디카페인"];
+// 기본 원두 + 현재 정가(직접 수정 가능)
+const DEFAULT_BEANS: { name: string; listPrice: string }[] = [
+  { name: "울 블렌드", listPrice: "30,000" },
+  { name: "코튼 블렌드", listPrice: "32,000" },
+  { name: "실크 블렌드", listPrice: "37,000" },
+  { name: "디카페인", listPrice: "34,000" },
+];
+function defaultBeans(): QuoteBean[] {
+  return DEFAULT_BEANS.map((b) => ({ name: b.name, listPrice: b.listPrice, prices: ["", "", ""] }));
+}
 const CONSULTING_OPTIONS = [
   "매장 콘셉트 진단 · 원두 매칭",
   "시그니처 음료 레시피 개발 (3종)",
@@ -37,9 +46,10 @@ export default function AdminQuotes() {
   const [issueDate, setIssueDate] = useState(todayStr());
   const [validDays, setValidDays] = useState("30");
   const [usageHeaders, setUsageHeaders] = useState<string[]>(["", "", ""]);
-  const [beans, setBeans] = useState<QuoteBean[]>(DEFAULT_BEANS.map((n) => ({ name: n, prices: ["", "", ""] })));
+  const [beans, setBeans] = useState<QuoteBean[]>(defaultBeans());
   const [consulting, setConsulting] = useState<string[]>([]);
   const [consultingFee, setConsultingFee] = useState("");
+  const [appendix, setAppendix] = useState<QuoteAppendix[]>([]);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<QuoteView | null>(null);
 
@@ -58,7 +68,7 @@ export default function AdminQuotes() {
     setUsageHeaders((h) => h.map((x, idx) => (idx === i ? v : x)));
   }
   function addBean() {
-    setBeans((bs) => [...bs, { name: "", prices: Array.from({ length: cols }, () => "") }]);
+    setBeans((bs) => [...bs, { name: "", listPrice: "", prices: Array.from({ length: cols }, () => "") }]);
   }
   function removeBean(i: number) {
     setBeans((bs) => bs.filter((_, idx) => idx !== i));
@@ -66,26 +76,44 @@ export default function AdminQuotes() {
   function setBeanName(i: number, v: string) {
     setBeans((bs) => bs.map((b, idx) => (idx === i ? { ...b, name: v } : b)));
   }
+  function setBeanList(i: number, v: string) {
+    setBeans((bs) => bs.map((b, idx) => (idx === i ? { ...b, listPrice: v } : b)));
+  }
   function setBeanPrice(bi: number, ci: number, v: string) {
     setBeans((bs) => bs.map((b, idx) => (idx === bi ? { ...b, prices: b.prices.map((p, pi) => (pi === ci ? v : p)) } : b)));
   }
   function toggleConsulting(item: string) {
     setConsulting((c) => (c.includes(item) ? c.filter((x) => x !== item) : [...c, item]));
   }
+  // 별첨(원두 정보)
+  function addAppendix(name = "") {
+    setAppendix((a) => [...a, { name, origin: "", process: "", flavor: "", note: "" }]);
+  }
+  function seedAppendixFromBeans() {
+    const existing = new Set(appendix.map((a) => a.name));
+    const add = beans.filter((b) => b.name.trim() && !existing.has(b.name)).map((b) => ({ name: b.name, origin: "", process: "", flavor: "", note: "" }));
+    if (add.length) setAppendix((a) => [...a, ...add]);
+  }
+  function removeAppendix(i: number) {
+    setAppendix((a) => a.filter((_, idx) => idx !== i));
+  }
+  function setAppendixField(i: number, key: keyof QuoteAppendix, v: string) {
+    setAppendix((a) => a.map((x, idx) => (idx === i ? { ...x, [key]: v } : x)));
+  }
 
   function resetForm() {
     setEditingId(null); setCustomerName(""); setManagerName(""); setManagerPhone("");
     setIssueDate(todayStr()); setValidDays("30"); setUsageHeaders(["", "", ""]);
-    setBeans(DEFAULT_BEANS.map((n) => ({ name: n, prices: ["", "", ""] })));
-    setConsulting([]); setConsultingFee(""); setSaved(null);
+    setBeans(defaultBeans());
+    setConsulting([]); setConsultingFee(""); setAppendix([]); setSaved(null);
   }
 
   function startEdit(q: QuoteView) {
     setEditingId(q.id); setCustomerName(q.customerName); setManagerName(q.managerName);
     setManagerPhone(q.managerPhone); setIssueDate(q.issueDate); setValidDays(String(q.validDays));
     setUsageHeaders(q.usageHeaders.length ? q.usageHeaders : ["", "", ""]);
-    setBeans(q.beans.length ? q.beans : DEFAULT_BEANS.map((n) => ({ name: n, prices: q.usageHeaders.map(() => "") })));
-    setConsulting(q.consulting); setConsultingFee(q.consultingFee); setSaved(null);
+    setBeans(q.beans.length ? q.beans.map((b) => ({ name: b.name, listPrice: (b as any).listPrice ?? "", prices: b.prices })) : defaultBeans());
+    setConsulting(q.consulting); setConsultingFee(q.consultingFee); setAppendix(q.appendix ?? []); setSaved(null);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -95,6 +123,7 @@ export default function AdminQuotes() {
       customerName: customerName.trim(), managerName: managerName.trim(), managerPhone: managerPhone.trim(),
       issueDate, validDays: Math.max(1, Number(validDays) || 30),
       usageHeaders, beans: beans.filter((b) => b.name.trim()), consulting, consultingFee: consultingFee.trim(),
+      appendix: appendix.filter((a) => a.name.trim()),
     };
     setBusy(true);
     try {
@@ -131,7 +160,8 @@ export default function AdminQuotes() {
   const preview: QuoteView = {
     id: 0, quoteNo: saved?.quoteNo ?? "미리보기", token: saved?.token ?? "",
     customerName, managerName, managerPhone, issueDate, validDays: Number(validDays) || 30,
-    usageHeaders, beans: beans.filter((b) => b.name.trim()), consulting, consultingFee, createdAt: 0,
+    usageHeaders, beans: beans.filter((b) => b.name.trim()), consulting, consultingFee,
+    appendix: appendix.filter((a) => a.name.trim()), createdAt: 0,
   };
 
   return (
@@ -173,6 +203,7 @@ export default function AdminQuotes() {
                 <thead>
                   <tr>
                     <th className="border border-border bg-muted/40 p-1 text-left text-xs font-medium">원두</th>
+                    <th className="border border-border bg-muted/40 p-1 text-xs font-medium">정가</th>
                     {usageHeaders.map((h, i) => (
                       <th key={i} className="border border-border bg-muted/40 p-1">
                         <div className="flex items-center gap-1">
@@ -180,6 +211,13 @@ export default function AdminQuotes() {
                           <button onClick={() => removeCol(i)} className="text-muted-foreground hover:text-destructive" title="칸 삭제"><X className="h-3.5 w-3.5" /></button>
                         </div>
                       </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    <th className="border border-border p-0" />
+                    <th className="border border-border bg-muted/20 p-1 text-center text-[10px] font-normal text-muted-foreground">기준가</th>
+                    {usageHeaders.map((_, i) => (
+                      <th key={i} className="border border-border bg-muted/20 p-1 text-center text-[10px] font-normal text-muted-foreground">제안가</th>
                     ))}
                   </tr>
                 </thead>
@@ -191,6 +229,9 @@ export default function AdminQuotes() {
                           <Input value={b.name} onChange={(e) => setBeanName(bi, e.target.value)} placeholder="원두명" className="h-8 min-w-[110px] text-xs" />
                           <button onClick={() => removeBean(bi)} className="text-muted-foreground hover:text-destructive" title="원두 삭제"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
+                      </td>
+                      <td className="border border-border p-1">
+                        <Input value={b.listPrice ?? ""} onChange={(e) => setBeanList(bi, e.target.value)} placeholder="정가" className="h-8 min-w-[76px] text-right text-xs" data-testid={`input-list-${bi}`} />
                       </td>
                       {Array.from({ length: cols }).map((_, ci) => (
                         <td key={ci} className="border border-border p-1">
@@ -221,6 +262,37 @@ export default function AdminQuotes() {
               <Label className="text-xs">컨설팅 비용</Label>
               <Input value={consultingFee} onChange={(e) => setConsultingFee(e.target.value)} placeholder="예: ₩300,000 / 회 · 협의" className="max-w-xs" data-testid="input-consulting-fee" />
             </div>
+          </div>
+
+          {/* 별첨 · 원두 정보 */}
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between">
+              <Label className="text-xs">별첨 · 원두 정보 (입력한 항목만 별첨 페이지로 노출)</Label>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={seedAppendixFromBeans} data-testid="button-seed-appendix">표의 원두로 채우기</Button>
+                <Button variant="outline" size="sm" onClick={() => addAppendix()}><Plus className="mr-1 h-3.5 w-3.5" />항목</Button>
+              </div>
+            </div>
+            {appendix.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">별첨을 넣지 않으려면 비워두세요. "표의 원두로 채우기"로 원두명을 불러온 뒤 정보를 입력하면 됩니다.</p>
+            ) : (
+              <div className="space-y-3">
+                {appendix.map((a, i) => (
+                  <div key={i} className="rounded-md border border-border p-3" data-testid={`appendix-${i}`}>
+                    <div className="mb-2 flex items-center gap-2">
+                      <Input value={a.name} onChange={(e) => setAppendixField(i, "name", e.target.value)} placeholder="원두명" className="h-8 max-w-xs text-xs font-medium" />
+                      <button onClick={() => removeAppendix(i)} className="ml-auto text-muted-foreground hover:text-destructive" title="삭제"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Input value={a.origin} onChange={(e) => setAppendixField(i, "origin", e.target.value)} placeholder="원산지 (예: 에티오피아 시다모)" className="h-8 text-xs" />
+                      <Input value={a.process} onChange={(e) => setAppendixField(i, "process", e.target.value)} placeholder="가공방식 (예: 워시드)" className="h-8 text-xs" />
+                      <Input value={a.flavor} onChange={(e) => setAppendixField(i, "flavor", e.target.value)} placeholder="향미 노트 (예: 자몽, 홍차, 꿀)" className="h-8 text-xs" />
+                      <Input value={a.note} onChange={(e) => setAppendixField(i, "note", e.target.value)} placeholder="한줄 설명" className="h-8 text-xs" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-6 flex items-center gap-2">
