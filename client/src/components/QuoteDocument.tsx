@@ -5,6 +5,10 @@ import type { QuoteView } from "@shared/schema";
 export function QuoteDocument({ quote }: { quote: QuoteView }) {
   const cols = quote.usageHeaders.length || 1;
   const dateStr = (quote.issueDate || "").replace(/-/g, " . ");
+  // 이름이 있고 정보가 하나라도 채워진 별첨 항목만 노출
+  const appendixEntries = (quote.appendix || []).filter(
+    (a) => a.name && (a.origin || a.process || a.flavor || a.note),
+  );
   return (
     <div className="qdoc">
       <style>{QDOC_CSS}</style>
@@ -29,6 +33,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
           <thead>
             <tr>
               <th className="qbean">원두</th>
+              <th className="qlist">정가</th>
               {quote.usageHeaders.map((h, i) => (
                 <th key={i}>{h || "—"}</th>
               ))}
@@ -38,6 +43,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
             {quote.beans.map((b, ri) => (
               <tr key={ri}>
                 <td className="qbean">{b.name}</td>
+                <td className="qp qlistc">{b.listPrice || "—"}</td>
                 {Array.from({ length: cols }).map((_, ci) => (
                   <td key={ci} className="qp">{b.prices[ci] || "—"}</td>
                 ))}
@@ -45,6 +51,9 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
             ))}
           </tbody>
         </table>
+        {quote.usageHeaders.length > 0 && (
+          <div className="qhintline">정가 대비 월 사용량 구간별 제안가입니다.</div>
+        )}
         <div className="qsingle">
           Single Origin — 생두 시세에 따라 단가가 변동되어, 주문 시 별도 안내드립니다. 표기 단가 부가세 별도.
         </div>
@@ -79,6 +88,24 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
           니트커피 · 서울특별시 중구 소월로2길 30 남산트라팰리스 1층 107호 · 070-7717-0613
         </div>
       </div>
+
+      {appendixEntries.length > 0 && (
+        <div className="qpage qpage2">
+          <div className="qlabel">별첨 · 원두 정보</div>
+          <div className="qapp">
+            {appendixEntries.map((a, i) => (
+              <div className="qai" key={i}>
+                <div className="qainame">{a.name}</div>
+                {a.origin ? <div className="qairow"><span className="qaik">원산지</span><span className="qaiv">{a.origin}</span></div> : null}
+                {a.process ? <div className="qairow"><span className="qaik">가공방식</span><span className="qaiv">{a.process}</span></div> : null}
+                {a.flavor ? <div className="qairow"><span className="qaik">향미 노트</span><span className="qaiv">{a.flavor}</span></div> : null}
+                {a.note ? <div className="qairow"><span className="qaik">설명</span><span className="qaiv">{a.note}</span></div> : null}
+              </div>
+            ))}
+          </div>
+          <div className="qfoot">니트커피 · knit coffee · 070-7717-0613</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -103,7 +130,9 @@ const QDOC_CSS = `
 .qdoc .qtable tbody td{font-size:10.5px}
 .qdoc .qtable td.qbean{text-align:left}
 .qdoc .qtable td.qp{text-align:right;font-variant-numeric:tabular-nums}
-.qdoc .qsingle{margin-top:16px;font-size:9.5px;color:var(--soft)}
+.qdoc .qtable th.qlist,.qdoc .qtable td.qlistc{color:var(--faint)}
+.qdoc .qhintline{margin-top:7px;font-size:8.5px;letter-spacing:.02em;color:var(--faint);text-align:right}
+.qdoc .qsingle{margin-top:14px;font-size:9.5px;color:var(--soft)}
 .qdoc .qspacer{flex:1;min-height:56px}
 .qdoc .qbottom{display:flex;justify-content:space-between;align-items:flex-start;gap:30px;padding-top:6px}
 .qdoc .qbl{max-width:320px}
@@ -119,7 +148,16 @@ const QDOC_CSS = `
 .qdoc .qbox{text-align:center;font-size:9px;letter-spacing:.1em;color:var(--soft)}
 .qdoc .qline{width:150px;border-top:1px solid var(--hair);margin-bottom:5px}
 .qdoc .qfoot{margin-top:26px;text-align:center;font-size:8px;letter-spacing:.06em;color:var(--soft);line-height:1.9}
+/* 별첨 */
+.qdoc .qpage2{margin-top:24px}
+.qdoc .qapp{display:flex;flex-direction:column;gap:18px}
+.qdoc .qai{border-top:1px solid var(--hair);padding-top:12px}
+.qdoc .qainame{font-size:12px;font-weight:500;margin-bottom:7px}
+.qdoc .qairow{display:flex;gap:12px;font-size:10px;padding:2px 0}
+.qdoc .qaik{width:64px;flex-shrink:0;color:var(--soft)}
+.qdoc .qaiv{color:var(--ink);flex:1}
 @media print{
   .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:16mm 18mm}
+  .qdoc .qpage2{page-break-before:always;margin-top:0}
 }
 `;
