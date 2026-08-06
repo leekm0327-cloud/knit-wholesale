@@ -35,16 +35,21 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
         <img className="qlogo" src={KNIT_LOGO} alt="knit COFFEE" />
 
         <div className="qmeta">
-          <div>
+          <div className="qcol">
+            <div className="qcap">견적자</div>
             <div><span className="qk">사업자등록번호</span> 714-21-01743</div>
             <div><span className="qk">회사명</span> 니트 커피(knit coffee)</div>
             <div><span className="qk">담당자</span> {quote.managerName || "—"}</div>
             <div><span className="qk">연락처</span> {quote.managerPhone || "—"}</div>
           </div>
-          <div className="qright">{dateStr || "—"}</div>
+          <div className="qcol qcolr">
+            <div className="qcap">받는 분</div>
+            <div><span className="qk">사업자등록번호</span> {quote.customerBizNo || "—"}</div>
+            <div><span className="qk">회사명</span> {quote.customerName || "—"}</div>
+            <div><span className="qk">담당자</span> {quote.customerManager || "—"}</div>
+            <div><span className="qk">연락처</span> {quote.customerPhone || "—"}</div>
+          </div>
         </div>
-
-        <div className="qcust"><span className="qto">To.</span> {quote.customerName || "—"}</div>
 
         <div className="qlabel">Quotation</div>
 
@@ -79,35 +84,36 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
           Single Origin — 생두 시세에 따라 단가가 변동되어, 주문 시 별도 안내드립니다. 표기 단가 부가세 별도.
         </div>
 
-        <div className="qspacer" />
-
-        <div className="qconsult">
-          <div className="qsec">Menu Consulting</div>
-          {consultingItems.length === 0 ? (
-            <div className="qempty">—</div>
-          ) : (
-            <div className="qclist">
-              {consultingItems.map((c, i) => (
-                <div className="qcrow" key={i}>
-                  <div className="qcl">
-                    <div className="qcname">{c.label}</div>
-                    {c.desc ? <div className="qcdesc">{c.desc}</div> : null}
+        {consultingItems.length > 0 && (
+          <>
+            <div className="qspacer" />
+            <div className="qconsult">
+              <div className="qsec">Menu Consulting</div>
+              <div className="qclist">
+                {consultingItems.map((c, i) => (
+                  <div className="qcrow" key={i}>
+                    <div className="qcl">
+                      <div className="qcname">{c.label}</div>
+                      {c.desc ? <div className="qcdesc">{c.desc}</div> : null}
+                    </div>
+                    <div className="qcp qn">{wonFmt(Number(c.price) || 0)}</div>
                   </div>
-                  <div className="qcp qn">{wonFmt(Number(c.price) || 0)}</div>
+                ))}
+                <div className="qcrow qctotal">
+                  <div className="qcl"><div className="qcname">컨설팅 합계 <span className="qvat">(VAT 별도)</span></div></div>
+                  <div className="qcp qn">{wonFmt(consultingTotal)}</div>
                 </div>
-              ))}
-              <div className="qcrow qctotal">
-                <div className="qcl"><div className="qcname">컨설팅 합계 <span className="qvat">(VAT 별도)</span></div></div>
-                <div className="qcp qn">{wonFmt(consultingTotal)}</div>
               </div>
             </div>
-          )}
-          <div className="qvalid">Valid · 발행일로부터 {quote.validDays}일</div>
-        </div>
+          </>
+        )}
 
-        <div className="qfoot">
-          본 견적의 유효기간은 발행일로부터 {quote.validDays}일입니다. 표기 단가는 부가세 별도이며 1kg 기준입니다.<br />
-          니트커피 · 서울특별시 중구 소월로2길 30 남산트라팰리스 1층 107호 · 070-7717-0613
+        <div className="qbottom">
+          <div className="qdateline">{dateStr || "—"}</div>
+          <div className="qfoot">
+            본 견적의 유효기간은 발행일로부터 {quote.validDays}일입니다. 표기 단가는 부가세 별도이며 1kg 기준입니다.<br />
+            니트커피 · 서울특별시 중구 소월로2길 30 남산트라팰리스 1층 107호 · 070-7717-0613
+          </div>
         </div>
       </div>
 
@@ -142,11 +148,17 @@ const QDOC_CSS = `
 .qdoc .qpage{max-width:620px;margin:0 auto;background:#fefdfb;padding:52px 58px 40px;min-height:840px;
   display:flex;flex-direction:column;box-shadow:0 6px 30px rgba(0,0,0,.09);font-size:10.5px;line-height:1.7}
 .qdoc .qlogo{display:block;margin:0 auto 42px;width:132px;height:auto}
-.qdoc .qmeta{display:flex;justify-content:space-between;font-size:10px;line-height:2.05}
+.qdoc .qmeta{display:flex;justify-content:space-between;gap:24px;font-size:10px;line-height:2.05}
+.qdoc .qcol{min-width:0}
+.qdoc .qcolr{text-align:right}
+.qdoc .qcap{font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
 .qdoc .qk{display:inline-block;width:90px;color:var(--soft)}
+.qdoc .qcolr .qk{width:auto;margin-right:6px}
 .qdoc .qright{text-align:right;color:var(--soft)}
 .qdoc .qcust{margin-top:22px;font-size:12px;font-weight:500}
 .qdoc .qto{color:var(--soft);font-weight:400}
+.qdoc .qbottom{margin-top:34px}
+.qdoc .qdateline{text-align:center;font-size:9.5px;letter-spacing:.08em;color:var(--soft);margin-bottom:10px}
 .qdoc .qlabel{text-align:center;font-size:11px;font-weight:300;letter-spacing:.42em;text-transform:uppercase;margin:40px 0 16px}
 .qdoc .qsec{text-align:center;font-size:9.5px;font-weight:400;letter-spacing:.3em;text-transform:uppercase;color:var(--soft);margin:0 0 14px}
 .qdoc .qtable{width:100%;border-collapse:collapse}
@@ -160,7 +172,7 @@ const QDOC_CSS = `
 .qdoc .qtable th.qlist,.qdoc .qtable td.qlistc{color:var(--soft);font-weight:400}
 .qdoc .qhintline{margin-top:7px;font-size:8.5px;letter-spacing:.02em;color:var(--faint);text-align:right}
 .qdoc .qsingle{margin-top:14px;font-size:9.5px;color:var(--soft)}
-.qdoc .qspacer{flex:1;min-height:72px}
+.qdoc .qspacer{min-height:108px}
 .qdoc .qh{font-size:10px;font-weight:500;margin-bottom:10px}
 .qdoc .qn{font-variant-numeric:tabular-nums}
 .qdoc .qconsult{padding-top:6px}
@@ -179,6 +191,7 @@ const QDOC_CSS = `
 .qdoc .qbox{text-align:center;font-size:9px;letter-spacing:.1em;color:var(--soft)}
 .qdoc .qline{width:150px;border-top:1px solid var(--hair);margin-bottom:5px}
 .qdoc .qfoot{margin-top:26px;text-align:center;font-size:8px;letter-spacing:.06em;color:var(--soft);line-height:1.9}
+.qdoc .qbottom .qfoot{margin-top:0;border-top:1px solid var(--hair);padding-top:12px}
 /* 별첨 */
 .qdoc .qpage2{margin-top:24px}
 .qdoc .qapp{display:flex;flex-direction:column;gap:18px}
@@ -192,7 +205,7 @@ const QDOC_CSS = `
   .qdoc.print-area{position:absolute;left:0;top:0;width:100%}
   /* 본문 페이지를 A4 한 장 높이로 채우고(266mm<인쇄영역 269mm) 푸터는 아래에 고정 */
   .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:266mm;padding:0;width:100%;background:#fff;line-height:1.5;display:flex;flex-direction:column}
-  .qdoc .qfoot{margin-top:auto}
+  .qdoc .qbottom{margin-top:auto}
   /* 본문(첫 페이지)이 A4 한 장에 들어오도록 세로 간격 압축 */
   .qdoc .qlogo{margin-bottom:14px;width:110px}
   .qdoc .qmeta{line-height:1.75}
@@ -200,13 +213,14 @@ const QDOC_CSS = `
   .qdoc .qlabel{margin:14px 0 8px}
   .qdoc .qtable th,.qdoc .qtable td{padding:5px 4px}
   .qdoc .qsingle{margin-top:8px}
-  .qdoc .qspacer{flex:0 0 auto;min-height:30px}
+  .qdoc .qspacer{flex:0 0 auto;min-height:56px}
   .qdoc .qconsult{padding-top:2px}
   .qdoc .qsec{margin-bottom:10px}
   .qdoc .qcrow{padding:7px 0}
   .qdoc .qcdesc{font-size:8px;line-height:1.6;margin-top:3px}
   .qdoc .qvalid{margin-top:6px}
-  .qdoc .qfoot{padding-top:12px}
+  .qdoc .qdateline{margin-bottom:8px}
+  .qdoc .qbottom .qfoot{padding-top:10px}
   /* 첫 페이지 본문은 쪼개지지 않게, 별첨은 다음 장부터 */
   .qdoc .qpage2{page-break-before:always;margin-top:0}
   /* 라이트 웨이트 보정 */
