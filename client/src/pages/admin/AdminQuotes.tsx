@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { QuoteDocument } from "@/components/QuoteDocument";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,13 @@ function defaultConsulting(): QuoteConsulting[] {
 }
 function parseWon(v: string): number {
   return Number((v || "").replace(/[^0-9]/g, "")) || 0;
+}
+// "월 5kg" ↔ 숫자 5
+function usageNum(h: string): string {
+  return (h || "").replace(/[^0-9.]/g, "");
+}
+function usageHeaderOf(n: string): string {
+  return n ? `월 ${n}kg` : "";
 }
 
 export default function AdminQuotes() {
@@ -96,6 +104,9 @@ export default function AdminQuotes() {
   }
   function setConsultingLabel(i: number, v: string) {
     setConsulting((c) => c.map((x, idx) => (idx === i ? { ...x, label: v } : x)));
+  }
+  function setConsultingDesc(i: number, v: string) {
+    setConsulting((c) => c.map((x, idx) => (idx === i ? { ...x, desc: v } : x)));
   }
   function setConsultingPrice(i: number, v: string) {
     setConsulting((c) => c.map((x, idx) => (idx === i ? { ...x, price: parseWon(v) } : x)));
@@ -224,8 +235,10 @@ export default function AdminQuotes() {
                     {usageHeaders.map((h, i) => (
                       <th key={i} className="border border-border bg-muted/40 p-1">
                         <div className="flex items-center gap-1">
-                          <Input value={h} onChange={(e) => setHeader(i, e.target.value)} placeholder="월 5kg" className="h-8 min-w-[80px] text-xs" data-testid={`input-col-${i}`} />
-                          <button onClick={() => removeCol(i)} className="text-muted-foreground hover:text-destructive" title="칸 삭제"><X className="h-3.5 w-3.5" /></button>
+                          <span className="text-[11px] text-muted-foreground">월</span>
+                          <Input type="number" min="0" step="1" value={usageNum(h)} onChange={(e) => setHeader(i, usageHeaderOf(e.target.value))} placeholder="00" className="h-8 w-14 text-right text-xs" data-testid={`input-col-${i}`} />
+                          <span className="text-[11px] text-muted-foreground">kg</span>
+                          <button onClick={() => removeCol(i)} className="ml-0.5 text-muted-foreground hover:text-destructive" title="칸 삭제"><X className="h-3.5 w-3.5" /></button>
                         </div>
                       </th>
                     ))}
@@ -276,7 +289,7 @@ export default function AdminQuotes() {
                   <input type="checkbox" checked={c.checked} onChange={() => toggleConsulting(i)} className="mt-1 h-4 w-4 accent-[#6b6a45]" />
                   <div className="min-w-0 flex-1">
                     <Input value={c.label} onChange={(e) => setConsultingLabel(i, e.target.value)} placeholder="항목명" className="h-8 text-xs font-medium" />
-                    {c.desc ? <p className="mt-0.5 text-[11px] text-muted-foreground">{c.desc}</p> : null}
+                    <Textarea value={c.desc} onChange={(e) => setConsultingDesc(i, e.target.value)} placeholder="항목 설명 (수정 가능)" rows={2} className="mt-1 min-h-[34px] resize-none text-[11px] leading-snug" data-testid={`consulting-desc-${i}`} />
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-xs text-muted-foreground">₩</span>
