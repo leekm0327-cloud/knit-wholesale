@@ -19,7 +19,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
   const consultingItems = (quote.consulting || []).filter((c) => c.checked);
   const consultingTotal = consultingItems.reduce((s, c) => s + (Number(c.price) || 0), 0);
   return (
-    <div className="qdoc">
+    <div className="qdoc print-area">
       <style>{QDOC_CSS}</style>
       <div className="qpage">
         <img className="qlogo" src={KNIT_LOGO} alt="knit COFFEE" />
@@ -125,9 +125,9 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
 }
 
 const QDOC_CSS = `
-.qdoc{--ink:#20201e;--soft:#9a978f;--hair:#dcd9d1;--faint:#c3bfb5;
+.qdoc{--ink:#181712;--soft:#6b6858;--hair:#cfc9b8;--faint:#8f8b7c;
   font-family:"Helvetica Neue",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
-  color:var(--ink);font-weight:300;letter-spacing:.02em}
+  color:var(--ink);font-weight:400;letter-spacing:.02em}
 .qdoc .qpage{max-width:620px;margin:0 auto;background:#fefdfb;padding:52px 58px 40px;min-height:840px;
   display:flex;flex-direction:column;box-shadow:0 6px 30px rgba(0,0,0,.09);font-size:10.5px;line-height:1.7}
 .qdoc .qlogo{display:block;margin:0 auto 42px;width:132px;height:auto}
@@ -175,7 +175,11 @@ const QDOC_CSS = `
 .qdoc .qaik{width:74px;flex-shrink:0;color:var(--soft)}
 .qdoc .qaiv{color:var(--ink);flex:1}
 @media print{
-  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:16mm 18mm}
+  /* 전역 .print-area(위치/가시성)와 @page A4(margin 14mm)를 그대로 사용 — 여기선 내부 여백만 정리 */
+  .qdoc.print-area{position:absolute;left:0;top:0;width:100%}
+  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:0;width:100%;background:#fff}
   .qdoc .qpage2{page-break-before:always;margin-top:0}
+  /* 인쇄 시 본문 가독성 — 라이트 웨이트 보정 */
+  .qdoc,.qdoc .qcname,.qdoc td,.qdoc .qmeta{font-weight:400}
 }
 `;
