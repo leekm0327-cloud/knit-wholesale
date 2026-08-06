@@ -121,9 +121,11 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
 }
 
 const QDOC_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap');
+/* 한글: Gowun Batang / 영어: Mendl Serif(임베드 시 활성, 미임베드 시 Gowun Batang→serif 폴백) */
 .qdoc{--ink:#181712;--soft:#6b6858;--hair:#cfc9b8;--faint:#8f8b7c;
-  font-family:"Helvetica Neue",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;
-  color:var(--ink);font-weight:400;letter-spacing:.02em}
+  font-family:"Mendl Serif","Gowun Batang",serif;
+  color:var(--ink);font-weight:400;letter-spacing:.01em}
 .qdoc .qpage{max-width:620px;margin:0 auto;background:#fefdfb;padding:52px 58px 40px;min-height:840px;
   display:flex;flex-direction:column;box-shadow:0 6px 30px rgba(0,0,0,.09);font-size:10.5px;line-height:1.7}
 .qdoc .qlogo{display:block;margin:0 auto 42px;width:132px;height:auto}
