@@ -443,6 +443,10 @@ for (const [table, col] of [
   ["purchases", "customer_name TEXT NOT NULL DEFAULT ''"],
   // 견적서 별첨(원두 정보) — quotes 테이블이 이미 만들어진 배포 대비 컬럼 추가
   ["quotes", "appendix TEXT NOT NULL DEFAULT '[]'"],
+  // 견적서 '받는 분' 정보(선택) — 사업자등록번호/담당자/연락처
+  ["quotes", "customer_biz_no TEXT NOT NULL DEFAULT ''"],
+  ["quotes", "customer_manager TEXT NOT NULL DEFAULT ''"],
+  ["quotes", "customer_phone TEXT NOT NULL DEFAULT ''"],
   // D: 재무 부문(sector) 컬럼. 기존행은 default 값으로 채워짐.
   ["store_sales", "sector TEXT NOT NULL DEFAULT 'store'"],
   ["expenses", "sector TEXT NOT NULL DEFAULT 'common'"],
@@ -2340,6 +2344,9 @@ export class DatabaseStorage implements IStorage {
         quoteNo: this.genQuoteNo(),
         token: crypto.randomBytes(12).toString("hex"), // 24자 공개 토큰
         customerName: q.customerName ?? "",
+        customerBizNo: q.customerBizNo ?? "",
+        customerManager: q.customerManager ?? "",
+        customerPhone: q.customerPhone ?? "",
         managerName: q.managerName ?? "",
         managerPhone: q.managerPhone ?? "",
         issueDate: q.issueDate,
@@ -2360,6 +2367,9 @@ export class DatabaseStorage implements IStorage {
       .update(quotes)
       .set({
         customerName: q.customerName ?? "",
+        customerBizNo: q.customerBizNo ?? "",
+        customerManager: q.customerManager ?? "",
+        customerPhone: q.customerPhone ?? "",
         managerName: q.managerName ?? "",
         managerPhone: q.managerPhone ?? "",
         issueDate: q.issueDate,

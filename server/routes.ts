@@ -2251,7 +2251,8 @@ export async function registerRoutes(
     try { appendix = JSON.parse(q.appendix || "[]"); } catch { /* noop */ }
     return {
       id: q.id, quoteNo: q.quoteNo, token: q.token,
-      customerName: q.customerName, managerName: q.managerName, managerPhone: q.managerPhone,
+      customerName: q.customerName, customerBizNo: q.customerBizNo, customerManager: q.customerManager, customerPhone: q.customerPhone,
+      managerName: q.managerName, managerPhone: q.managerPhone,
       issueDate: q.issueDate, validDays: q.validDays,
       usageHeaders, beans, consulting, consultingFee: q.consultingFee, appendix,
       createdAt: q.createdAt,
