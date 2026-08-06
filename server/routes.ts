@@ -37,6 +37,7 @@ import {
   resetPasswordSchema,
   insertSupplierSchema,
   insertPurchaseSchema,
+  insertQuoteSchema,
   insertSupplierPaymentSchema,
   purchaseItemSchema,
   insertStoreSaleSchema,
@@ -2239,6 +2240,59 @@ export async function registerRoutes(
       link: `/admin/chat/${customerId}`,
     });
     res.json(msg);
+  });
+
+  // ===== 예비 거래처 견적서 =====
+  function parseQuote(q: any) {
+    let usageHeaders: string[] = [], beans: any[] = [], consulting: string[] = [];
+    try { usageHeaders = JSON.parse(q.usageHeaders || "[]"); } catch { /* noop */ }
+    try { beans = JSON.parse(q.beans || "[]"); } catch { /* noop */ }
+    try { consulting = JSON.parse(q.consulting || "[]"); } catch { /* noop */ }
+    return {
+      id: q.id, quoteNo: q.quoteNo, token: q.token,
+      customerName: q.customerName, managerName: q.managerName, managerPhone: q.managerPhone,
+      issueDate: q.issueDate, validDays: q.validDays,
+      usageHeaders, beans, consulting, consultingFee: q.consultingFee,
+      createdAt: q.createdAt,
+    };
+  }
+
+  app.get("/api/admin/quotes", requireAdmin, async (_req, res) => {
+    const list = await storage.listQuotes();
+    res.json(list.map(parseQuote));
+  });
+  app.get("/api/admin/quotes/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const q = await storage.getQuote(id);
+    if (!q) return res.status(404).json({ message: "견적서를 찾을 수 없습니다." });
+    res.json(parseQuote(q));
+  });
+  app.post("/api/admin/quotes", requireAdmin, async (req, res) => {
+    const parsed = insertQuoteSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const q = await storage.createQuote(parsed.data);
+    res.json(parseQuote(q));
+  });
+  app.patch("/api/admin/quotes/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getQuote(id);
+    if (!existing) return res.status(404).json({ message: "견적서를 찾을 수 없습니다." });
+    const parsed = insertQuoteSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const q = await storage.updateQuote(id, parsed.data);
+    res.json(parseQuote(q));
+  });
+  app.delete("/api/admin/quotes/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    await storage.deleteQuote(id);
+    res.json({ ok: true });
+  });
+  // 공개 조회 (로그인 불필요) — 공유 링크용
+  app.get("/api/quote/public/:token", async (req, res) => {
+    const token = String(req.params.token || "");
+    const q = await storage.getQuoteByToken(token);
+    if (!q) return res.status(404).json({ message: "견적서를 찾을 수 없습니다." });
+    res.json(parseQuote(q));
   });
 
   // ===== #32 거래내역서 =====

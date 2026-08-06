@@ -1,4 +1,4 @@
-import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications, chatMessages } from "@shared/schema";
+import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications, chatMessages, quotes } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -60,6 +60,8 @@ import type {
   KakaoTokens,
   ChatMessage,
   ChatThread,
+  Quote,
+  InsertQuote,
 } from "@shared/schema";
 import { SECTORS, SECTOR_LABEL } from "@shared/schema";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -68,6 +70,7 @@ import { eq, desc, gt, and, asc, gte, lte, like } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import path from "node:path";
 import fs from "node:fs";
+import crypto from "node:crypto";
 
 // DB 경로: 환경변수 DATA_DIR이 있으면 거기에, 없으면 작업 디렉토리에.
 // Railway 등에서는 Volume mount path를 DATA_DIR로 지정 → 컨테이너 재시작 시에도 데이터 영구 보존.
@@ -249,6 +252,22 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_customer ON chat_messages(customer_id, created_at);
+CREATE TABLE IF NOT EXISTS quotes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quote_no TEXT NOT NULL UNIQUE,
+  token TEXT NOT NULL UNIQUE,
+  customer_name TEXT NOT NULL DEFAULT '',
+  manager_name TEXT NOT NULL DEFAULT '',
+  manager_phone TEXT NOT NULL DEFAULT '',
+  issue_date TEXT NOT NULL,
+  valid_days INTEGER NOT NULL DEFAULT 30,
+  usage_headers TEXT NOT NULL DEFAULT '[]',
+  beans TEXT NOT NULL DEFAULT '[]',
+  consulting TEXT NOT NULL DEFAULT '[]',
+  consulting_fee TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quotes_created ON quotes(created_at DESC);
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL,
@@ -2293,6 +2312,75 @@ export class DatabaseStorage implements IStorage {
     }
     threads.sort((a, b) => b.lastAt - a.lastAt);
     return threads;
+  }
+
+  // ===== 예비 거래처 견적서 =====
+  private genQuoteNo(): string {
+    const d = new Date();
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const prefix = `Q-${yy}${mm}${dd}-`;
+    const todays = db.select().from(quotes).where(like(quotes.quoteNo, `${prefix}%`)).all();
+    let maxSeq = 0;
+    for (const q of todays) {
+      const seq = Number(q.quoteNo.slice(prefix.length));
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
+  }
+
+  async createQuote(q: InsertQuote): Promise<Quote> {
+    return db
+      .insert(quotes)
+      .values({
+        quoteNo: this.genQuoteNo(),
+        token: crypto.randomBytes(12).toString("hex"), // 24자 공개 토큰
+        customerName: q.customerName ?? "",
+        managerName: q.managerName ?? "",
+        managerPhone: q.managerPhone ?? "",
+        issueDate: q.issueDate,
+        validDays: q.validDays ?? 30,
+        usageHeaders: JSON.stringify(q.usageHeaders ?? []),
+        beans: JSON.stringify(q.beans ?? []),
+        consulting: JSON.stringify(q.consulting ?? []),
+        consultingFee: q.consultingFee ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+
+  async updateQuote(id: number, q: InsertQuote): Promise<Quote | undefined> {
+    return db
+      .update(quotes)
+      .set({
+        customerName: q.customerName ?? "",
+        managerName: q.managerName ?? "",
+        managerPhone: q.managerPhone ?? "",
+        issueDate: q.issueDate,
+        validDays: q.validDays ?? 30,
+        usageHeaders: JSON.stringify(q.usageHeaders ?? []),
+        beans: JSON.stringify(q.beans ?? []),
+        consulting: JSON.stringify(q.consulting ?? []),
+        consultingFee: q.consultingFee ?? "",
+      })
+      .where(eq(quotes.id, id))
+      .returning()
+      .get();
+  }
+
+  async listQuotes(): Promise<Quote[]> {
+    return db.select().from(quotes).orderBy(desc(quotes.createdAt), desc(quotes.id)).all();
+  }
+  async getQuote(id: number): Promise<Quote | undefined> {
+    return db.select().from(quotes).where(eq(quotes.id, id)).get();
+  }
+  async getQuoteByToken(token: string): Promise<Quote | undefined> {
+    return db.select().from(quotes).where(eq(quotes.token, token)).get();
+  }
+  async deleteQuote(id: number): Promise<void> {
+    db.delete(quotes).where(eq(quotes.id, id)).run();
   }
 
   // ===== 비밀번호 재설정 토큰 (#26) =====
