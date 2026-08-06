@@ -265,6 +265,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   beans TEXT NOT NULL DEFAULT '[]',
   consulting TEXT NOT NULL DEFAULT '[]',
   consulting_fee TEXT NOT NULL DEFAULT '',
+  appendix TEXT NOT NULL DEFAULT '[]',
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_quotes_created ON quotes(created_at DESC);
@@ -440,6 +441,8 @@ for (const [table, col] of [
   // 발주-거래처 연결 (자동발주=주문 거래처, 직접등록=선택/입력)
   ["purchases", "customer_id INTEGER"],
   ["purchases", "customer_name TEXT NOT NULL DEFAULT ''"],
+  // 견적서 별첨(원두 정보) — quotes 테이블이 이미 만들어진 배포 대비 컬럼 추가
+  ["quotes", "appendix TEXT NOT NULL DEFAULT '[]'"],
   // D: 재무 부문(sector) 컬럼. 기존행은 default 값으로 채워짐.
   ["store_sales", "sector TEXT NOT NULL DEFAULT 'store'"],
   ["expenses", "sector TEXT NOT NULL DEFAULT 'common'"],
@@ -2345,6 +2348,7 @@ export class DatabaseStorage implements IStorage {
         beans: JSON.stringify(q.beans ?? []),
         consulting: JSON.stringify(q.consulting ?? []),
         consultingFee: q.consultingFee ?? "",
+        appendix: JSON.stringify(q.appendix ?? []),
         createdAt: Date.now(),
       })
       .returning()
@@ -2364,6 +2368,7 @@ export class DatabaseStorage implements IStorage {
         beans: JSON.stringify(q.beans ?? []),
         consulting: JSON.stringify(q.consulting ?? []),
         consultingFee: q.consultingFee ?? "",
+        appendix: JSON.stringify(q.appendix ?? []),
       })
       .where(eq(quotes.id, id))
       .returning()

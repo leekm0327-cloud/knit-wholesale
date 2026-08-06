@@ -2244,15 +2244,16 @@ export async function registerRoutes(
 
   // ===== 예비 거래처 견적서 =====
   function parseQuote(q: any) {
-    let usageHeaders: string[] = [], beans: any[] = [], consulting: string[] = [];
+    let usageHeaders: string[] = [], beans: any[] = [], consulting: string[] = [], appendix: any[] = [];
     try { usageHeaders = JSON.parse(q.usageHeaders || "[]"); } catch { /* noop */ }
     try { beans = JSON.parse(q.beans || "[]"); } catch { /* noop */ }
     try { consulting = JSON.parse(q.consulting || "[]"); } catch { /* noop */ }
+    try { appendix = JSON.parse(q.appendix || "[]"); } catch { /* noop */ }
     return {
       id: q.id, quoteNo: q.quoteNo, token: q.token,
       customerName: q.customerName, managerName: q.managerName, managerPhone: q.managerPhone,
       issueDate: q.issueDate, validDays: q.validDays,
-      usageHeaders, beans, consulting, consultingFee: q.consultingFee,
+      usageHeaders, beans, consulting, consultingFee: q.consultingFee, appendix,
       createdAt: q.createdAt,
     };
   }
