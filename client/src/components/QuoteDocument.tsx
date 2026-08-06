@@ -1,14 +1,23 @@
 import { KNIT_LOGO } from "@/lib/knitLogo";
+import { beanRank } from "@/lib/quoteAppendix";
 import type { QuoteView } from "@shared/schema";
+
+function wonFmt(n: number): string {
+  return n > 0 ? `₩${n.toLocaleString()}` : "협의";
+}
 
 // 견적서 문서 렌더 (관리자 미리보기 + 공개 뷰 공용). CÉLINE 무드 · 단색 미니멀.
 export function QuoteDocument({ quote }: { quote: QuoteView }) {
   const cols = quote.usageHeaders.length || 1;
   const dateStr = (quote.issueDate || "").replace(/-/g, " . ");
-  // 이름이 있고 정보가 하나라도 채워진 별첨 항목만 노출
-  const appendixEntries = (quote.appendix || []).filter(
-    (a) => a.name && (a.composition || a.flavor || a.roast || a.recipe),
-  );
+  // 이름이 있고 정보가 하나라도 채워진 별첨 항목만 노출 (코튼>울>실크>디카페인 순)
+  const appendixEntries = (quote.appendix || [])
+    .filter((a) => a.name && (a.composition || a.flavor || a.roast || a.recipe))
+    .slice()
+    .sort((a, b) => beanRank(a.name) - beanRank(b.name));
+  // 체크된 컨설팅 항목 + 합계
+  const consultingItems = (quote.consulting || []).filter((c) => c.checked);
+  const consultingTotal = consultingItems.reduce((s, c) => s + (Number(c.price) || 0), 0);
   return (
     <div className="qdoc">
       <style>{QDOC_CSS}</style>
@@ -52,7 +61,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
           </tbody>
         </table>
         {quote.usageHeaders.length > 0 && (
-          <div className="qhintline">정가 대비 월 사용량 구간별 제안가입니다.</div>
+          <div className="qhintline">정가 대비 월 사용량 구간별 제안가 · 모든 단가 VAT 별도</div>
         )}
         <div className="qsingle">
           Single Origin — 생두 시세에 따라 단가가 변동되어, 주문 시 별도 안내드립니다. 표기 단가 부가세 별도.
@@ -60,23 +69,28 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
 
         <div className="qspacer" />
 
-        <div className="qbottom">
-          <div className="qbl">
-            <div className="qh">Menu Consulting</div>
-            {quote.consulting.length === 0 ? (
-              <div className="qempty">—</div>
-            ) : (
-              <ul className="qcout">
-                {quote.consulting.map((c, i) => (
-                  <li key={i}>{c}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="qbr">
-            <div className="qrowt"><span>Valid</span><span className="qn">발행일 +{quote.validDays}일</span></div>
-            <div className="qrowt qtotal"><span>컨설팅 비용</span><span className="qn">{quote.consultingFee || "—"}</span></div>
-          </div>
+        <div className="qconsult">
+          <div className="qh">Menu Consulting</div>
+          {consultingItems.length === 0 ? (
+            <div className="qempty">—</div>
+          ) : (
+            <div className="qclist">
+              {consultingItems.map((c, i) => (
+                <div className="qcrow" key={i}>
+                  <div className="qcl">
+                    <div className="qcname">{c.label}</div>
+                    {c.desc ? <div className="qcdesc">{c.desc}</div> : null}
+                  </div>
+                  <div className="qcp qn">{wonFmt(Number(c.price) || 0)}</div>
+                </div>
+              ))}
+              <div className="qcrow qctotal">
+                <div className="qcl"><div className="qcname">컨설팅 합계 <span className="qvat">(VAT 별도)</span></div></div>
+                <div className="qcp qn">{wonFmt(consultingTotal)}</div>
+              </div>
+            </div>
+          )}
+          <div className="qvalid">Valid · 발행일로부터 {quote.validDays}일</div>
         </div>
 
         <div className="qsign">
@@ -133,17 +147,21 @@ const QDOC_CSS = `
 .qdoc .qtable th.qlist,.qdoc .qtable td.qlistc{color:var(--faint)}
 .qdoc .qhintline{margin-top:7px;font-size:8.5px;letter-spacing:.02em;color:var(--faint);text-align:right}
 .qdoc .qsingle{margin-top:14px;font-size:9.5px;color:var(--soft)}
-.qdoc .qspacer{flex:1;min-height:56px}
-.qdoc .qbottom{display:flex;justify-content:space-between;align-items:flex-start;gap:30px;padding-top:6px}
-.qdoc .qbl{max-width:320px}
-.qdoc .qh{font-size:10px;font-weight:500;margin-bottom:8px}
-.qdoc .qcout{margin:0;padding:0}
-.qdoc .qcout li{list-style:none;font-size:10px;padding:2px 0}
-.qdoc .qempty{font-size:9.5px;color:var(--faint)}
-.qdoc .qbr{text-align:right;min-width:160px}
-.qdoc .qrowt{display:flex;justify-content:space-between;gap:24px;font-size:10px;color:var(--soft);padding:3px 0}
-.qdoc .qrowt.qtotal{color:var(--ink);font-weight:500;border-top:1px solid var(--hair);margin-top:6px;padding-top:8px}
+.qdoc .qspacer{flex:1;min-height:40px}
+.qdoc .qh{font-size:10px;font-weight:500;margin-bottom:10px}
 .qdoc .qn{font-variant-numeric:tabular-nums}
+.qdoc .qconsult{padding-top:6px}
+.qdoc .qempty{font-size:9.5px;color:var(--faint)}
+.qdoc .qclist{border-top:1px solid var(--hair)}
+.qdoc .qcrow{display:flex;justify-content:space-between;align-items:baseline;gap:18px;border-bottom:1px solid var(--hair);padding:8px 0}
+.qdoc .qcname{font-size:11px}
+.qdoc .qcdesc{font-size:9px;color:var(--soft);margin-top:2px;line-height:1.6}
+.qdoc .qcp{font-size:11px;white-space:nowrap}
+.qdoc .qcrow.qctotal{border-bottom:none;border-top:1px solid var(--ink);margin-top:2px;padding-top:9px}
+.qdoc .qcrow.qctotal .qcname{font-weight:600}
+.qdoc .qcrow.qctotal .qcp{font-weight:600;font-size:12px}
+.qdoc .qvat{color:var(--soft);font-weight:400;font-size:9px}
+.qdoc .qvalid{margin-top:12px;font-size:9px;letter-spacing:.06em;color:var(--soft);text-align:right}
 .qdoc .qsign{display:flex;justify-content:flex-end;margin-top:40px}
 .qdoc .qbox{text-align:center;font-size:9px;letter-spacing:.1em;color:var(--soft)}
 .qdoc .qline{width:150px;border-top:1px solid var(--hair);margin-bottom:5px}
