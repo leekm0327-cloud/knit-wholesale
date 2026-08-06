@@ -381,6 +381,8 @@ export type Quote = typeof quotes.$inferSelect;
 export type QuoteBean = { name: string; listPrice: string; prices: string[] };
 // 별첨(원두 정보) 항목 — 상품 상세페이지에서 가져옴
 export type QuoteAppendix = { name: string; composition: string; flavor: string; roast: string; recipe: string };
+// 메뉴 컨설팅 항목 — 항목별 금액, 체크 시 합산
+export type QuoteConsulting = { label: string; desc: string; price: number; checked: boolean };
 // 파싱된 견적서(뷰용)
 export type QuoteView = {
   id: number;
@@ -393,7 +395,7 @@ export type QuoteView = {
   validDays: number;
   usageHeaders: string[];
   beans: QuoteBean[];
-  consulting: string[];
+  consulting: QuoteConsulting[];
   consultingFee: string;
   appendix: QuoteAppendix[];
   createdAt: number;
@@ -410,7 +412,12 @@ export const insertQuoteSchema = z.object({
     listPrice: z.string().optional().default(""),
     prices: z.array(z.string()),
   })).optional().default([]),
-  consulting: z.array(z.string()).optional().default([]),
+  consulting: z.array(z.object({
+    label: z.string(),
+    desc: z.string().optional().default(""),
+    price: z.number().optional().default(0),
+    checked: z.boolean().optional().default(false),
+  })).optional().default([]),
   consultingFee: z.string().optional().default(""),
   appendix: z.array(z.object({
     name: z.string(),
