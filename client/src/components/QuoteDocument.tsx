@@ -175,11 +175,25 @@ const QDOC_CSS = `
 .qdoc .qaik{width:74px;flex-shrink:0;color:var(--soft)}
 .qdoc .qaiv{color:var(--ink);flex:1}
 @media print{
-  /* 전역 .print-area(위치/가시성)와 @page A4(margin 14mm)를 그대로 사용 — 여기선 내부 여백만 정리 */
+  /* 전역 .print-area(위치/가시성)와 @page A4(margin 14mm)를 그대로 사용 */
   .qdoc.print-area{position:absolute;left:0;top:0;width:100%}
-  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:0;width:100%;background:#fff}
+  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:0;width:100%;background:#fff;line-height:1.5}
+  /* 본문(첫 페이지)이 A4 한 장에 들어오도록 세로 간격 압축 */
+  .qdoc .qlogo{margin-bottom:18px;width:118px}
+  .qdoc .qmeta{line-height:1.85}
+  .qdoc .qcust{margin-top:12px}
+  .qdoc .qlabel{margin:18px 0 9px}
+  .qdoc .qtable th,.qdoc .qtable td{padding:6px 4px}
+  .qdoc .qsingle{margin-top:9px}
+  .qdoc .qspacer{flex:0 0 auto;min-height:14px}
+  .qdoc .qconsult{padding-top:2px}
+  .qdoc .qcrow{padding:6px 0}
+  .qdoc .qvalid{margin-top:8px}
+  .qdoc .qsign{margin-top:18px}
+  .qdoc .qfoot{margin-top:14px}
+  /* 첫 페이지 본문은 쪼개지지 않게, 별첨은 다음 장부터 */
   .qdoc .qpage2{page-break-before:always;margin-top:0}
-  /* 인쇄 시 본문 가독성 — 라이트 웨이트 보정 */
+  /* 라이트 웨이트 보정 */
   .qdoc,.qdoc .qcname,.qdoc td,.qdoc .qmeta{font-weight:400}
 }
 `;
