@@ -153,9 +153,9 @@ const QDOC_CSS = `
 .qdoc .qconsult{padding-top:6px}
 .qdoc .qempty{font-size:9.5px;color:var(--faint)}
 .qdoc .qclist{border-top:1px solid var(--hair)}
-.qdoc .qcrow{display:flex;justify-content:space-between;align-items:baseline;gap:18px;border-bottom:1px solid var(--hair);padding:8px 0}
-.qdoc .qcname{font-size:11px}
-.qdoc .qcdesc{font-size:9px;color:var(--soft);margin-top:2px;line-height:1.6}
+.qdoc .qcrow{display:flex;justify-content:space-between;align-items:baseline;gap:16px;border-bottom:1px solid var(--hair);padding:6px 0}
+.qdoc .qcname{font-size:10.5px}
+.qdoc .qcdesc{font-size:8.5px;color:var(--soft);margin-top:2px;line-height:1.5;white-space:pre-line}
 .qdoc .qcp{font-size:11px;white-space:nowrap}
 .qdoc .qcrow.qctotal{border-bottom:none;border-top:1px solid var(--ink);margin-top:2px;padding-top:9px}
 .qdoc .qcrow.qctotal .qcname{font-weight:600}
@@ -179,18 +179,20 @@ const QDOC_CSS = `
   .qdoc.print-area{position:absolute;left:0;top:0;width:100%}
   .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:0;width:100%;background:#fff;line-height:1.5}
   /* 본문(첫 페이지)이 A4 한 장에 들어오도록 세로 간격 압축 */
-  .qdoc .qlogo{margin-bottom:18px;width:118px}
-  .qdoc .qmeta{line-height:1.85}
-  .qdoc .qcust{margin-top:12px}
-  .qdoc .qlabel{margin:18px 0 9px}
-  .qdoc .qtable th,.qdoc .qtable td{padding:6px 4px}
-  .qdoc .qsingle{margin-top:9px}
-  .qdoc .qspacer{flex:0 0 auto;min-height:14px}
+  .qdoc .qlogo{margin-bottom:14px;width:110px}
+  .qdoc .qmeta{line-height:1.75}
+  .qdoc .qcust{margin-top:10px}
+  .qdoc .qlabel{margin:14px 0 8px}
+  .qdoc .qtable th,.qdoc .qtable td{padding:5px 4px}
+  .qdoc .qsingle{margin-top:8px}
+  .qdoc .qspacer{flex:0 0 auto;min-height:8px}
   .qdoc .qconsult{padding-top:2px}
-  .qdoc .qcrow{padding:6px 0}
-  .qdoc .qvalid{margin-top:8px}
-  .qdoc .qsign{margin-top:18px}
-  .qdoc .qfoot{margin-top:14px}
+  .qdoc .qh{margin-bottom:6px}
+  .qdoc .qcrow{padding:4px 0}
+  .qdoc .qcdesc{font-size:8px;line-height:1.4;margin-top:1px}
+  .qdoc .qvalid{margin-top:6px}
+  .qdoc .qsign{margin-top:14px}
+  .qdoc .qfoot{margin-top:12px}
   /* 첫 페이지 본문은 쪼개지지 않게, 별첨은 다음 장부터 */
   .qdoc .qpage2{page-break-before:always;margin-top:0}
   /* 라이트 웨이트 보정 */
