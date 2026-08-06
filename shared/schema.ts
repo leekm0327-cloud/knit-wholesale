@@ -379,8 +379,8 @@ export const quotes = sqliteTable("quotes", {
 export type Quote = typeof quotes.$inferSelect;
 // listPrice = 정가(기준가), prices = 월 사용량 구간별 제안가
 export type QuoteBean = { name: string; listPrice: string; prices: string[] };
-// 별첨(원두 정보) 항목
-export type QuoteAppendix = { name: string; origin: string; process: string; flavor: string; note: string };
+// 별첨(원두 정보) 항목 — 상품 상세페이지에서 가져옴
+export type QuoteAppendix = { name: string; composition: string; flavor: string; roast: string; recipe: string };
 // 파싱된 견적서(뷰용)
 export type QuoteView = {
   id: number;
@@ -414,10 +414,10 @@ export const insertQuoteSchema = z.object({
   consultingFee: z.string().optional().default(""),
   appendix: z.array(z.object({
     name: z.string(),
-    origin: z.string().optional().default(""),
-    process: z.string().optional().default(""),
+    composition: z.string().optional().default(""),
     flavor: z.string().optional().default(""),
-    note: z.string().optional().default(""),
+    roast: z.string().optional().default(""),
+    recipe: z.string().optional().default(""),
   })).optional().default([]),
 });
 export type InsertQuote = z.infer<typeof insertQuoteSchema>;
