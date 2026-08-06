@@ -8,39 +8,46 @@ import { Label } from "@/components/ui/label";
 import { QuoteDocument } from "@/components/QuoteDocument";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { QuoteView, QuoteBean, QuoteAppendix, Product } from "@shared/schema";
-import { productToAppendix, stripWeight } from "@/lib/quoteAppendix";
+import type { QuoteView, QuoteBean, QuoteAppendix, QuoteConsulting, Product } from "@shared/schema";
+import { productToAppendix, stripWeight, beanRank } from "@/lib/quoteAppendix";
 import { Plus, Trash2, X, ExternalLink, Copy, Pencil, FileText } from "lucide-react";
 
 function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-// 기본 원두 + 현재 정가(직접 수정 가능)
+// 기본 원두 + 현재 정가(직접 수정 가능) — 표기 순서: 코튼 > 울 > 실크 > 디카페인
 const DEFAULT_BEANS: { name: string; listPrice: string }[] = [
-  { name: "울 블렌드", listPrice: "30,000" },
   { name: "코튼 블렌드", listPrice: "32,000" },
+  { name: "울 블렌드", listPrice: "30,000" },
   { name: "실크 블렌드", listPrice: "37,000" },
   { name: "디카페인", listPrice: "34,000" },
 ];
 function defaultBeans(): QuoteBean[] {
   return DEFAULT_BEANS.map((b) => ({ name: b.name, listPrice: b.listPrice, prices: ["", "", ""] }));
 }
-const CONSULTING_OPTIONS = [
-  "매장 콘셉트 진단 · 원두 매칭",
-  "시그니처 음료 레시피 개발 (3종)",
-  "계절 · 시즌 한정 메뉴 기획",
-  "메뉴별 원가 · 마진 계산 시트",
-  "바리스타 추출 교육 (매장 방문)",
-  "메뉴판 · 음료 표기 문구 정리",
-  "오픈 후 1개월 팔로업 점검",
+// 메뉴 컨설팅 항목 (계약서 3조 기준) — 항목별 금액 입력, 체크 시 합산
+const CONSULTING_TEMPLATE: { label: string; desc: string }[] = [
+  { label: "음료 메뉴 구성 및 개발", desc: "매장 맞춤 메뉴 구성·레시피(원가율 포함), 기본 20종 내 + 시그니처 2종, 시음 2회" },
+  { label: "커피 및 음료 교육", desc: "추출·품질·장비·제조·동선·발주 교육 (영업 전 3일)" },
+  { label: "커피 바 장비 제안", desc: "커피 바 장비 선정·배치 제안·납품, 초도 물량 제안 (장비 구매 비용 별도)" },
+  { label: "현장 관리 감독", desc: "영업 시작 당일 현장 관리 감독 (1일)" },
 ];
+function defaultConsulting(): QuoteConsulting[] {
+  return CONSULTING_TEMPLATE.map((t) => ({ label: t.label, desc: t.desc, price: 0, checked: false }));
+}
+function parseWon(v: string): number {
+  return Number((v || "").replace(/[^0-9]/g, "")) || 0;
+}
 
 export default function AdminQuotes() {
   const { toast } = useToast();
   const { data: quotes } = useQuery<QuoteView[]>({ queryKey: ["/api/admin/quotes"] });
   const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
-  const beanProducts = (products ?? []).filter((p) => ["blend", "decaf", "single", "single_espresso", "single_filter"].includes(p.category) && p.available === 1);
+  const beanProducts = (products ?? [])
+    .filter((p) => ["blend", "decaf", "single", "single_espresso", "single_filter"].includes(p.category) && p.available === 1)
+    .slice()
+    .sort((a, b) => beanRank(stripWeight(a.name)) - beanRank(stripWeight(b.name)));
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
@@ -50,8 +57,7 @@ export default function AdminQuotes() {
   const [validDays, setValidDays] = useState("30");
   const [usageHeaders, setUsageHeaders] = useState<string[]>(["", "", ""]);
   const [beans, setBeans] = useState<QuoteBean[]>(defaultBeans());
-  const [consulting, setConsulting] = useState<string[]>([]);
-  const [consultingFee, setConsultingFee] = useState("");
+  const [consulting, setConsulting] = useState<QuoteConsulting[]>(defaultConsulting());
   const [appendix, setAppendix] = useState<QuoteAppendix[]>([]);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<QuoteView | null>(null);
@@ -85,9 +91,22 @@ export default function AdminQuotes() {
   function setBeanPrice(bi: number, ci: number, v: string) {
     setBeans((bs) => bs.map((b, idx) => (idx === bi ? { ...b, prices: b.prices.map((p, pi) => (pi === ci ? v : p)) } : b)));
   }
-  function toggleConsulting(item: string) {
-    setConsulting((c) => (c.includes(item) ? c.filter((x) => x !== item) : [...c, item]));
+  function toggleConsulting(i: number) {
+    setConsulting((c) => c.map((x, idx) => (idx === i ? { ...x, checked: !x.checked } : x)));
   }
+  function setConsultingLabel(i: number, v: string) {
+    setConsulting((c) => c.map((x, idx) => (idx === i ? { ...x, label: v } : x)));
+  }
+  function setConsultingPrice(i: number, v: string) {
+    setConsulting((c) => c.map((x, idx) => (idx === i ? { ...x, price: parseWon(v) } : x)));
+  }
+  function addConsulting() {
+    setConsulting((c) => [...c, { label: "", desc: "", price: 0, checked: true }]);
+  }
+  function removeConsulting(i: number) {
+    setConsulting((c) => c.filter((_, idx) => idx !== i));
+  }
+  const consultingTotal = consulting.filter((c) => c.checked).reduce((s, c) => s + (Number(c.price) || 0), 0);
   // 별첨(원두 정보) — 상품 상세페이지에서 가져옴. 상품 선택 시 스냅샷 추가/제거.
   function toggleAppendixProduct(p: Product) {
     const name = stripWeight(p.name);
@@ -101,7 +120,7 @@ export default function AdminQuotes() {
     setEditingId(null); setCustomerName(""); setManagerName(""); setManagerPhone("");
     setIssueDate(todayStr()); setValidDays("30"); setUsageHeaders(["", "", ""]);
     setBeans(defaultBeans());
-    setConsulting([]); setConsultingFee(""); setAppendix([]); setSaved(null);
+    setConsulting(defaultConsulting()); setAppendix([]); setSaved(null);
   }
 
   function startEdit(q: QuoteView) {
@@ -109,7 +128,7 @@ export default function AdminQuotes() {
     setManagerPhone(q.managerPhone); setIssueDate(q.issueDate); setValidDays(String(q.validDays));
     setUsageHeaders(q.usageHeaders.length ? q.usageHeaders : ["", "", ""]);
     setBeans(q.beans.length ? q.beans.map((b) => ({ name: b.name, listPrice: (b as any).listPrice ?? "", prices: b.prices })) : defaultBeans());
-    setConsulting(q.consulting); setConsultingFee(q.consultingFee); setAppendix(q.appendix ?? []); setSaved(null);
+    setConsulting(q.consulting?.length ? q.consulting : defaultConsulting()); setAppendix(q.appendix ?? []); setSaved(null);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -118,7 +137,8 @@ export default function AdminQuotes() {
     const payload = {
       customerName: customerName.trim(), managerName: managerName.trim(), managerPhone: managerPhone.trim(),
       issueDate, validDays: Math.max(1, Number(validDays) || 30),
-      usageHeaders, beans: beans.filter((b) => b.name.trim()), consulting, consultingFee: consultingFee.trim(),
+      usageHeaders, beans: beans.filter((b) => b.name.trim()),
+      consulting: consulting.filter((c) => c.label.trim()),
       appendix: appendix.filter((a) => a.name.trim()),
     };
     setBusy(true);
@@ -156,7 +176,8 @@ export default function AdminQuotes() {
   const preview: QuoteView = {
     id: 0, quoteNo: saved?.quoteNo ?? "미리보기", token: saved?.token ?? "",
     customerName, managerName, managerPhone, issueDate, validDays: Number(validDays) || 30,
-    usageHeaders, beans: beans.filter((b) => b.name.trim()), consulting, consultingFee,
+    usageHeaders, beans: beans.filter((b) => b.name.trim()),
+    consulting: consulting.filter((c) => c.label.trim()), consultingFee: "",
     appendix: appendix.filter((a) => a.name.trim()), createdAt: 0,
   };
 
@@ -243,20 +264,30 @@ export default function AdminQuotes() {
             <p className="mt-1 text-[11px] text-muted-foreground">싱글 오리진은 문서에 "생두 시세에 따라 변동" 안내로 자동 표기됩니다.</p>
           </div>
 
-          {/* 컨설팅 */}
+          {/* 메뉴 컨설팅 — 항목별 금액, 체크 시 합산 */}
           <div className="mt-6">
-            <Label className="text-xs">메뉴 컨설팅 (체크한 항목만 견적서에 노출)</Label>
-            <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              {CONSULTING_OPTIONS.map((opt) => (
-                <label key={opt} className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input type="checkbox" checked={consulting.includes(opt)} onChange={() => toggleConsulting(opt)} className="h-4 w-4 accent-[#6b6a45]" />
-                  <span className={consulting.includes(opt) ? "text-foreground" : "text-muted-foreground"}>{opt}</span>
-                </label>
+            <div className="mb-2 flex items-center justify-between">
+              <Label className="text-xs">메뉴 컨설팅 (체크한 항목만 노출 · 금액 합산)</Label>
+              <Button variant="outline" size="sm" onClick={addConsulting}><Plus className="mr-1 h-3.5 w-3.5" />항목</Button>
+            </div>
+            <div className="space-y-1.5">
+              {consulting.map((c, i) => (
+                <div key={i} className="flex items-start gap-2 rounded-md border border-border p-2" data-testid={`consulting-${i}`}>
+                  <input type="checkbox" checked={c.checked} onChange={() => toggleConsulting(i)} className="mt-1 h-4 w-4 accent-[#6b6a45]" />
+                  <div className="min-w-0 flex-1">
+                    <Input value={c.label} onChange={(e) => setConsultingLabel(i, e.target.value)} placeholder="항목명" className="h-8 text-xs font-medium" />
+                    {c.desc ? <p className="mt-0.5 text-[11px] text-muted-foreground">{c.desc}</p> : null}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">₩</span>
+                    <Input value={c.price ? c.price.toLocaleString() : ""} onChange={(e) => setConsultingPrice(i, e.target.value)} placeholder="0" className="h-8 w-28 text-right text-xs" data-testid={`consulting-price-${i}`} />
+                    <button onClick={() => removeConsulting(i)} className="text-muted-foreground hover:text-destructive" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
               ))}
             </div>
-            <div className="mt-3 space-y-1.5">
-              <Label className="text-xs">컨설팅 비용</Label>
-              <Input value={consultingFee} onChange={(e) => setConsultingFee(e.target.value)} placeholder="예: ₩300,000 / 회 · 협의" className="max-w-xs" data-testid="input-consulting-fee" />
+            <div className="mt-2 text-right text-xs text-muted-foreground">
+              선택 합계 <span className="font-semibold text-foreground">₩{consultingTotal.toLocaleString()}</span> <span className="text-[11px]">(VAT 별도)</span>
             </div>
           </div>
 
