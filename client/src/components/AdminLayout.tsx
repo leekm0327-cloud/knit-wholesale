@@ -42,6 +42,7 @@ import {
   FileSpreadsheet,
   Coffee,
   MessagesSquare,
+  FileText,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -76,6 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/customers", label: "거래처 관리", icon: Building2 },
       { href: "/admin/chat", label: "거래처 채팅", icon: MessagesSquare },
       { href: "/admin/transactions", label: "거래내역서", icon: FileBarChart },
+      { href: "/admin/quotes", label: "견적서", icon: FileText },
       { href: "/admin/balances", label: "채권 관리", icon: Wallet },
     ],
   },
