@@ -203,27 +203,12 @@ const QDOC_CSS = `
 @media print{
   /* 전역 .print-area(위치/가시성)와 @page A4(margin 14mm)를 그대로 사용 */
   .qdoc.print-area{position:absolute;left:0;top:0;width:100%}
-  /* 본문 페이지를 A4 한 장 높이로 채우고(266mm<인쇄영역 269mm) 푸터는 아래에 고정 */
-  .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:266mm;padding:0;width:100%;background:#fff;line-height:1.5;display:flex;flex-direction:column}
-  .qdoc .qbottom{margin-top:auto}
-  /* 본문(첫 페이지)이 A4 한 장에 들어오도록 세로 간격 압축 */
-  .qdoc .qlogo{margin-bottom:14px;width:110px}
-  .qdoc .qmeta{line-height:1.75}
-  .qdoc .qcust{margin-top:10px}
-  .qdoc .qlabel{margin:14px 0 8px}
-  .qdoc .qtable th,.qdoc .qtable td{padding:5px 4px}
-  .qdoc .qsingle{margin-top:8px}
-  .qdoc .qspacer{flex:0 0 auto;min-height:56px}
-  .qdoc .qconsult{padding-top:2px}
-  .qdoc .qsec{margin-bottom:10px}
-  .qdoc .qcrow{padding:7px 0}
-  .qdoc .qcdesc{font-size:8px;line-height:1.6;margin-top:3px}
-  .qdoc .qvalid{margin-top:6px}
-  .qdoc .qdateline{margin-bottom:8px}
-  .qdoc .qbottom .qfoot{padding-top:10px}
-  /* 첫 페이지 본문은 쪼개지지 않게, 별첨은 다음 장부터 */
-  .qdoc .qpage2{page-break-before:always;margin-top:0}
-  /* 라이트 웨이트 보정 */
+  /* 인쇄/PDF도 화면(웹)과 동일한 간격·배치로 나오도록 — 압축·강제 늘림 없이
+     화면용 그림자만 제거하고 배경은 흰색으로. (min-height 840px < 인쇄영역 → 한 페이지) */
+  .qdoc .qpage{box-shadow:none;background:#fff}
+  /* 별첨(원두 정보)은 다음 장부터 */
+  .qdoc .qpage2{page-break-before:always}
+  /* 라이트 웨이트 폰트가 인쇄 시 흐려지지 않도록 보정 */
   .qdoc,.qdoc .qcname,.qdoc td,.qdoc .qmeta{font-weight:400}
 }
 `;
