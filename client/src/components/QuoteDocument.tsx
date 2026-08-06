@@ -150,10 +150,10 @@ const QDOC_CSS = `
 .qdoc .qlogo{display:block;margin:0 auto 42px;width:132px;height:auto}
 .qdoc .qmeta{display:flex;justify-content:space-between;gap:24px;font-size:10px;line-height:2.05}
 .qdoc .qcol{min-width:0}
-.qdoc .qcolr{text-align:right}
+/* 좌측(견적자)·우측(받는 분) 모두 라벨을 좌측 정렬로 통일 */
+.qdoc .qcol{text-align:left}
 .qdoc .qcap{font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
 .qdoc .qk{display:inline-block;width:90px;color:var(--soft)}
-.qdoc .qcolr .qk{width:auto;margin-right:6px}
 .qdoc .qright{text-align:right;color:var(--soft)}
 .qdoc .qcust{margin-top:22px;font-size:12px;font-weight:500}
 .qdoc .qto{color:var(--soft);font-weight:400}
