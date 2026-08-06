@@ -46,15 +46,37 @@ function fmtRecipe(d: any): string {
   return "";
 }
 
-// 상품의 상세페이지(detailJson)에서 별첨 정보 추출
+// 상품의 상세페이지(detailJson)에서 별첨 정보 추출.
+// 싱글 오리진 양식(디카페인 포함)은 이름에 국가·지역·품종·가공방식을 붙이고, 블렌드 구성·권장 레시피는 생략.
 export function productToAppendix(p: Product): QuoteAppendix {
   let d: any = {};
   try { d = JSON.parse((p as any).detailJson || "{}"); } catch { /* noop */ }
+  const base = stripWeight(p.name);
+  if (d.template === "single") {
+    const name = [base, d.country, d.region, d.variety, d.process]
+      .map((x) => String(x ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+    return {
+      name,
+      composition: "",
+      flavor: String(d.flavorNotes ?? "").trim(),
+      roast: String(d.roastLevel ?? "").trim(),
+      recipe: "",
+    };
+  }
   return {
-    name: stripWeight(p.name),
+    name: base,
     composition: fmtComposition(d),
     flavor: String(d.flavorNotes ?? "").trim(),
     roast: String(d.roastLevel ?? "").trim(),
     recipe: fmtRecipe(d),
   };
+}
+
+// 원두 표기 순서: 코튼 > 울 > 실크 > 디카페인 > 기타
+export function beanRank(name: string): number {
+  const order = ["코튼", "울", "실크", "디카페인"];
+  for (let i = 0; i < order.length; i++) if (name.includes(order[i])) return i;
+  return 99;
 }
