@@ -364,9 +364,12 @@ export const quotes = sqliteTable("quotes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   quoteNo: text("quote_no").notNull().unique(),
   token: text("token").notNull().unique(), // 공개 공유 링크용
-  customerName: text("customer_name").notNull().default(""), // 예비 거래처명
-  managerName: text("manager_name").notNull().default(""),   // 담당자(직접 입력)
-  managerPhone: text("manager_phone").notNull().default(""), // 연락처(직접 입력)
+  customerName: text("customer_name").notNull().default(""), // 예비 거래처명(회사명)
+  customerBizNo: text("customer_biz_no").notNull().default(""),   // 받는 분 사업자등록번호(선택)
+  customerManager: text("customer_manager").notNull().default(""),// 받는 분 담당자(선택)
+  customerPhone: text("customer_phone").notNull().default(""),    // 받는 분 연락처(선택)
+  managerName: text("manager_name").notNull().default(""),   // 견적자 담당자(직접 입력)
+  managerPhone: text("manager_phone").notNull().default(""), // 견적자 연락처(직접 입력)
   issueDate: text("issue_date").notNull(),                   // YYYY-MM-DD
   validDays: integer("valid_days").notNull().default(30),
   usageHeaders: text("usage_headers").notNull().default("[]"), // JSON string[] (열: 월 사용량 구간, 가변)
@@ -389,6 +392,9 @@ export type QuoteView = {
   quoteNo: string;
   token: string;
   customerName: string;
+  customerBizNo: string;
+  customerManager: string;
+  customerPhone: string;
   managerName: string;
   managerPhone: string;
   issueDate: string;
@@ -402,6 +408,9 @@ export type QuoteView = {
 };
 export const insertQuoteSchema = z.object({
   customerName: z.string().optional().default(""),
+  customerBizNo: z.string().optional().default(""),
+  customerManager: z.string().optional().default(""),
+  customerPhone: z.string().optional().default(""),
   managerName: z.string().optional().default(""),
   managerPhone: z.string().optional().default(""),
   issueDate: z.string().min(1, "발행일을 입력해 주세요."),
