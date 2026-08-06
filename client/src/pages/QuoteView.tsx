@@ -30,8 +30,12 @@ export default function QuoteView() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#e6e3db", padding: "28px 16px" }}>
-      <style>{`@media print{ body{background:#fff} .qv-noprint{display:none!important} }`}</style>
+    <div className="qv-wrap" style={{ minHeight: "100vh", background: "#e6e3db", padding: "28px 16px" }}>
+      <style>{`@media print{
+        html,body{height:auto!important;background:#fff!important}
+        .qv-wrap{min-height:0!important;padding:0!important;margin:0!important;background:#fff!important}
+        .qv-noprint{display:none!important}
+      }`}</style>
 
       {isLoading ? (
         <div style={{ display: "flex", justifyContent: "center", padding: 80 }}>
