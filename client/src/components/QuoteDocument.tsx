@@ -34,7 +34,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
           <div className="qright">{dateStr || "—"}</div>
         </div>
 
-        <div className="qcust">{quote.customerName || "—"}</div>
+        <div className="qcust"><span className="qto">To.</span> {quote.customerName || "—"}</div>
 
         <div className="qlabel">Quotation</div>
 
@@ -93,10 +93,6 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
           <div className="qvalid">Valid · 발행일로부터 {quote.validDays}일</div>
         </div>
 
-        <div className="qsign">
-          <div className="qbox"><div className="qline" />Knit Coffee · Signature</div>
-        </div>
-
         <div className="qfoot">
           본 견적의 유효기간은 발행일로부터 {quote.validDays}일입니다. 표기 단가는 부가세 별도이며 1kg 기준입니다.<br />
           니트커피 · 서울특별시 중구 소월로2길 30 남산트라팰리스 1층 107호 · 070-7717-0613
@@ -134,17 +130,18 @@ const QDOC_CSS = `
 .qdoc .qmeta{display:flex;justify-content:space-between;font-size:10px;line-height:2.05}
 .qdoc .qk{display:inline-block;width:90px;color:var(--soft)}
 .qdoc .qright{text-align:right;color:var(--soft)}
-.qdoc .qcust{margin-top:22px;font-size:11.5px}
+.qdoc .qcust{margin-top:22px;font-size:12px;font-weight:500}
+.qdoc .qto{color:var(--soft);font-weight:400}
 .qdoc .qlabel{text-align:center;font-size:9.5px;letter-spacing:.42em;text-transform:uppercase;margin:40px 0 16px}
 .qdoc .qtable{width:100%;border-collapse:collapse}
 .qdoc .qtable th,.qdoc .qtable td{padding:7px 4px;font-weight:300}
 .qdoc .qtable thead th{font-size:9px;letter-spacing:.04em;color:var(--soft);text-align:right;
   border-bottom:1px solid var(--hair);padding-bottom:8px}
 .qdoc .qtable thead th.qbean{text-align:left}
-.qdoc .qtable tbody td{font-size:10.5px}
-.qdoc .qtable td.qbean{text-align:left}
-.qdoc .qtable td.qp{text-align:right;font-variant-numeric:tabular-nums}
-.qdoc .qtable th.qlist,.qdoc .qtable td.qlistc{color:var(--faint)}
+.qdoc .qtable tbody td{font-size:11px;color:var(--ink)}
+.qdoc .qtable td.qbean{text-align:left;font-weight:500}
+.qdoc .qtable td.qp{text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.qdoc .qtable th.qlist,.qdoc .qtable td.qlistc{color:var(--soft);font-weight:400}
 .qdoc .qhintline{margin-top:7px;font-size:8.5px;letter-spacing:.02em;color:var(--faint);text-align:right}
 .qdoc .qsingle{margin-top:14px;font-size:9.5px;color:var(--soft)}
 .qdoc .qspacer{flex:1;min-height:40px}
