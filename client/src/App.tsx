@@ -29,6 +29,7 @@ import OrderDetail from "@/pages/OrderDetail";
 import Account from "@/pages/Account";
 import InvoicePage from "@/pages/InvoicePage";
 import Chat from "@/pages/Chat";
+import QuoteView from "@/pages/QuoteView";
 import Help from "@/pages/Help";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import Dashboard from "@/pages/admin/Dashboard";
@@ -48,6 +49,7 @@ import AdminManagers from "@/pages/admin/AdminManagers";
 import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
 import AdminTransactions from "@/pages/admin/AdminTransactions";
 import AdminChat from "@/pages/admin/AdminChat";
+import AdminQuotes from "@/pages/admin/AdminQuotes";
 import AdminSuppliers from "@/pages/admin/AdminSuppliers";
 import AdminPurchases from "@/pages/admin/AdminPurchases";
 import AdminSupplierPayments from "@/pages/admin/AdminSupplierPayments";
@@ -102,6 +104,7 @@ function AppRouter() {
       <Route path="/reset-password/:token" component={ResetPassword} />
       <Route path="/inquiry" component={Inquiry} />
       <Route path="/espresso" component={Espresso} />
+      <Route path="/quote/:token" component={QuoteView} />
 
       <Route path="/catalog">
         <RequireCustomer><Catalog /></RequireCustomer>
@@ -167,6 +170,7 @@ function AppRouter() {
       <Route path="/admin/transactions" component={AdminTransactions} />
       <Route path="/admin/chat" component={AdminChat} />
       <Route path="/admin/chat/:customerId" component={AdminChat} />
+      <Route path="/admin/quotes" component={AdminQuotes} />
       <Route path="/admin/suppliers/:id/ledger" component={AdminSupplierLedger} />
       <Route path="/admin/suppliers" component={AdminSuppliers} />
       <Route path="/admin/purchases" component={AdminPurchases} />
