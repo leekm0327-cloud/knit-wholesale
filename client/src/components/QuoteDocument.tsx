@@ -6,6 +6,16 @@ function wonFmt(n: number): string {
   return n > 0 ? `₩${n.toLocaleString()}` : "협의";
 }
 
+// 숫자로만 이루어진 가격 문자열에 천단위 콤마를 넣는다. (예: "32000" → "32,000")
+// "협의" 처럼 숫자가 아닌 값은 그대로 둔다.
+function priceFmt(v: string): string {
+  const t = (v || "").trim();
+  if (!t) return "";
+  const digits = t.replace(/,/g, "");
+  if (/^\d+$/.test(digits)) return Number(digits).toLocaleString();
+  return t;
+}
+
 // 견적서 문서 렌더 (관리자 미리보기 + 공개 뷰 공용). CÉLINE 무드 · 단색 미니멀.
 export function QuoteDocument({ quote }: { quote: QuoteView }) {
   const cols = quote.usageHeaders.length || 1;
@@ -38,6 +48,8 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
 
         <div className="qlabel">Quotation</div>
 
+        <div className="qsec">Coffee Bean</div>
+
         <table className="qtable">
           <thead>
             <tr>
@@ -52,9 +64,9 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
             {quote.beans.map((b, ri) => (
               <tr key={ri}>
                 <td className="qbean">{b.name}</td>
-                <td className="qp qlistc">{b.listPrice || "—"}</td>
+                <td className="qp qlistc">{priceFmt(b.listPrice) || "—"}</td>
                 {Array.from({ length: cols }).map((_, ci) => (
-                  <td key={ci} className="qp">{b.prices[ci] || "—"}</td>
+                  <td key={ci} className="qp">{priceFmt(b.prices[ci]) || "—"}</td>
                 ))}
               </tr>
             ))}
@@ -70,7 +82,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
         <div className="qspacer" />
 
         <div className="qconsult">
-          <div className="qh">Menu Consulting</div>
+          <div className="qsec">Menu Consulting</div>
           {consultingItems.length === 0 ? (
             <div className="qempty">—</div>
           ) : (
@@ -136,6 +148,7 @@ const QDOC_CSS = `
 .qdoc .qcust{margin-top:22px;font-size:12px;font-weight:500}
 .qdoc .qto{color:var(--soft);font-weight:400}
 .qdoc .qlabel{text-align:center;font-size:11px;font-weight:300;letter-spacing:.42em;text-transform:uppercase;margin:40px 0 16px}
+.qdoc .qsec{text-align:center;font-size:9.5px;font-weight:400;letter-spacing:.3em;text-transform:uppercase;color:var(--soft);margin:0 0 14px}
 .qdoc .qtable{width:100%;border-collapse:collapse}
 .qdoc .qtable th,.qdoc .qtable td{padding:7px 4px;font-weight:300}
 .qdoc .qtable thead th{font-size:9px;letter-spacing:.04em;color:var(--soft);text-align:right;
@@ -147,15 +160,15 @@ const QDOC_CSS = `
 .qdoc .qtable th.qlist,.qdoc .qtable td.qlistc{color:var(--soft);font-weight:400}
 .qdoc .qhintline{margin-top:7px;font-size:8.5px;letter-spacing:.02em;color:var(--faint);text-align:right}
 .qdoc .qsingle{margin-top:14px;font-size:9.5px;color:var(--soft)}
-.qdoc .qspacer{flex:1;min-height:40px}
+.qdoc .qspacer{flex:1;min-height:72px}
 .qdoc .qh{font-size:10px;font-weight:500;margin-bottom:10px}
 .qdoc .qn{font-variant-numeric:tabular-nums}
 .qdoc .qconsult{padding-top:6px}
 .qdoc .qempty{font-size:9.5px;color:var(--faint)}
 .qdoc .qclist{border-top:1px solid var(--hair)}
-.qdoc .qcrow{display:flex;justify-content:space-between;align-items:baseline;gap:16px;border-bottom:1px solid var(--hair);padding:6px 0}
-.qdoc .qcname{font-size:10.5px}
-.qdoc .qcdesc{font-size:8.5px;color:var(--soft);margin-top:2px;line-height:1.5;white-space:pre-line}
+.qdoc .qcrow{display:flex;justify-content:space-between;align-items:baseline;gap:16px;border-bottom:1px solid var(--hair);padding:10px 0}
+.qdoc .qcname{font-size:10.5px;line-height:1.7}
+.qdoc .qcdesc{font-size:8.5px;color:var(--soft);margin-top:4px;line-height:1.75;white-space:pre-line}
 .qdoc .qcp{font-size:11px;white-space:nowrap}
 .qdoc .qcrow.qctotal{border-bottom:none;border-top:1px solid var(--ink);margin-top:2px;padding-top:9px}
 .qdoc .qcrow.qctotal .qcname{font-weight:600}
@@ -187,11 +200,11 @@ const QDOC_CSS = `
   .qdoc .qlabel{margin:14px 0 8px}
   .qdoc .qtable th,.qdoc .qtable td{padding:5px 4px}
   .qdoc .qsingle{margin-top:8px}
-  .qdoc .qspacer{flex:0 0 auto;min-height:8px}
+  .qdoc .qspacer{flex:0 0 auto;min-height:30px}
   .qdoc .qconsult{padding-top:2px}
-  .qdoc .qh{margin-bottom:6px}
-  .qdoc .qcrow{padding:4px 0}
-  .qdoc .qcdesc{font-size:8px;line-height:1.4;margin-top:1px}
+  .qdoc .qsec{margin-bottom:10px}
+  .qdoc .qcrow{padding:7px 0}
+  .qdoc .qcdesc{font-size:8px;line-height:1.6;margin-top:3px}
   .qdoc .qvalid{margin-top:6px}
   .qdoc .qfoot{padding-top:12px}
   /* 첫 페이지 본문은 쪼개지지 않게, 별첨은 다음 장부터 */
