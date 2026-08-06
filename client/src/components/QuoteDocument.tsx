@@ -122,9 +122,10 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
 
 const QDOC_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap');
-/* 한글: Gowun Batang / 영어: Mendl Serif(임베드 시 활성, 미임베드 시 Gowun Batang→serif 폴백) */
+@import url('https://use.typekit.net/pdz1nxt.css');
+/* 한글: Gowun Batang / 영어: Mendl Serif Dusk (Adobe Fonts) */
 .qdoc{--ink:#181712;--soft:#6b6858;--hair:#cfc9b8;--faint:#8f8b7c;
-  font-family:"Mendl Serif","Gowun Batang",serif;
+  font-family:"mendl-serif-dusk","Gowun Batang",serif;
   color:var(--ink);font-weight:400;letter-spacing:.01em}
 .qdoc .qpage{max-width:620px;margin:0 auto;background:#fefdfb;padding:52px 58px 40px;min-height:840px;
   display:flex;flex-direction:column;box-shadow:0 6px 30px rgba(0,0,0,.09);font-size:10.5px;line-height:1.7}
@@ -134,7 +135,7 @@ const QDOC_CSS = `
 .qdoc .qright{text-align:right;color:var(--soft)}
 .qdoc .qcust{margin-top:22px;font-size:12px;font-weight:500}
 .qdoc .qto{color:var(--soft);font-weight:400}
-.qdoc .qlabel{text-align:center;font-size:9.5px;letter-spacing:.42em;text-transform:uppercase;margin:40px 0 16px}
+.qdoc .qlabel{text-align:center;font-size:11px;font-weight:300;letter-spacing:.42em;text-transform:uppercase;margin:40px 0 16px}
 .qdoc .qtable{width:100%;border-collapse:collapse}
 .qdoc .qtable th,.qdoc .qtable td{padding:7px 4px;font-weight:300}
 .qdoc .qtable thead th{font-size:9px;letter-spacing:.04em;color:var(--soft);text-align:right;
