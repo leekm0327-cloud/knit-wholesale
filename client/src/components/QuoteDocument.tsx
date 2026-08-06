@@ -7,7 +7,7 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
   const dateStr = (quote.issueDate || "").replace(/-/g, " . ");
   // 이름이 있고 정보가 하나라도 채워진 별첨 항목만 노출
   const appendixEntries = (quote.appendix || []).filter(
-    (a) => a.name && (a.origin || a.process || a.flavor || a.note),
+    (a) => a.name && (a.composition || a.flavor || a.roast || a.recipe),
   );
   return (
     <div className="qdoc">
@@ -96,10 +96,10 @@ export function QuoteDocument({ quote }: { quote: QuoteView }) {
             {appendixEntries.map((a, i) => (
               <div className="qai" key={i}>
                 <div className="qainame">{a.name}</div>
-                {a.origin ? <div className="qairow"><span className="qaik">원산지</span><span className="qaiv">{a.origin}</span></div> : null}
-                {a.process ? <div className="qairow"><span className="qaik">가공방식</span><span className="qaiv">{a.process}</span></div> : null}
+                {a.composition ? <div className="qairow"><span className="qaik">블렌드 구성</span><span className="qaiv">{a.composition}</span></div> : null}
                 {a.flavor ? <div className="qairow"><span className="qaik">향미 노트</span><span className="qaiv">{a.flavor}</span></div> : null}
-                {a.note ? <div className="qairow"><span className="qaik">설명</span><span className="qaiv">{a.note}</span></div> : null}
+                {a.roast ? <div className="qairow"><span className="qaik">로스팅 레벨</span><span className="qaiv">{a.roast}</span></div> : null}
+                {a.recipe ? <div className="qairow"><span className="qaik">권장 레시피</span><span className="qaiv">{a.recipe}</span></div> : null}
               </div>
             ))}
           </div>
@@ -154,7 +154,7 @@ const QDOC_CSS = `
 .qdoc .qai{border-top:1px solid var(--hair);padding-top:12px}
 .qdoc .qainame{font-size:12px;font-weight:500;margin-bottom:7px}
 .qdoc .qairow{display:flex;gap:12px;font-size:10px;padding:2px 0}
-.qdoc .qaik{width:64px;flex-shrink:0;color:var(--soft)}
+.qdoc .qaik{width:74px;flex-shrink:0;color:var(--soft)}
 .qdoc .qaiv{color:var(--ink);flex:1}
 @media print{
   .qdoc .qpage{box-shadow:none;margin:0;max-width:none;min-height:auto;padding:16mm 18mm}
