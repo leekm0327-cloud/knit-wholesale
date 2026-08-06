@@ -359,6 +359,53 @@ export const notifications = sqliteTable("notifications", {
 });
 export type Notification = typeof notifications.$inferSelect;
 
+// ===== 예비 거래처 견적서 =====
+export const quotes = sqliteTable("quotes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  quoteNo: text("quote_no").notNull().unique(),
+  token: text("token").notNull().unique(), // 공개 공유 링크용
+  customerName: text("customer_name").notNull().default(""), // 예비 거래처명
+  managerName: text("manager_name").notNull().default(""),   // 담당자(직접 입력)
+  managerPhone: text("manager_phone").notNull().default(""), // 연락처(직접 입력)
+  issueDate: text("issue_date").notNull(),                   // YYYY-MM-DD
+  validDays: integer("valid_days").notNull().default(30),
+  usageHeaders: text("usage_headers").notNull().default("[]"), // JSON string[] (열: 월 사용량 구간, 가변)
+  beans: text("beans").notNull().default("[]"),               // JSON [{name, prices:string[]}]
+  consulting: text("consulting").notNull().default("[]"),     // JSON string[] (선택된 컨설팅 항목)
+  consultingFee: text("consulting_fee").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+export type Quote = typeof quotes.$inferSelect;
+export type QuoteBean = { name: string; prices: string[] };
+// 파싱된 견적서(뷰용)
+export type QuoteView = {
+  id: number;
+  quoteNo: string;
+  token: string;
+  customerName: string;
+  managerName: string;
+  managerPhone: string;
+  issueDate: string;
+  validDays: number;
+  usageHeaders: string[];
+  beans: QuoteBean[];
+  consulting: string[];
+  consultingFee: string;
+  createdAt: number;
+};
+export const insertQuoteSchema = z.object({
+  customerName: z.string().optional().default(""),
+  managerName: z.string().optional().default(""),
+  managerPhone: z.string().optional().default(""),
+  issueDate: z.string().min(1, "발행일을 입력해 주세요."),
+  validDays: z.number().int().positive().optional().default(30),
+  usageHeaders: z.array(z.string()).optional().default([]),
+  beans: z.array(z.object({ name: z.string(), prices: z.array(z.string()) })).optional().default([]),
+  consulting: z.array(z.string()).optional().default([]),
+  consultingFee: z.string().optional().default(""),
+});
+export type InsertQuote = z.infer<typeof insertQuoteSchema>;
+
 // ===== 거래처 1:1 채팅 =====
 // 거래처 1곳당 스레드 1개 (customerId 기준). sender 로 관리자/거래처 구분.
 export const chatMessages = sqliteTable("chat_messages", {
