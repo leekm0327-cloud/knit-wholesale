@@ -373,6 +373,7 @@ export const quotes = sqliteTable("quotes", {
   beans: text("beans").notNull().default("[]"),               // JSON [{name, prices:string[]}]
   consulting: text("consulting").notNull().default("[]"),     // JSON string[] (선택된 컨설팅 항목)
   consultingFee: text("consulting_fee").notNull().default(""),
+  appendix: text("appendix").notNull().default("[]"),         // JSON QuoteAppendix[] (별첨 · 원두 정보)
   createdAt: integer("created_at").notNull(),
 });
 export type Quote = typeof quotes.$inferSelect;
