@@ -376,7 +376,10 @@ export const quotes = sqliteTable("quotes", {
   createdAt: integer("created_at").notNull(),
 });
 export type Quote = typeof quotes.$inferSelect;
-export type QuoteBean = { name: string; prices: string[] };
+// listPrice = 정가(기준가), prices = 월 사용량 구간별 제안가
+export type QuoteBean = { name: string; listPrice: string; prices: string[] };
+// 별첨(원두 정보) 항목
+export type QuoteAppendix = { name: string; origin: string; process: string; flavor: string; note: string };
 // 파싱된 견적서(뷰용)
 export type QuoteView = {
   id: number;
@@ -391,6 +394,7 @@ export type QuoteView = {
   beans: QuoteBean[];
   consulting: string[];
   consultingFee: string;
+  appendix: QuoteAppendix[];
   createdAt: number;
 };
 export const insertQuoteSchema = z.object({
@@ -400,9 +404,20 @@ export const insertQuoteSchema = z.object({
   issueDate: z.string().min(1, "발행일을 입력해 주세요."),
   validDays: z.number().int().positive().optional().default(30),
   usageHeaders: z.array(z.string()).optional().default([]),
-  beans: z.array(z.object({ name: z.string(), prices: z.array(z.string()) })).optional().default([]),
+  beans: z.array(z.object({
+    name: z.string(),
+    listPrice: z.string().optional().default(""),
+    prices: z.array(z.string()),
+  })).optional().default([]),
   consulting: z.array(z.string()).optional().default([]),
   consultingFee: z.string().optional().default(""),
+  appendix: z.array(z.object({
+    name: z.string(),
+    origin: z.string().optional().default(""),
+    process: z.string().optional().default(""),
+    flavor: z.string().optional().default(""),
+    note: z.string().optional().default(""),
+  })).optional().default([]),
 });
 export type InsertQuote = z.infer<typeof insertQuoteSchema>;
 
