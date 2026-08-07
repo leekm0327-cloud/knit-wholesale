@@ -130,6 +130,9 @@ export const orders = sqliteTable("orders", {
   customerSnapshot: text("customer_snapshot").notNull(),
   // 품목 라인 JSON 배열: [{productId,name,category,unitPrice,qty,amount}]
   items: text("items").notNull(),
+  // 주문 시점의 '매장 내부 계정' 여부 스냅샷. 거래처를 삭제하거나 isStore를 나중에 바꿔도
+  // 과거 손익이 흔들리지 않도록 주문에 기록해 둔다. (-1 = 미기록: 거래처 현재값으로 판정)
+  isStoreOrder: integer("is_store_order").notNull().default(-1),
   supplyAmount: integer("supply_amount").notNull(), // 공급가액
   vat: integer("vat").notNull(), // 부가세
   totalAmount: integer("total_amount").notNull(), // 합계
@@ -266,6 +269,9 @@ export const fixedCostItems = sqliteTable("fixed_cost_items", {
   sector: text("sector").notNull().default("common"),
   // 비용 구분: 손익계산서에서 어디로 집계할지 ("cogs" 매출원가 | "sga" 판매관리비 | "nonop" 영업외비용 | "none" 비용 아님)
   costType: text("cost_type").notNull().default("sga"),
+  // 입력 금액에 부가세가 포함되어 있는지 (1=포함/과세, 0=미포함/면세·불공제).
+  // 손익은 공급가액 기준이므로 1이면 ÷1.1 하여 집계한다. 인건비·4대보험·이자·보험료 등은 0.
+  vatIncluded: integer("vat_included").notNull().default(1),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -971,6 +977,7 @@ export const insertFixedCostItemSchema = z.object({
   active: z.number().int().min(0).max(1).optional().default(1),
   sector: sectorSchema.optional().default("common"),
   costType: costTypeSchema.optional().default("sga"),
+  vatIncluded: z.number().int().min(0).max(1).optional().default(1),
 });
 export type InsertFixedCostItem = z.infer<typeof insertFixedCostItemSchema>;
 
