@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { won } from "@/lib/format";
 import type { FinancialStatement, Sector } from "@shared/schema";
 import { analyzeFinancials, type FsTone } from "@/lib/financialAnalysis";
-import { FileSpreadsheet, Sparkles, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react";
+import { FileSpreadsheet, Sparkles, CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Bot } from "lucide-react";
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -37,6 +37,57 @@ const TONE: Record<FsTone, { icon: typeof Info; cls: string; dot: string }> = {
   info: { icon: Info, cls: "text-muted-foreground", dot: "bg-muted-foreground/60" },
 };
 
+// **굵게** 처리
+function MdInline({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.startsWith("**") && p.endsWith("**") ? (
+          <strong key={i} className="font-semibold text-foreground">{p.slice(2, -2)}</strong>
+        ) : (
+          <span key={i}>{p}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+// AI가 반환한 마크다운(##, -, **)을 가볍게 렌더
+function MarkdownLite({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const out: ReactNode[] = [];
+  let bullets: string[] = [];
+  const flush = (key: string) => {
+    if (bullets.length) {
+      out.push(
+        <ul key={key} className="my-1 list-disc space-y-1 pl-5">
+          {bullets.map((b, i) => (
+            <li key={i} className="text-sm leading-relaxed text-muted-foreground"><MdInline text={b} /></li>
+          ))}
+        </ul>,
+      );
+      bullets = [];
+    }
+  };
+  lines.forEach((raw, idx) => {
+    const line = raw.trim();
+    if (/^#{1,3}\s+/.test(line)) {
+      flush("ul" + idx);
+      out.push(<h3 key={idx} className="mb-1 mt-3 text-sm font-semibold text-foreground first:mt-0">{line.replace(/^#{1,3}\s+/, "")}</h3>);
+    } else if (/^[-*]\s+/.test(line)) {
+      bullets.push(line.replace(/^[-*]\s+/, ""));
+    } else if (line === "") {
+      flush("ul" + idx);
+    } else {
+      flush("ul" + idx);
+      out.push(<p key={idx} className="text-sm leading-relaxed text-foreground"><MdInline text={line} /></p>);
+    }
+  });
+  flush("ul-final");
+  return <div className="space-y-1">{out}</div>;
+}
+
 export default function AdminFinancials() {
   const { user } = useAuth();
   const isOwner = (user as any)?.adminRole === "owner";
@@ -47,6 +98,9 @@ export default function AdminFinancials() {
   }, []);
   const [from, setFrom] = useState(init.from);
   const [to, setTo] = useState(init.to);
+  const [aiText, setAiText] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<FinancialStatement>({
     queryKey: ["/api/admin/financial-statement", { from, to }],
@@ -73,6 +127,28 @@ export default function AdminFinancials() {
     const last = new Date(now.getFullYear(), now.getMonth(), 0);      // 지난달 말일
     setFrom(ymd(first));
     setTo(ymd(last));
+  }
+
+  // 기간이 바뀌면 이전 AI 분석 결과는 무효화
+  useEffect(() => { setAiText(null); setAiErr(null); }, [from, to]);
+
+  async function runAiAnalysis() {
+    setAiBusy(true);
+    setAiErr(null);
+    try {
+      const res = await apiRequest("POST", "/api/admin/financial-statement/ai-analysis", { from, to });
+      const json = await res.json();
+      setAiText(json.analysis ?? "");
+    } catch (e: any) {
+      let msg = "AI 분석에 실패했습니다.";
+      const raw = String(e?.message ?? "");
+      const m = raw.match(/^\d+:\s*([\s\S]*)$/);
+      if (m) { try { msg = JSON.parse(m[1])?.message ?? m[1]; } catch { msg = m[1]; } }
+      else if (raw) msg = raw;
+      setAiErr(msg);
+    } finally {
+      setAiBusy(false);
+    }
   }
   function lastYear() {
     const y = new Date().getFullYear() - 1;
@@ -261,10 +337,21 @@ export default function AdminFinancials() {
             {/* 재무 분석 (규칙 기반 자동) */}
             {analysis && (
               <Card className="mt-6 overflow-hidden">
-                <div className="flex items-center gap-2 border-b bg-muted/30 p-5">
+                <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 p-5">
                   <Sparkles className="h-4 w-4 text-foreground" />
                   <h2 className="text-sm font-semibold text-foreground">재무 분석</h2>
                   <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">자동 진단</span>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={runAiAnalysis}
+                    disabled={aiBusy}
+                    data-testid="button-ai-analysis"
+                  >
+                    {aiBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bot className="mr-1.5 h-3.5 w-3.5" />}
+                    {aiBusy ? "분석 중…" : aiText ? "AI 다시 분석" : "AI 심층 분석"}
+                  </Button>
                 </div>
 
                 <div className="p-5">
@@ -329,6 +416,26 @@ export default function AdminFinancials() {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {/* AI 심층 분석 결과 */}
+                  {(aiBusy || aiErr || aiText) && (
+                    <div className="mt-5 rounded-md border bg-muted/20 p-4">
+                      <div className="mb-2 flex items-center gap-1.5">
+                        <Bot className="h-4 w-4 text-foreground" />
+                        <p className="text-xs font-semibold text-foreground">AI 심층 분석</p>
+                        <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] text-muted-foreground">Claude</span>
+                      </div>
+                      {aiBusy ? (
+                        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" /> AI가 재무 데이터를 분석하고 있습니다…
+                        </div>
+                      ) : aiErr ? (
+                        <p className="text-sm text-destructive">{aiErr}</p>
+                      ) : aiText ? (
+                        <MarkdownLite text={aiText} />
+                      ) : null}
                     </div>
                   )}
                 </div>
