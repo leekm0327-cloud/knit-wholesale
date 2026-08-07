@@ -47,6 +47,9 @@ import type {
   InsertExpense,
   PosImport,
   PosSummary,
+  PosCompare,
+  PosMonthDetail,
+  PosMonthStat,
   DashboardSummary,
   FinancialStatement,
   ItemSummaryRow,
@@ -1644,6 +1647,62 @@ export class DatabaseStorage implements IStorage {
       byHour: [...hourMap.entries()].map(([hour, v]) => ({ hour, ...v })).sort((a, b) => a.hour - b.hour),
       byWeekday: [...wdMap.entries()].map(([weekday, v]) => ({ weekday, ...v })).sort((a, b) => a.weekday - b.weekday),
     };
+  }
+
+  // 월별 비교 — 저장된 전체 월 목록 + 선택한 두 달의 상세(카테고리·메뉴)
+  async getPosCompare(monthA?: string, monthB?: string, category?: string): Promise<PosCompare> {
+    const catFilter = category && category !== "all" ? category : null;
+    const all = db.select().from(posProductSales).all();
+
+    // 카테고리 목록(필터 적용 전)
+    const catSet = new Set<string>();
+    all.forEach((r) => { if (r.category) catSet.add(r.category); });
+    const categories = [...catSet].sort();
+
+    const rows = catFilter ? all.filter((r) => r.category === catFilter) : all;
+
+    // 월별 합계 (영업일수 포함)
+    const mMap = new Map<string, { qty: number; amount: number; days: Set<string> }>();
+    for (const r of rows) {
+      const m = r.saleDate.slice(0, 7);
+      const cur = mMap.get(m) || { qty: 0, amount: 0, days: new Set<string>() };
+      cur.qty += r.qty; cur.amount += r.amount; cur.days.add(r.saleDate);
+      mMap.set(m, cur);
+    }
+    const months: PosMonthStat[] = [...mMap.entries()]
+      .map(([month, v]) => ({ month, qty: v.qty, amount: v.amount, days: v.days.size }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // 기본 비교 대상: B = 가장 최근 달, A = 그 직전 달
+    const mb = monthB || months[months.length - 1]?.month || "";
+    const mi = months.findIndex((m) => m.month === mb);
+    const ma = monthA || (mi > 0 ? months[mi - 1].month : "");
+
+    const detail = (month: string): PosMonthDetail | null => {
+      if (!month) return null;
+      const rs = rows.filter((r) => r.saleDate.slice(0, 7) === month);
+      const days = new Set<string>();
+      const cMap = new Map<string, { qty: number; amount: number }>();
+      const pMap = new Map<string, { category: string; product: string; qty: number; amount: number }>();
+      let qty = 0, amount = 0;
+      for (const r of rs) {
+        qty += r.qty; amount += r.amount; days.add(r.saleDate);
+        const ck = r.category || "(미분류)";
+        const cc = cMap.get(ck) || { qty: 0, amount: 0 };
+        cc.qty += r.qty; cc.amount += r.amount; cMap.set(ck, cc);
+        const pk = `${r.category}||${r.product}`;
+        const pc = pMap.get(pk) || { category: r.category || "(미분류)", product: r.product || "(미상)", qty: 0, amount: 0 };
+        pc.qty += r.qty; pc.amount += r.amount; pMap.set(pk, pc);
+      }
+      return {
+        month,
+        totals: { qty, amount, days: days.size },
+        byCategory: [...cMap.entries()].map(([c, v]) => ({ category: c, ...v })).sort((x, y) => y.amount - x.amount),
+        byProduct: [...pMap.values()].sort((x, y) => y.qty - x.qty),
+      };
+    };
+
+    return { months, categories, a: detail(ma), b: detail(mb) };
   }
 
   // ===== 경영 대시보드 (C): 손익 요약 =====

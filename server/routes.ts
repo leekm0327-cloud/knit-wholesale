@@ -1703,39 +1703,60 @@ export async function registerRoutes(
         `## 개선 제안 (구체적이고 실행 가능한 3~5가지, 가능하면 예상 절감액 포함)\n\n` +
         `수치는 원 단위 그대로 쓰되 읽기 쉽게 천단위 콤마를 넣어주세요. 지출 심층 분석은 실제 입력된 개별 내역을 반드시 근거로 삼고, 데이터에 없는 항목은 지어내지 마세요.`;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model,
-          // 데이터가 많으면 모델이 토큰을 많이 쓰므로 넉넉히. (본문 텍스트가 잘리지 않도록)
-          max_tokens: 8000,
-          system: systemPrompt,
-          messages: [{ role: "user", content: userPrompt }],
-        }),
-      });
+      // 출력이 길어 max_tokens에 걸리면(=글이 아래에서 잘림) 자동으로 이어받아 붙인다.
+      const MAX_TOKENS = 16000;
+      const MAX_ROUNDS = 3; // 최초 1회 + 이어쓰기 최대 2회
+      const messages: any[] = [{ role: "user", content: userPrompt }];
+      let full = "";
+      let truncated = false;
 
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => "");
-        console.error("[ai-analysis] Anthropic API error", resp.status, errText);
-        const msg = resp.status === 401 ? "AI 인증에 실패했습니다. ANTHROPIC_API_KEY를 확인해 주세요." : `AI 분석 요청이 실패했습니다. (오류 ${resp.status})`;
-        return res.status(502).json({ message: msg });
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system: systemPrompt, messages }),
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          console.error("[ai-analysis] Anthropic API error", resp.status, errText);
+          if (full) break; // 이어쓰기 중 실패면 지금까지 받은 내용이라도 반환
+          const msg = resp.status === 401 ? "AI 인증에 실패했습니다. ANTHROPIC_API_KEY를 확인해 주세요." : `AI 분석 요청이 실패했습니다. (오류 ${resp.status})`;
+          return res.status(502).json({ message: msg });
+        }
+
+        const json: any = await resp.json();
+        // text 블록만 추출 (thinking 등 비-text 블록은 무시)
+        const chunk = Array.isArray(json?.content)
+          ? json.content.filter((b: any) => b?.type === "text").map((b: any) => b?.text || "").join("")
+          : "";
+
+        if (!chunk && !full) {
+          console.error("[ai-analysis] empty text. stop_reason=", json?.stop_reason, "blockTypes=", Array.isArray(json?.content) ? json.content.map((b: any) => b?.type) : json);
+          const hint = json?.stop_reason === "max_tokens" ? " (모델이 생각 과정에 출력 한도를 모두 사용했습니다)" : "";
+          return res.status(502).json({ message: `AI 응답 본문이 비어 있습니다${hint}. 잠시 후 다시 시도해 주세요.` });
+        }
+
+        full += chunk;
+
+        if (json?.stop_reason !== "max_tokens") { truncated = false; break; }
+        // 아직 덜 썼음 → 이어쓰기 요청
+        truncated = true;
+        if (round === MAX_ROUNDS - 1) break;
+        messages.push({ role: "assistant", content: chunk });
+        messages.push({
+          role: "user",
+          content: "분량 제한으로 답변이 중간에 끊겼습니다. 끊긴 바로 그 지점부터 이어서 계속 작성해 주세요. 인사말이나 서두, 이미 쓴 내용의 반복 없이 곧바로 이어서 쓰고, 마지막 섹션까지 마무리해 주세요.",
+        });
       }
-      const json: any = await resp.json();
-      // text 블록만 추출 (thinking 등 비-text 블록은 무시)
-      const text = Array.isArray(json?.content)
-        ? json.content.filter((b: any) => b?.type === "text").map((b: any) => b?.text || "").join("\n").trim()
-        : "";
-      if (!text) {
-        console.error("[ai-analysis] empty text. stop_reason=", json?.stop_reason, "blockTypes=", Array.isArray(json?.content) ? json.content.map((b: any) => b?.type) : json);
-        const hint = json?.stop_reason === "max_tokens" ? " (출력이 max_tokens 한도에 걸렸습니다)" : "";
-        return res.status(502).json({ message: `AI 응답 본문이 비어 있습니다${hint}. 잠시 후 다시 시도해 주세요.` });
-      }
-      res.json({ analysis: text, model });
+
+      const text = full.trim();
+      if (!text) return res.status(502).json({ message: "AI 응답 본문이 비어 있습니다. 잠시 후 다시 시도해 주세요." });
+      res.json({ analysis: text, model, truncated });
     } catch (e: any) {
       console.error("[ai-analysis] error", e);
       res.status(500).json({ message: "AI 분석 중 오류가 발생했습니다." });
@@ -1758,6 +1779,13 @@ export async function registerRoutes(
     if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
     const category = typeof req.query.category === "string" ? req.query.category : undefined;
     res.json(await storage.getPosSummary(from, to, category));
+  });
+  // 월별 비교 (a=이전 달, b=기준 달, 미지정 시 최근 2개월 자동)
+  app.get("/api/admin/pos-sales/compare", requireOwner, async (req, res) => {
+    const a = typeof req.query.a === "string" ? req.query.a : undefined;
+    const b = typeof req.query.b === "string" ? req.query.b : undefined;
+    const category = typeof req.query.category === "string" ? req.query.category : undefined;
+    res.json(await storage.getPosCompare(a, b, category));
   });
 
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
