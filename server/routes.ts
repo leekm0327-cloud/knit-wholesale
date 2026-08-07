@@ -47,6 +47,7 @@ import {
   insertPersonalCategorySchema,
   insertPersonalLedgerSchema,
   SECTORS,
+  COST_TYPES,
   customers,
   type Customer,
   type PublicCustomer,
@@ -1506,6 +1507,9 @@ export async function registerRoutes(
     if (typeof req.body.name === "string") patch.name = req.body.name;
     if (typeof req.body.sortOrder === "number") patch.sortOrder = req.body.sortOrder;
     if (typeof req.body.active === "number") patch.active = req.body.active;
+    // 기본 부문 / 비용 구분(손익 집계 위치)도 수정 가능해야 함
+    if (typeof req.body.sector === "string" && (SECTORS as readonly string[]).includes(req.body.sector)) patch.sector = req.body.sector;
+    if (typeof req.body.costType === "string" && (COST_TYPES as readonly string[]).includes(req.body.costType)) patch.costType = req.body.costType;
     const item = await storage.updateFixedCostItem(id, patch);
     if (!item) return res.status(404).json({ message: "항목을 찾을 수 없습니다." });
     const actor = await getActor(req);
@@ -2099,8 +2103,9 @@ export async function registerRoutes(
                   });
                 }
                 const totalAmount = purchaseItems.reduce((s, i) => s + i.amount, 0);
-                const today = new Date();
-                const purchaseDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                // 발주일은 서버 로컬(배포 환경 UTC)이 아니라 한국시간(KST) 기준이어야 함.
+                // UTC로 계산하면 KST 00~09시 주문의 원가가 전날(=전월)로 잡혀 매출과 다른 달에 귀속된다.
+                const purchaseDate = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
                 // 매장 내부 계정의 주문이면 발주 부문을 'store'(매장 매출원가)로 태그
                 const orderCust = await storage.getCustomer(updated.customerId);
                 const purchaseSegment = (orderCust as any)?.isStore ? "store" : "wholesale";

@@ -1544,6 +1544,7 @@ export class DatabaseStorage implements IStorage {
         sortOrder: f.sortOrder ?? 0,
         active: f.active ?? 1,
         sector: f.sector ?? "common",
+        costType: f.costType ?? "sga",
         createdAt: Date.now(),
       })
       .returning()
@@ -1867,13 +1868,17 @@ export class DatabaseStorage implements IStorage {
     // 지출 (발생주의: 공장 매입=발주액). 부문에 맞는 발주만 — all: 전체 / wholesale: 도매 / store: 매장
     const purchaseRowsForSector = sector === "all" ? purchaseRows : purchaseRows.filter((p) => segOf(p) === sector);
     const purchaseTotal = purchaseRowsForSector.reduce((s, p) => s + vatInc(p.totalAmount), 0);
-    const otherExpense = filteredExpenses.reduce((s, e) => s + e.amount, 0);
+    // '비용 아님'(부가세 납부·자산 취득·사업주 개인 등)은 재무제표와 동일하게 지출에서 제외 — 두 화면 숫자가 어긋나지 않도록
+    const costItemsForDash = await this.listFixedCostItems(true);
+    const noneCats = new Set(costItemsForDash.filter((i) => ((i as any).costType ?? "sga") === "none").map((i) => i.name));
+    const otherExpense = filteredExpenses.filter((e) => !noneCats.has(e.category)).reduce((s, e) => s + e.amount, 0);
     const totalExpense = purchaseTotal + otherExpense;
 
     // 지출 항목별 비중 (공장 매입 + 지출 카테고리별)
     const catMap = new Map<string, number>();
     if (purchaseTotal > 0) catMap.set("공장 매입", purchaseTotal);
     for (const e of filteredExpenses) {
+      if (noneCats.has(e.category)) continue; // 위 지출 합계와 동일 기준 유지
       catMap.set(e.category, (catMap.get(e.category) ?? 0) + e.amount);
     }
     const expenseByCategory = Array.from(catMap.entries())
@@ -1892,7 +1897,10 @@ export class DatabaseStorage implements IStorage {
     }
     for (const p of purchaseRowsForSector) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", vatInc(p.totalAmount));
     for (const r of filteredStoreSales) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
-    for (const e of filteredExpenses) bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
+    for (const e of filteredExpenses) {
+      if (noneCats.has(e.category)) continue; // 지출 합계와 동일 기준
+      bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
+    }
 
     const buckets = Array.from(bucketMap.entries())
       .map(([key, v]) => ({ key, income: v.income, expense: v.expense, net: v.income - v.expense }))
@@ -1954,7 +1962,8 @@ export class DatabaseStorage implements IStorage {
     }
     // 지출 분류: 항목(고정비 항목)에 지정된 비용 구분을 따른다.
     //  cogs 매출원가 / sga 판매관리비 / nonop 영업외비용 / none 손익 제외(부가세 납부·자산취득·사업주 개인 등)
-    const costItems = await this.listFixedCostItems();
+    // 비활성 항목도 포함해야 함 — 항목을 숨기면 과거 지출의 비용 구분이 판관비로 바뀌어 손익이 소급 변경되는 것을 방지
+    const costItems = await this.listFixedCostItems(true);
     const costTypeByName = new Map<string, string>(costItems.map((i) => [i.name, (i as any).costType || "sga"]));
     let excluded = 0;
     for (const e of expenseRows) {
