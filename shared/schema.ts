@@ -279,6 +279,28 @@ export const expenses = sqliteTable("expenses", {
   createdAt: integer("created_at").notNull(),
 });
 
+// ===== POS 매출 (POS 매출리포트 엑셀 업로드 → 집계 저장) =====
+// 상품 단위 집계 (일자 · 카테고리 · 상품) — 메뉴 순위 / 카테고리 / 일별·월별 추이
+export const posProductSales = sqliteTable("pos_product_sales", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  saleDate: text("sale_date").notNull(), // YYYY-MM-DD
+  category: text("category").notNull().default(""),
+  product: text("product").notNull().default(""),
+  qty: integer("qty").notNull().default(0),
+  amount: integer("amount").notNull().default(0), // 실판매금액 합(원)
+  createdAt: integer("created_at").notNull(),
+});
+// 시간대 단위 집계 (일자 · 시간 · 카테고리) — 시간대 / 요일 패턴
+export const posHourlySales = sqliteTable("pos_hourly_sales", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  saleDate: text("sale_date").notNull(),
+  hour: integer("hour").notNull().default(0), // 0-23
+  category: text("category").notNull().default(""),
+  qty: integer("qty").notNull().default(0),
+  amount: integer("amount").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});
+
 // ===== E: 개인 가계부 (owner 전용, 사업 재무와 완전 분리) =====
 export const personalCategories = sqliteTable("personal_categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -942,6 +964,46 @@ export const insertExpenseSchema = z.object({
   sector: sectorSchema.optional().default("common"),
 });
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+
+// ===== POS 매출 =====
+export type PosProductSale = typeof posProductSales.$inferSelect;
+export type PosHourlySale = typeof posHourlySales.$inferSelect;
+
+// 업로드(클라이언트 파싱 후 전송) 페이로드
+export const posImportSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  products: z.array(z.object({
+    date: z.string().min(1),
+    category: z.string().optional().default(""),
+    product: z.string().optional().default(""),
+    qty: z.number(),
+    amount: z.number(),
+  })).default([]),
+  hourly: z.array(z.object({
+    date: z.string().min(1),
+    hour: z.number().int().min(0).max(23),
+    category: z.string().optional().default(""),
+    qty: z.number(),
+    amount: z.number(),
+  })).default([]),
+});
+export type PosImport = z.infer<typeof posImportSchema>;
+
+// 집계 요약 (분석 화면용)
+export type PosSummary = {
+  from: string;
+  to: string;
+  coverage: { from: string; to: string } | null; // 데이터가 실제 존재하는 날짜 범위
+  categories: string[];
+  totals: { qty: number; amount: number; days: number };
+  byCategory: { category: string; qty: number; amount: number }[];
+  byProduct: { category: string; product: string; qty: number; amount: number }[];
+  byDate: { date: string; qty: number; amount: number }[];
+  byMonth: { month: string; qty: number; amount: number }[];
+  byHour: { hour: number; qty: number; amount: number }[];
+  byWeekday: { weekday: number; qty: number; amount: number }[]; // 0=일 … 6=토
+};
 
 // ===== E: 개인 가계부 타입/스키마 =====
 export type PersonalCategory = typeof personalCategories.$inferSelect;
