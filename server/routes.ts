@@ -1712,7 +1712,8 @@ export async function registerRoutes(
         },
         body: JSON.stringify({
           model,
-          max_tokens: 2500,
+          // 데이터가 많으면 모델이 토큰을 많이 쓰므로 넉넉히. (본문 텍스트가 잘리지 않도록)
+          max_tokens: 8000,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
         }),
@@ -1725,10 +1726,15 @@ export async function registerRoutes(
         return res.status(502).json({ message: msg });
       }
       const json: any = await resp.json();
+      // text 블록만 추출 (thinking 등 비-text 블록은 무시)
       const text = Array.isArray(json?.content)
-        ? json.content.filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n").trim()
+        ? json.content.filter((b: any) => b?.type === "text").map((b: any) => b?.text || "").join("\n").trim()
         : "";
-      if (!text) return res.status(502).json({ message: "AI 응답이 비어 있습니다. 잠시 후 다시 시도해 주세요." });
+      if (!text) {
+        console.error("[ai-analysis] empty text. stop_reason=", json?.stop_reason, "blockTypes=", Array.isArray(json?.content) ? json.content.map((b: any) => b?.type) : json);
+        const hint = json?.stop_reason === "max_tokens" ? " (출력이 max_tokens 한도에 걸렸습니다)" : "";
+        return res.status(502).json({ message: `AI 응답 본문이 비어 있습니다${hint}. 잠시 후 다시 시도해 주세요.` });
+      }
       res.json({ analysis: text, model });
     } catch (e: any) {
       console.error("[ai-analysis] error", e);
