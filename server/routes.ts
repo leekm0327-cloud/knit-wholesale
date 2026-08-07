@@ -1611,6 +1611,98 @@ export async function registerRoutes(
     res.json(await storage.getFinancialStatement(from, to));
   });
 
+  // AI(Claude) 심층 재무 분석 — 서버가 재무 데이터를 모아 Anthropic API로 분석문을 받아옵니다.
+  // 대표(Owner) 전용. ANTHROPIC_API_KEY 환경변수 필요, 호출 시마다 소액 비용 발생.
+  app.post("/api/admin/financial-statement/ai-analysis", requireOwner, async (req, res) => {
+    const from = typeof req.body?.from === "string" ? req.body.from : "";
+    const to = typeof req.body?.to === "string" ? req.body.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(400).json({ message: "AI 분석이 아직 설정되지 않았습니다. Railway 환경변수에 ANTHROPIC_API_KEY를 등록해 주세요." });
+    }
+    // 기본값은 비용이 저렴한 Haiku 4.5. 더 깊은 분석을 원하면 ANTHROPIC_MODEL=claude-sonnet-5 로 변경.
+    const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
+
+    try {
+      const fs = await storage.getFinancialStatement(from, to);
+      const pct = (n: number, d: number) => (d > 0 ? ((n / d) * 100).toFixed(1) + "%" : "-");
+      const t = fs.totals;
+      const bizName: Record<string, string> = { store: "음식점업(매장)", wholesale: "원두도매업(도매)", online: "온라인", atelier: "아뜰리에", common: "공통" };
+      const lineText = fs.lines
+        .filter((l) => l.revenue !== 0 || l.cogs !== 0 || l.sga !== 0 || l.operatingProfit !== 0)
+        .map((l) => `- ${bizName[l.sector] ?? l.label}: 매출 ${l.revenue}원, 매출원가 ${l.cogs}원(원가율 ${pct(l.cogs, l.revenue)}), 매출총이익 ${l.grossProfit}원, 판관비 ${l.sga}원, 영업이익 ${l.operatingProfit}원(영업이익률 ${pct(l.operatingProfit, l.revenue)})`)
+        .join("\n");
+
+      const dataBlock = [
+        `[분석 기간] ${fs.from} ~ ${fs.to}`,
+        ``,
+        `[전체 손익]`,
+        `- 매출액: ${t.revenue}원`,
+        `- 매출원가: ${t.cogs}원 (매출원가율 ${pct(t.cogs, t.revenue)})`,
+        `- 매출총이익: ${t.grossProfit}원 (매출총이익률 ${pct(t.grossProfit, t.revenue)})`,
+        `- 판매관리비: ${t.sga}원 (판관비율 ${pct(t.sga, t.revenue)})`,
+        `- 영업이익: ${t.operatingProfit}원 (영업이익률 ${pct(t.operatingProfit, t.revenue)})`,
+        ``,
+        `[부문별 손익]`,
+        lineText || "(부문별 데이터 없음)",
+        ``,
+        `[채권·채무 현재 잔액]`,
+        `- 거래처 미수금(채권): ${fs.workingCapital.receivables}원`,
+        `- 공장 미지급금(채무): ${fs.workingCapital.payables}원`,
+        `- 순운전자본(채권-채무): ${fs.workingCapital.net}원`,
+      ].join("\n");
+
+      const systemPrompt =
+        "당신은 한국의 소규모 사업체를 돕는 노련한 회계·경영 컨설턴트입니다. " +
+        "분석 대상은 '니트커피'라는 개인사업자로, 원두 도매(OEM 공장 클라리멘토를 통한 납품)와 카페 매장을 함께 운영합니다. " +
+        "매출원가는 주로 공장 발주(매입)이며, 매장과 도매는 같은 사업자라 매장용 원두 이동은 내부거래로 처리됩니다. " +
+        "제공된 숫자만 근거로 삼고 임의로 수치를 지어내지 마세요. 정중한 한국어 존댓말로, 실무적으로 도움이 되게 작성하세요.";
+
+      const userPrompt =
+        `아래는 니트커피의 내부 경영용 재무 데이터입니다. 회계 전문가 관점에서 분석해 주세요.\n\n` +
+        dataBlock +
+        `\n\n다음 순서로 마크다운(##, 굵게, - 목록)으로 작성해 주세요:\n` +
+        `## 종합 진단 (2~3문장, 흑자/적자와 수익성 핵심)\n` +
+        `## 부문별 코멘트 (부문별 이익 기여와 문제 지점)\n` +
+        `## 리스크 및 주의점 (원가율·판관비·채권채무 유동성 관점)\n` +
+        `## 개선 제안 (구체적이고 실행 가능한 3~5가지)\n\n` +
+        `수치는 원 단위 그대로 쓰되 읽기 쉽게 천단위 콤마를 넣어주세요. 전체 500~700자 내외로 간결하게.`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1500,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+        }),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        console.error("[ai-analysis] Anthropic API error", resp.status, errText);
+        const msg = resp.status === 401 ? "AI 인증에 실패했습니다. ANTHROPIC_API_KEY를 확인해 주세요." : `AI 분석 요청이 실패했습니다. (오류 ${resp.status})`;
+        return res.status(502).json({ message: msg });
+      }
+      const json: any = await resp.json();
+      const text = Array.isArray(json?.content)
+        ? json.content.filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n").trim()
+        : "";
+      if (!text) return res.status(502).json({ message: "AI 응답이 비어 있습니다. 잠시 후 다시 시도해 주세요." });
+      res.json({ analysis: text, model });
+    } catch (e: any) {
+      console.error("[ai-analysis] error", e);
+      res.status(500).json({ message: "AI 분석 중 오류가 발생했습니다." });
+    }
+  });
+
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
   app.get("/api/espresso-log-stats", async (_req, res) => {
     res.json(await fetchEspressoStats());
