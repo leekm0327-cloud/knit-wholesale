@@ -35,6 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await apiRequest("POST", "/api/auth/logout");
     qc.setQueryData(["/api/auth/me"], null);
     qc.clear();
+    // 저장된 장바구니도 비운다 — 다른 계정으로 로그인했을 때 이전 사용자의 품목이 남지 않도록
+    try { localStorage.removeItem("knit.cart.v1"); } catch { /* 무시 */ }
   }
 
   return (
