@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { won } from "@/lib/format";
 import type { FinancialStatement, Sector } from "@shared/schema";
 import { analyzeFinancials, type FsTone } from "@/lib/financialAnalysis";
-import { FileSpreadsheet, Sparkles, CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Bot } from "lucide-react";
+import { FileSpreadsheet, Sparkles, CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Bot, Printer } from "lucide-react";
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -101,6 +101,8 @@ export default function AdminFinancials() {
   const [aiText, setAiText] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState<string | null>(null);
+  const [aiTruncated, setAiTruncated] = useState(false);
+  const aiPrintRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = useQuery<FinancialStatement>({
     queryKey: ["/api/admin/financial-statement", { from, to }],
@@ -130,7 +132,24 @@ export default function AdminFinancials() {
   }
 
   // 기간이 바뀌면 이전 AI 분석 결과는 무효화
-  useEffect(() => { setAiText(null); setAiErr(null); }, [from, to]);
+  useEffect(() => { setAiText(null); setAiErr(null); setAiTruncated(false); }, [from, to]);
+
+  // AI 분석 결과만 인쇄 / PDF 저장 (전역 .print-area 규칙 사용)
+  function printAi() {
+    const el = aiPrintRef.current;
+    if (!el) return;
+    const prevTitle = document.title;
+    document.title = `재무분석_${from}_${to}`;
+    el.classList.add("print-area");
+    const restore = () => {
+      el.classList.remove("print-area");
+      document.title = prevTitle;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    setTimeout(restore, 3000);
+    window.print();
+  }
 
   // 분석 결과 (규칙 기반) — 모든 훅은 early return 이전에 호출되어야 함
   const analysis = useMemo(() => (data && data.totals ? analyzeFinancials(data) : null), [data]);
@@ -142,6 +161,7 @@ export default function AdminFinancials() {
       const res = await apiRequest("POST", "/api/admin/financial-statement/ai-analysis", { from, to });
       const json = await res.json();
       setAiText(json.analysis ?? "");
+      setAiTruncated(!!json.truncated);
     } catch (e: any) {
       let msg = "AI 분석에 실패했습니다.";
       const raw = String(e?.message ?? "");
@@ -423,12 +443,32 @@ export default function AdminFinancials() {
 
                   {/* AI 심층 분석 결과 */}
                   {(aiBusy || aiErr || aiText) && (
-                    <div className="mt-5 rounded-md border bg-muted/20 p-4">
-                      <div className="mb-2 flex items-center gap-1.5">
+                    <div ref={aiPrintRef} className="ai-report mt-5 rounded-md border bg-muted/20 p-4">
+                      {/* 인쇄 시 글자가 흐려지지 않도록 보정 */}
+                      <style>{`@media print{
+                        .ai-report, .ai-report *{color:#111 !important;background:transparent !important;border-color:#ddd !important}
+                        .ai-report{font-size:10.5pt;line-height:1.65}
+                        .ai-report h3{margin-top:14px}
+                      }`}</style>
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5">
                         <Bot className="h-4 w-4 text-foreground" />
                         <p className="text-xs font-semibold text-foreground">AI 심층 분석</p>
-                        <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] text-muted-foreground">Claude</span>
+                        <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] text-muted-foreground no-print">Claude</span>
+                        {aiText && !aiBusy && (
+                          <Button variant="outline" size="sm" className="ml-auto no-print" onClick={printAi} data-testid="button-print-ai">
+                            <Printer className="mr-1.5 h-3.5 w-3.5" /> 인쇄 / PDF 저장
+                          </Button>
+                        )}
                       </div>
+
+                      {/* 인쇄 시에만 보이는 문서 머리말 */}
+                      {aiText && (
+                        <div className="hidden print:block mb-4 border-b pb-3">
+                          <p className="text-base font-semibold text-foreground">니트커피 재무 분석 리포트</p>
+                          <p className="mt-1 text-xs text-muted-foreground">분석 기간 {from} ~ {to}</p>
+                        </div>
+                      )}
+
                       {aiBusy ? (
                         <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" /> AI가 재무 데이터를 분석하고 있습니다…
@@ -436,7 +476,14 @@ export default function AdminFinancials() {
                       ) : aiErr ? (
                         <p className="text-sm text-destructive">{aiErr}</p>
                       ) : aiText ? (
-                        <MarkdownLite text={aiText} />
+                        <>
+                          <MarkdownLite text={aiText} />
+                          {aiTruncated && (
+                            <p className="mt-3 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700">
+                              분석 내용이 매우 길어 일부가 생략되었을 수 있습니다. 기간을 좁혀서 다시 분석하면 더 상세히 볼 수 있습니다.
+                            </p>
+                          )}
+                        </>
                       ) : null}
                     </div>
                   )}

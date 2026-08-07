@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { won } from "@/lib/format";
-import type { PosSummary } from "@shared/schema";
+import type { PosSummary, PosCompare } from "@shared/schema";
 import { Upload, Loader2, BarChart3 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -65,11 +65,27 @@ export default function AdminPosSales() {
   const [to, setTo] = useState(init.to);
   const [category, setCategory] = useState<string>("all");
   const [uploading, setUploading] = useState(false);
+  const [cmpA, setCmpA] = useState<string>("");
+  const [cmpB, setCmpB] = useState<string>("");
 
   const { data, isLoading } = useQuery<PosSummary>({
     queryKey: ["/api/admin/pos-sales/summary", { from, to, category }],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/admin/pos-sales/summary?from=${from}&to=${to}&category=${encodeURIComponent(category)}`);
+      return res.json();
+    },
+    enabled: isOwner,
+  });
+
+  // 월별 비교 (a=이전 달, b=기준 달. 미지정이면 서버가 최근 2개월 자동 선택)
+  const { data: cmp } = useQuery<PosCompare>({
+    queryKey: ["/api/admin/pos-sales/compare", { cmpA, cmpB, category }],
+    queryFn: async () => {
+      const qs = new URLSearchParams();
+      if (cmpA) qs.set("a", cmpA);
+      if (cmpB) qs.set("b", cmpB);
+      qs.set("category", category);
+      const res = await apiRequest("GET", `/api/admin/pos-sales/compare?${qs.toString()}`);
       return res.json();
     },
     enabled: isOwner,
@@ -158,7 +174,9 @@ export default function AdminPosSales() {
       const info = await res.json();
       toast({ title: "업로드 완료", description: `${info.from} ~ ${info.to} · 상품 ${info.products}행 저장${skipped ? ` (제외 ${skipped}행)` : ""}` });
       setFrom(info.from); setTo(info.to); setCategory("all");
+      setCmpA(""); setCmpB(""); // 최근 2개월 자동 선택으로 초기화
       qc.invalidateQueries({ queryKey: ["/api/admin/pos-sales/summary"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/pos-sales/compare"] });
     } catch (e: any) {
       toast({ variant: "destructive", title: "업로드 실패", description: e?.message ?? "파일을 처리하지 못했습니다." });
     } finally {
@@ -269,6 +287,171 @@ export default function AdminPosSales() {
             </div>
           )}
         </Card>
+
+        {/* 월별 비교 (저장된 전체 월 기준 — 위 기간 선택과 무관) */}
+        {cmp && cmp.months.length > 0 && (
+          <Card className="mb-6 overflow-hidden">
+            <div className="border-b p-5">
+              <h2 className="text-sm font-semibold text-foreground">월별 비교</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                저장된 전체 월 기준입니다{category !== "all" ? ` · ${category}` : ""}. 위 기간 선택과는 별개로 동작합니다.
+              </p>
+            </div>
+
+            {/* 월별 추이 표 */}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-sm">
+                <thead className="bg-muted/40 text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">월</th>
+                    <th className="px-4 py-2 text-right font-medium">매출</th>
+                    <th className="px-4 py-2 text-right font-medium">전월 대비</th>
+                    <th className="px-4 py-2 text-right font-medium">수량</th>
+                    <th className="px-4 py-2 text-right font-medium">영업일</th>
+                    <th className="px-4 py-2 text-right font-medium">일평균</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {cmp.months.map((m, i) => {
+                    const prev = i > 0 ? cmp.months[i - 1] : null;
+                    const d = prev && prev.amount > 0 ? ((m.amount - prev.amount) / prev.amount) * 100 : null;
+                    return (
+                      <tr key={m.month}>
+                        <td className="px-4 py-2.5 font-medium text-foreground">{m.month}</td>
+                        <td className="px-4 py-2.5 text-right tabular text-foreground">{won(m.amount)}</td>
+                        <td className={`px-4 py-2.5 text-right tabular text-xs ${d == null ? "text-muted-foreground" : d >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                          {d == null ? "—" : `${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(1)}%`}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{m.qty.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{m.days}일</td>
+                        <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{won(m.days > 0 ? Math.round(m.amount / m.days) : 0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 두 달 선택 */}
+            <div className="flex flex-wrap items-center gap-2 border-t p-4">
+              <span className="text-xs text-muted-foreground">비교</span>
+              <select
+                value={cmp.a?.month ?? ""}
+                onChange={(e) => setCmpA(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                data-testid="select-cmp-a"
+              >
+                {cmp.months.map((m) => <option key={m.month} value={m.month}>{m.month}</option>)}
+              </select>
+              <span className="text-xs text-muted-foreground">→</span>
+              <select
+                value={cmp.b?.month ?? ""}
+                onChange={(e) => setCmpB(e.target.value)}
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                data-testid="select-cmp-b"
+              >
+                {cmp.months.map((m) => <option key={m.month} value={m.month}>{m.month}</option>)}
+              </select>
+            </div>
+
+            {cmp.a && cmp.b ? (
+              <div className="p-5 pt-0">
+                {/* 요약 3종 */}
+                <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {[
+                    { label: "매출", av: cmp.a.totals.amount, bv: cmp.b.totals.amount, fmt: (v: number) => won(v) },
+                    { label: "판매수량", av: cmp.a.totals.qty, bv: cmp.b.totals.qty, fmt: (v: number) => `${v.toLocaleString()}개` },
+                    {
+                      label: "일평균 매출",
+                      av: cmp.a.totals.days > 0 ? Math.round(cmp.a.totals.amount / cmp.a.totals.days) : 0,
+                      bv: cmp.b.totals.days > 0 ? Math.round(cmp.b.totals.amount / cmp.b.totals.days) : 0,
+                      fmt: (v: number) => won(v),
+                    },
+                  ].map((row) => {
+                    const diff = row.bv - row.av;
+                    const pctv = row.av > 0 ? (diff / row.av) * 100 : null;
+                    return (
+                      <div key={row.label} className="rounded-md border p-4">
+                        <p className="text-xs text-muted-foreground">{row.label}</p>
+                        <p className="font-display mt-1 text-lg font-semibold tabular text-foreground">{row.fmt(row.bv)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {cmp.a!.month} {row.fmt(row.av)} →{" "}
+                          <span className={diff >= 0 ? "text-emerald-600" : "text-destructive"}>
+                            {diff >= 0 ? "+" : "−"}{row.fmt(Math.abs(diff))}
+                            {pctv != null && ` (${diff >= 0 ? "+" : "−"}${Math.abs(pctv).toFixed(1)}%)`}
+                          </span>
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 메뉴별 증감 */}
+                {(() => {
+                  const map = new Map<string, { product: string; category: string; qa: number; qb: number; aa: number; ab: number }>();
+                  cmp.a!.byProduct.forEach((p) => {
+                    const k = `${p.category}||${p.product}`;
+                    map.set(k, { product: p.product, category: p.category, qa: p.qty, qb: 0, aa: p.amount, ab: 0 });
+                  });
+                  cmp.b!.byProduct.forEach((p) => {
+                    const k = `${p.category}||${p.product}`;
+                    const cur = map.get(k) || { product: p.product, category: p.category, qa: 0, qb: 0, aa: 0, ab: 0 };
+                    cur.qb = p.qty; cur.ab = p.amount; map.set(k, cur);
+                  });
+                  const rows = [...map.values()]
+                    .map((r) => ({ ...r, dq: r.qb - r.qa, da: r.ab - r.aa }))
+                    .sort((x, y) => Math.abs(y.da) - Math.abs(x.da))
+                    .slice(0, 20);
+                  if (rows.length === 0) return null;
+                  return (
+                    <>
+                      <p className="mb-2 text-xs font-semibold text-foreground">
+                        메뉴별 증감 <span className="font-normal text-muted-foreground">· 변동이 큰 20개</span>
+                      </p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[560px] text-sm">
+                          <thead className="bg-muted/40 text-xs text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-medium">메뉴</th>
+                              <th className="px-3 py-2 text-right font-medium">{cmp.a!.month}</th>
+                              <th className="px-3 py-2 text-right font-medium">{cmp.b!.month}</th>
+                              <th className="px-3 py-2 text-right font-medium">수량 증감</th>
+                              <th className="px-3 py-2 text-right font-medium">매출 증감</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {rows.map((r) => (
+                              <tr key={`${r.category}-${r.product}`}>
+                                <td className="px-3 py-2">
+                                  <span className="font-medium text-foreground">{r.product}</span>
+                                  <span className="ml-1.5 text-[11px] text-muted-foreground">{r.category}</span>
+                                  {r.qa === 0 && <span className="ml-1.5 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-700">신규</span>}
+                                  {r.qb === 0 && <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">중단</span>}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular text-muted-foreground">{r.qa.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right tabular text-foreground">{r.qb.toLocaleString()}</td>
+                                <td className={`px-3 py-2 text-right tabular ${r.dq >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                                  {r.dq >= 0 ? "+" : "−"}{Math.abs(r.dq).toLocaleString()}
+                                </td>
+                                <td className={`px-3 py-2 text-right tabular ${r.da >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                                  {r.da >= 0 ? "+" : "−"}{won(Math.abs(r.da))}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : (
+              <p className="p-5 pt-0 text-xs text-muted-foreground">
+                비교하려면 2개월 이상의 데이터가 필요합니다. 다른 달의 POS 엑셀도 업로드해 주세요.
+              </p>
+            )}
+          </Card>
+        )}
 
         {isLoading ? (
           <div className="space-y-3"><Skeleton className="h-28 w-full" /><Skeleton className="h-64 w-full" /></div>
