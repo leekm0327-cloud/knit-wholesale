@@ -338,7 +338,7 @@ export default function AdminPersonalLedger() {
               <Input
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addCategory(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) addCategory(); }}
                 placeholder="예: 식비"
                 data-testid="input-new-category"
               />
