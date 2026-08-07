@@ -44,6 +44,7 @@ import {
   MessagesSquare,
   FileText,
   BarChart3,
+  Wand2,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -101,6 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/store-sales", label: "매장매출", icon: Store, ownerOnly: true },
       { href: "/admin/pos-sales", label: "POS 매출 분석", icon: BarChart3, ownerOnly: true },
       { href: "/admin/money", label: "지출·가계부", icon: Receipt, ownerOnly: true },
+      { href: "/admin/expense-cleanup", label: "지출 재분류", icon: Wand2, ownerOnly: true },
       { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
     ],
   },
