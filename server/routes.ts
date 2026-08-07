@@ -215,7 +215,16 @@ export async function registerRoutes(
     const { passwordConfirm: _pc, ...restData } = parsed.data;
     // B-3: 사업자등록번호 형식+체크섬 검증. 유효하면 자동승인(biz_verified=1), 아니면 승인대기(0).
     const bizVerified = isValidBizRegNo(parsed.data.bizRegNo ?? "") ? 1 : 0;
-    const customer = await storage.createCustomer({ ...restData, taxEmail: parsed.data.email, password: hashed, role: "customer", bizVerified });
+    // isStore/bizVerified/sampleUsed 는 스키마에서도 제외했지만, 스프레드 뒤에 다시 못박아 이중으로 차단한다.
+    const customer = await storage.createCustomer({
+      ...restData,
+      taxEmail: parsed.data.email,
+      password: hashed,
+      role: "customer",
+      isStore: 0,
+      sampleUsed: 0,
+      bizVerified,
+    });
     // B-3: 승인 상태를 활동 로그로 기록.
     // F: 승인대기 고객 발생 시 사장님 카카오톡으로 실시간 통지 (실패해도 가입 흐름은 정상 진행).
     if (!bizVerified) {
