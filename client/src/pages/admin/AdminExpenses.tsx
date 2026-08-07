@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -34,6 +34,8 @@ export default function AdminExpenses() {
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [suggest, setSuggest] = useState<{ category: string; sector: string; basedOn: number } | null>(null);
+  const touchedRef = useRef(false); // 사용자가 항목·부문을 직접 고르면 자동 추천을 덮어쓰지 않음
 
   async function submit() {
     const cat = category || categories[0] || "";
@@ -77,6 +79,36 @@ export default function AdminExpenses() {
     }
   }
 
+  // 항목을 고르면 그 항목의 기본 부문을 자동 선택 (사용자가 부문을 직접 바꾼 뒤에는 유지)
+  function pickCategory(next: string) {
+    setCategory(next);
+    if (touchedRef.current) return;
+    const it = (items ?? []).find((i) => i.name === next) as any;
+    if (it?.sector) setSector(it.sector as Sector);
+  }
+
+  // 메모를 입력하면 과거 기록에서 항목·부문 추천
+  useEffect(() => {
+    const q = memo.trim();
+    if (q.length < 2) { setSuggest(null); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/admin/expenses/suggest?memo=${encodeURIComponent(q)}`);
+        const j = await res.json();
+        if (alive) setSuggest(j && j.category ? j : null);
+      } catch { /* 추천 실패는 무시 */ }
+    }, 400);
+    return () => { alive = false; clearTimeout(t); };
+  }, [memo]);
+
+  function applySuggest() {
+    if (!suggest) return;
+    setCategory(suggest.category);
+    setSector(suggest.sector as Sector);
+    touchedRef.current = true;
+  }
+
   return (
     <AdminLayout>
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -97,7 +129,7 @@ export default function AdminExpenses() {
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={category || categories[0] || ""}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => pickCategory(e.target.value)}
                 data-testid="select-expense-category"
               >
                 {categories.map((c) => (
@@ -110,7 +142,7 @@ export default function AdminExpenses() {
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={sector}
-                onChange={(e) => setSector(e.target.value as Sector)}
+                onChange={(e) => { touchedRef.current = true; setSector(e.target.value as Sector); }}
                 data-testid="select-expense-sector"
               >
                 {SECTORS.map((s) => (
@@ -126,6 +158,16 @@ export default function AdminExpenses() {
           <div className="mt-4 space-y-1.5">
             <Label className="text-xs">메모</Label>
             <Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="비고" data-testid="input-expense-memo" />
+            {suggest && (suggest.category !== (category || categories[0]) || suggest.sector !== sector) && (
+              <button
+                type="button"
+                onClick={applySuggest}
+                className="mt-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                data-testid="button-apply-suggest"
+              >
+                과거 {suggest.basedOn}건과 같은 내용입니다 → <span className="font-medium text-foreground">{suggest.category} · {SECTOR_LABEL[suggest.sector as Sector]}</span> 로 맞추기
+              </button>
+            )}
           </div>
           <div className="mt-4 flex justify-end">
             <Button onClick={submit} disabled={busy} data-testid="button-submit-expense">

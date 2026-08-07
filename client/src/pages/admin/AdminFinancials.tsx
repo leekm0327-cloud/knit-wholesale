@@ -102,12 +102,13 @@ export default function AdminFinancials() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState<string | null>(null);
   const [aiTruncated, setAiTruncated] = useState(false);
+  const [allocate, setAllocate] = useState(true);
   const aiPrintRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = useQuery<FinancialStatement>({
-    queryKey: ["/api/admin/financial-statement", { from, to }],
+    queryKey: ["/api/admin/financial-statement", { from, to, allocate }],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/admin/financial-statement?from=${from}&to=${to}`);
+      const res = await apiRequest("GET", `/api/admin/financial-statement?from=${from}&to=${to}&allocate=${allocate ? 1 : 0}`);
       return res.json();
     },
     enabled: isOwner,
@@ -216,6 +217,8 @@ export default function AdminFinancials() {
         { key: "sga", label: "(−) 판매관리비", get: (l) => l.sga, total: t.sga, fmt: "won" },
         { key: "op", label: "영업이익", get: (l) => l.operatingProfit, total: t.operatingProfit, fmt: "won", strong: true },
         { key: "opRate", label: "영업이익률", get: (l) => rate(l.operatingProfit, l.revenue), total: rate(t.operatingProfit, t.revenue), fmt: "pct", strong: true, muted: true },
+        { key: "nonop", label: "(−) 영업외비용", get: (l) => l.nonOperating, total: t.nonOperating, fmt: "won" },
+        { key: "net", label: "순이익", get: (l) => l.netProfit, total: t.netProfit, fmt: "won", strong: true },
       ]
     : [];
 
@@ -245,6 +248,10 @@ export default function AdminFinancials() {
               <Button variant="outline" size="sm" onClick={thisYear} data-testid="button-fs-year">올해</Button>
               <Button variant="outline" size="sm" onClick={lastYear} data-testid="button-fs-lastyear">작년</Button>
             </div>
+            <label className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={allocate} onChange={(e) => setAllocate(e.target.checked)} data-testid="check-allocate" />
+              공통비를 매출 비율로 배분
+            </label>
           </div>
         </Card>
 
@@ -319,7 +326,9 @@ export default function AdminFinancials() {
                 </div>
               )}
               <div className="border-t p-3 text-[11px] text-muted-foreground">
-                매출원가 = 원두도매업의 공장 매입(발주) + 각 부문의 '원부자재' 지출. 그 외 지출은 판매관리비로 집계됩니다.
+                매출원가·판매관리비·영업외비용은 <strong className="text-foreground">고정비 항목별 ‘비용 구분’</strong> 설정을 따릅니다. (고정비 항목 관리에서 변경)
+                {data?.allocated && (data?.allocatedCommon ?? 0) > 0 && <> · 공통 비용 {won(data!.allocatedCommon)}을 부문별 매출 비율로 배분했습니다.</>}
+                {(data?.excluded ?? 0) > 0 && <> · ‘비용 아님’(부가세 납부·자산 취득 등) {won(data!.excluded)}은 손익에서 제외했습니다.</>}
               </div>
             </Card>
 
