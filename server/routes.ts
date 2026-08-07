@@ -578,6 +578,8 @@ export async function registerRoutes(
     const order = await storage.createOrder({
       orderNo: genOrderNo(),
       customerId: customer.id,
+      // 매장 내부 계정 여부를 주문에 고정 기록 — 이후 거래처를 지우거나 설정을 바꿔도 과거 손익이 흔들리지 않게
+      isStoreOrder: (customer as any).isStore ? 1 : 0,
       customerSnapshot: JSON.stringify({
         businessName: customer.businessName,
         managerName: customer.managerName,
@@ -659,6 +661,8 @@ export async function registerRoutes(
     const order = await storage.createOrder({
       orderNo: genOrderNo(),
       customerId: customer.id,
+      // 매장 내부 계정 여부를 주문에 고정 기록 — 이후 거래처를 지우거나 설정을 바꿔도 과거 손익이 흔들리지 않게
+      isStoreOrder: (customer as any).isStore ? 1 : 0,
       customerSnapshot: JSON.stringify({
         businessName: customer.businessName,
         managerName: customer.managerName,
@@ -742,6 +746,8 @@ export async function registerRoutes(
     const order = await storage.createOrder({
       orderNo: genOrderNo(),
       customerId: customer.id,
+      // 매장 내부 계정 여부를 주문에 고정 기록 — 이후 거래처를 지우거나 설정을 바꿔도 과거 손익이 흔들리지 않게
+      isStoreOrder: (customer as any).isStore ? 1 : 0,
       customerSnapshot: JSON.stringify({
         businessName: customer.businessName,
         managerName: customer.managerName,
@@ -1519,6 +1525,7 @@ export async function registerRoutes(
     // 기본 부문 / 비용 구분(손익 집계 위치)도 수정 가능해야 함
     if (typeof req.body.sector === "string" && (SECTORS as readonly string[]).includes(req.body.sector)) patch.sector = req.body.sector;
     if (typeof req.body.costType === "string" && (COST_TYPES as readonly string[]).includes(req.body.costType)) patch.costType = req.body.costType;
+    if (typeof req.body.vatIncluded === "number" && [0, 1].includes(req.body.vatIncluded)) patch.vatIncluded = req.body.vatIncluded;
     const item = await storage.updateFixedCostItem(id, patch);
     if (!item) return res.status(404).json({ message: "항목을 찾을 수 없습니다." });
     const actor = await getActor(req);
@@ -2097,11 +2104,21 @@ export async function registerRoutes(
               const beanItems = orderItems.filter((it) => autoBeanKeys.has(it.category));
               if (beanItems.length > 0) {
                 const purchaseItems: PurchaseItem[] = [];
+                const zeroPricedNames: string[] = [];
                 for (const it of beanItems) {
                   const productId = typeof it.productId === "number" ? it.productId : null;
                   const name = it.productName ?? it.name ?? "";
-                  const lastPrice = await storage.lastPurchaseUnitPrice(supplier.id, { productId, name });
-                  const unitPrice = lastPrice ?? 0;
+                  // 단가: 최근 매입가 → 없으면 상품 매입원가(costPrice) 폴백.
+                  // 둘 다 없으면 0원 발주가 되어 '매출만 있고 원가가 없는' 상태가 되므로 따로 알린다.
+                  let unitPrice = await storage.lastPurchaseUnitPrice(supplier.id, { productId, name });
+                  if (unitPrice == null && productId != null) {
+                    const prod = await storage.getProduct(productId);
+                    if (prod && prod.costPrice > 0) unitPrice = prod.costPrice;
+                  }
+                  if (unitPrice == null || unitPrice <= 0) {
+                    unitPrice = 0;
+                    zeroPricedNames.push(name || `상품#${productId ?? "?"}`);
+                  }
                   const qty = it.qty;
                   purchaseItems.push({
                     productId,
@@ -2117,7 +2134,10 @@ export async function registerRoutes(
                 const purchaseDate = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
                 // 매장 내부 계정의 주문이면 발주 부문을 'store'(매장 매출원가)로 태그
                 const orderCust = await storage.getCustomer(updated.customerId);
-                const purchaseSegment = (orderCust as any)?.isStore ? "store" : "wholesale";
+                // 매장 여부는 주문 스냅샷을 우선 사용 (거래처가 삭제되었거나 이후 변경되어도 일관)
+                const snap = (updated as any).isStoreOrder;
+                const isStoreOrd = typeof snap === "number" && snap >= 0 ? snap === 1 : !!(orderCust as any)?.isStore;
+                const purchaseSegment = isStoreOrd ? "store" : "wholesale";
                 const purchase = await storage.createPurchase({
                   supplierId: supplier.id,
                   purchaseDate,
@@ -2129,6 +2149,17 @@ export async function registerRoutes(
                   customerName: orderCust?.businessName ?? "",
                 });
                 await storage.updateOrder(updated.id, { autoPurchaseId: purchase.id });
+                // 단가를 못 찾아 0원으로 잡힌 품목이 있으면 알림센터로 통지 (매출만 있고 원가가 0인 상태 방지)
+                if (zeroPricedNames.length > 0) {
+                  try {
+                    await storage.createNotification({
+                      type: "purchase",
+                      title: "자동발주 단가 확인 필요",
+                      body: `${updated.orderNo} 자동발주에 매입 단가를 찾지 못한 품목이 있습니다: ${zeroPricedNames.join(", ")}. 발주 관리에서 단가를 입력해 주세요.`,
+                      link: `/admin/purchases`,
+                    });
+                  } catch { /* 알림 실패는 주문 처리에 영향 없음 */ }
+                }
                 const actor = await getActor(req);
                 await storage.logActivity({
                   ...actor,

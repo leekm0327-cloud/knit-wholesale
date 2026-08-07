@@ -470,6 +470,10 @@ for (const [table, col] of [
   ["quotes", "appendix TEXT NOT NULL DEFAULT '[]'"],
   // 지출 항목의 비용 구분 (매출원가·판관비·영업외비용·비용아님)
   ["fixed_cost_items", "cost_type TEXT NOT NULL DEFAULT 'sga'"],
+  // 지출 항목의 부가세 포함 여부 (손익을 공급가액 기준으로 집계하기 위함)
+  ["fixed_cost_items", "vat_included INTEGER NOT NULL DEFAULT 1"],
+  // 주문 시점의 매장 내부 계정 여부 스냅샷 (-1 = 미기록 → 거래처 현재값으로 판정)
+  ["orders", "is_store_order INTEGER NOT NULL DEFAULT -1"],
   // 견적서 '받는 분' 정보(선택) — 사업자등록번호/담당자/연락처
   ["quotes", "customer_biz_no TEXT NOT NULL DEFAULT ''"],
   ["quotes", "customer_manager TEXT NOT NULL DEFAULT ''"],
@@ -500,6 +504,31 @@ try {
   }
 } catch (e: any) {
   console.warn("[migration] fixed_cost_items cost_type seed", e?.message);
+}
+
+// ===== 지출 항목 과세여부 초기값 보정 (멱등) =====
+// 손익을 공급가액 기준으로 집계하므로, 부가세가 붙지 않는 비용은 ÷1.1 대상에서 제외한다.
+try {
+  const seeded = sqlite.prepare(`SELECT COUNT(*) AS n FROM fixed_cost_items WHERE vat_included = 0`).get() as { n: number };
+  if (!seeded || seeded.n === 0) {
+    sqlite.exec(`UPDATE fixed_cost_items SET vat_included = 0
+      WHERE name IN ('인건비','급여','4대보험','퇴직급여','보험료','이자비용','사업주 개인','부가세·세금 납부','자산 취득(장비)')
+         OR name LIKE '%이자%' OR name LIKE '%보험%';`);
+  }
+} catch (e: any) {
+  console.warn("[migration] fixed_cost_items vat_included seed", e?.message);
+}
+
+// ===== 주문 매장여부 스냅샷 백필 (1회) =====
+// 기존 주문은 현재 거래처의 isStore 값으로 채워 넣어, 전환 시점에 숫자가 변하지 않게 한다.
+try {
+  const pending = sqlite.prepare(`SELECT COUNT(*) AS n FROM orders WHERE is_store_order = -1`).get() as { n: number };
+  if (pending && pending.n > 0) {
+    sqlite.exec(`UPDATE orders SET is_store_order = COALESCE(
+      (SELECT c.is_store FROM customers c WHERE c.id = orders.customer_id), 0);`);
+  }
+} catch (e: any) {
+  console.warn("[migration] orders is_store_order backfill", e?.message);
 }
 
 // ===== V6: 상호명(business_name) 고유 인덱스 (멱등) =====
@@ -855,6 +884,11 @@ function dateFromYmd(ymd: string): Date {
   return new Date(`${ymd}T00:00:00+09:00`);
 }
 // KST 캘린더 값 (서버 타임존과 무관하게 UTC 시프트로 계산)
+// 부가세 포함 금액 → 공급가액 (손익은 공급가액 기준으로 집계한다)
+function supplyOf(vatIncluded: number): number {
+  return Math.round(vatIncluded / 1.1);
+}
+
 function kstUtc(date: Date): Date {
   const k = new Date(date.getTime() + KST_OFFSET_MS);
   return new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate()));
@@ -1279,7 +1313,7 @@ export class DatabaseStorage implements IStorage {
       .returning()
       .get();
   }
-  async updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number; customerId?: number | null; customerName?: string }): Promise<Purchase | undefined> {
+  async updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number; customerId?: number | null; customerName?: string; segment?: string }): Promise<Purchase | undefined> {
     return db
       .update(purchases)
       .set({
@@ -1290,7 +1324,9 @@ export class DatabaseStorage implements IStorage {
         memo: p.memo ?? "",
         customerId: p.customerId ?? null,
         customerName: p.customerName ?? "",
-      })
+        // 부문(매장/도매)을 잘못 지정했을 때 수정 화면에서 바로잡을 수 있어야 함
+        ...(p.segment ? { segment: p.segment } : {}),
+      } as any)
       .where(eq(purchases.id, id))
       .returning()
       .get();
@@ -1545,6 +1581,7 @@ export class DatabaseStorage implements IStorage {
         active: f.active ?? 1,
         sector: f.sector ?? "common",
         costType: f.costType ?? "sga",
+        vatIncluded: f.vatIncluded ?? 1,
         createdAt: Date.now(),
       })
       .returning()
@@ -1620,15 +1657,15 @@ export class DatabaseStorage implements IStorage {
 
   // 권장 지출 항목 세트 — 없는 것만 추가 (기존 항목은 건드리지 않음)
   async seedRecommendedCostItems(): Promise<{ added: string[] }> {
-    const RECOMMENDED: { name: string; costType: string; sector: string }[] = [
+    const RECOMMENDED: { name: string; costType: string; sector: string; vat?: 0 | 1 }[] = [
       // 매출원가
       { name: "식자재(매장)", costType: "cogs", sector: "store" },
       { name: "포장·부자재", costType: "cogs", sector: "common" },
       { name: "생산 외주(도매)", costType: "cogs", sector: "wholesale" },
       // 판매관리비
-      { name: "급여", costType: "sga", sector: "common" },
-      { name: "4대보험", costType: "sga", sector: "common" },
-      { name: "퇴직급여", costType: "sga", sector: "common" },
+      { name: "급여", costType: "sga", sector: "common", vat: 0 },
+      { name: "4대보험", costType: "sga", sector: "common", vat: 0 },
+      { name: "퇴직급여", costType: "sga", sector: "common", vat: 0 },
       { name: "관리비", costType: "sga", sector: "common" },
       { name: "소프트웨어·구독료", costType: "sga", sector: "common" },
       { name: "지급수수료", costType: "sga", sector: "common" },
@@ -1639,11 +1676,11 @@ export class DatabaseStorage implements IStorage {
       { name: "소모품·비품", costType: "sga", sector: "store" },
       { name: "수선비", costType: "sga", sector: "store" },
       // 영업외비용
-      { name: "이자비용", costType: "nonop", sector: "common" },
+      { name: "이자비용", costType: "nonop", sector: "common", vat: 0 },
       // 비용 아님
-      { name: "부가세·세금 납부", costType: "none", sector: "common" },
+      { name: "부가세·세금 납부", costType: "none", sector: "common", vat: 0 },
       { name: "자산 취득(장비)", costType: "none", sector: "common" },
-      { name: "사업주 개인", costType: "none", sector: "common" },
+      { name: "사업주 개인", costType: "none", sector: "common", vat: 0 },
     ];
     const existing = new Set((await this.listFixedCostItems()).map((i) => i.name));
     const maxOrder = (await this.listFixedCostItems()).reduce((m, i) => Math.max(m, i.sortOrder), 0);
@@ -1653,7 +1690,8 @@ export class DatabaseStorage implements IStorage {
       if (existing.has(r.name)) continue;
       order += 1;
       db.insert(fixedCostItems).values({
-        name: r.name, sortOrder: order, active: 1, sector: r.sector, costType: r.costType, createdAt: Date.now(),
+        name: r.name, sortOrder: order, active: 1, sector: r.sector, costType: r.costType,
+        vatIncluded: r.vat ?? 1, createdAt: Date.now(),
       } as any).run();
       added.push(r.name);
     }
@@ -1825,7 +1863,9 @@ export class DatabaseStorage implements IStorage {
 
     // 매장 내부 계정(주문) / 매장 발주(segment=store) 구분 — 이중계상 방지
     const storeIds = new Set((await this.listCustomers()).filter((c) => (c as any).isStore).map((c) => c.id));
-    const isStoreOrder = (o: any) => storeIds.has(o.customerId);
+    // 주문에 기록된 스냅샷 우선 (거래처 삭제·매장여부 변경에도 과거 숫자 불변)
+    const isStoreOrder = (o: any) =>
+      typeof o.isStoreOrder === "number" && o.isStoreOrder >= 0 ? o.isStoreOrder === 1 : storeIds.has(o.customerId);
     const segOf = (p: any) => (p.segment === "store" ? "store" : "wholesale");
     // 손익 기준 = 부가세 포함(매출이 부가세 포함이므로 발주 원가도 ×1.1로 맞춘다)
     const vatInc = (a: number) => a + Math.round(a * 0.1);
@@ -1835,18 +1875,26 @@ export class DatabaseStorage implements IStorage {
       SECTORS.reduce((acc, s) => { acc[s] = { income: 0, expense: 0 }; return acc; }, {} as Record<Sector, { income: number; expense: number }>);
     const secAgg = secInit();
     // 도매주문 → wholesale 수입 (매장 내부 주문은 자기거래이므로 매출에서 제외)
-    for (const o of orderRows) { if (!isStoreOrder(o)) secAgg.wholesale.income += o.totalAmount; }
+    for (const o of orderRows) { if (!isStoreOrder(o)) secAgg.wholesale.income += o.supplyAmount; }
     // 매장/온라인 매출 → 행의 sector
     for (const r of storeSaleRows) {
       const s = (SECTORS as readonly string[]).includes(r.sector) ? (r.sector as Sector) : "store";
-      secAgg[s].income += r.amount;
+      secAgg[s].income += supplyOf(r.amount);
     }
-    // 공장 매입(발주) → 부문(segment)별 지출: 매장 발주는 store, 그 외 wholesale (발생주의, 부가세 포함)
-    for (const p of purchaseRows) secAgg[segOf(p)].expense += vatInc(p.totalAmount);
+    // 지출 집계 기준(공급가액) 준비 — 항목별 비용구분/과세여부를 한 번만 조회해 재사용
+    const costItemsForDash = await this.listFixedCostItems(true);
+    const noneCats = new Set(costItemsForDash.filter((i) => ((i as any).costType ?? "sga") === "none").map((i) => i.name));
+    const noVatCats = new Set(costItemsForDash.filter((i) => ((i as any).vatIncluded ?? 1) === 0).map((i) => i.name));
+    // 손익은 공급가액 기준 — 부가세 포함 지출만 ÷1.1 (재무제표와 동일 규칙)
+    const expenseSupply = (e: { category: string; amount: number }) => (noVatCats.has(e.category) ? e.amount : supplyOf(e.amount));
+
+    // 공장 매입(발주) → 부문(segment)별 지출: 매장 발주는 store, 그 외 wholesale (발생주의, 공급가액)
+    for (const p of purchaseRows) secAgg[segOf(p)].expense += p.totalAmount;
     // 지출 → 행의 sector
     for (const e of expenseRows) {
       const s = (SECTORS as readonly string[]).includes((e as any).sector) ? ((e as any).sector as Sector) : "common";
-      secAgg[s].expense += e.amount;
+      if (noneCats.has(e.category)) continue; // '비용 아님'은 손익에서 제외
+      secAgg[s].expense += expenseSupply(e);
     }
     const sectorBreakdown: SectorPnl[] = SECTORS.map((s) => ({
       sector: s,
@@ -1861,17 +1909,15 @@ export class DatabaseStorage implements IStorage {
     const filteredExpenses = sector === "all" ? expenseRows : expenseRows.filter((e) => ((e as any).sector || "common") === sector);
 
     // 수입 (매장 내부 주문은 자기거래이므로 도매 매출에서 제외)
-    const wholesaleSales = includeWholesale ? orderRows.filter((o) => !isStoreOrder(o)).reduce((s, o) => s + o.totalAmount, 0) : 0;
-    const storeSalesTotal = filteredStoreSales.reduce((s, r) => s + r.amount, 0);
+    const wholesaleSales = includeWholesale ? orderRows.filter((o) => !isStoreOrder(o)).reduce((s, o) => s + o.supplyAmount, 0) : 0;
+    const storeSalesTotal = filteredStoreSales.reduce((s, r) => s + supplyOf(r.amount), 0);
     const totalIncome = wholesaleSales + storeSalesTotal;
 
     // 지출 (발생주의: 공장 매입=발주액). 부문에 맞는 발주만 — all: 전체 / wholesale: 도매 / store: 매장
     const purchaseRowsForSector = sector === "all" ? purchaseRows : purchaseRows.filter((p) => segOf(p) === sector);
-    const purchaseTotal = purchaseRowsForSector.reduce((s, p) => s + vatInc(p.totalAmount), 0);
+    const purchaseTotal = purchaseRowsForSector.reduce((s, p) => s + p.totalAmount, 0);
     // '비용 아님'(부가세 납부·자산 취득·사업주 개인 등)은 재무제표와 동일하게 지출에서 제외 — 두 화면 숫자가 어긋나지 않도록
-    const costItemsForDash = await this.listFixedCostItems(true);
-    const noneCats = new Set(costItemsForDash.filter((i) => ((i as any).costType ?? "sga") === "none").map((i) => i.name));
-    const otherExpense = filteredExpenses.filter((e) => !noneCats.has(e.category)).reduce((s, e) => s + e.amount, 0);
+    const otherExpense = filteredExpenses.filter((e) => !noneCats.has(e.category)).reduce((s, e) => s + expenseSupply(e), 0);
     const totalExpense = purchaseTotal + otherExpense;
 
     // 지출 항목별 비중 (공장 매입 + 지출 카테고리별)
@@ -1879,7 +1925,7 @@ export class DatabaseStorage implements IStorage {
     if (purchaseTotal > 0) catMap.set("공장 매입", purchaseTotal);
     for (const e of filteredExpenses) {
       if (noneCats.has(e.category)) continue; // 위 지출 합계와 동일 기준 유지
-      catMap.set(e.category, (catMap.get(e.category) ?? 0) + e.amount);
+      catMap.set(e.category, (catMap.get(e.category) ?? 0) + expenseSupply(e));
     }
     const expenseByCategory = Array.from(catMap.entries())
       .map(([category, amount]) => ({ category, amount }))
@@ -1895,11 +1941,11 @@ export class DatabaseStorage implements IStorage {
     if (includeWholesale) {
       for (const o of orderRows) { if (!isStoreOrder(o)) bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount); }
     }
-    for (const p of purchaseRowsForSector) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", vatInc(p.totalAmount));
+    for (const p of purchaseRowsForSector) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", p.totalAmount);
     for (const r of filteredStoreSales) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
     for (const e of filteredExpenses) {
       if (noneCats.has(e.category)) continue; // 지출 합계와 동일 기준
-      bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", e.amount);
+      bump(bucketKey(dateFromYmd(e.expenseDate), granularity), "expense", expenseSupply(e));
     }
 
     const buckets = Array.from(bucketMap.entries())
@@ -1948,32 +1994,39 @@ export class DatabaseStorage implements IStorage {
     const sga: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
     const nonop: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
 
-    // 매장 내부 계정(주문) 구분 — 매장 주문은 자기거래이므로 도매 매출에서 제외
+    // 매장 내부 계정(주문) 구분 — 매장 주문은 자기거래이므로 도매 매출에서 제외.
+    // 주문에 기록된 스냅샷(isStoreOrder)을 우선 사용하고, 없으면(-1) 거래처의 현재 값으로 판정한다.
+    // → 거래처를 삭제하거나 나중에 매장 여부를 바꿔도 과거 손익이 변하지 않는다.
     const storeIds = new Set((await this.listCustomers()).filter((c) => (c as any).isStore).map((c) => c.id));
-    // 매출: 도매주문(매장 내부 주문 제외) → wholesale, 매장/온라인 매출 → 행의 sector
-    for (const o of orderRows) { if (!storeIds.has(o.customerId)) rev.wholesale += o.totalAmount; }
-    for (const r of storeSaleRows) rev[norm(r.sector, "store")] += r.amount;
+    const isStoreOrder = (o: any): boolean =>
+      typeof o.isStoreOrder === "number" && o.isStoreOrder >= 0 ? o.isStoreOrder === 1 : storeIds.has(o.customerId);
+    // 매출(공급가액 기준): 도매주문은 supplyAmount, 매장·온라인 수기매출은 부가세 포함 금액이므로 ÷1.1
+    for (const o of orderRows) { if (!isStoreOrder(o)) rev.wholesale += o.supplyAmount; }
+    for (const r of storeSaleRows) rev[norm(r.sector, "store")] += supplyOf(r.amount);
     // 매출원가: 공장 매입(발주)을 부문(segment)별로 — 매장 발주(store)는 음식점업(store) 매출원가,
     //  그 외는 원두도매(wholesale) 매출원가. (같은 원두가 두 부문에 이중계상되지 않도록 발주 자체를 분할)
     //  손익 기준 = 부가세 포함(매출도 부가세 포함이므로 원가도 ×1.1로 맞춘다)
     for (const p of purchaseRows) {
       const seg: Sector = (p as any).segment === "store" ? "store" : "wholesale";
-      cogs[seg] += p.totalAmount + Math.round(p.totalAmount * 0.1);
+      cogs[seg] += p.totalAmount; // 발주 금액은 공급가액 기준이므로 그대로 사용
     }
     // 지출 분류: 항목(고정비 항목)에 지정된 비용 구분을 따른다.
     //  cogs 매출원가 / sga 판매관리비 / nonop 영업외비용 / none 손익 제외(부가세 납부·자산취득·사업주 개인 등)
     // 비활성 항목도 포함해야 함 — 항목을 숨기면 과거 지출의 비용 구분이 판관비로 바뀌어 손익이 소급 변경되는 것을 방지
     const costItems = await this.listFixedCostItems(true);
     const costTypeByName = new Map<string, string>(costItems.map((i) => [i.name, (i as any).costType || "sga"]));
+    const vatIncByName = new Map<string, boolean>(costItems.map((i) => [i.name, ((i as any).vatIncluded ?? 1) === 1]));
     let excluded = 0;
     for (const e of expenseRows) {
       const s = norm((e as any).sector, "common");
       // 항목이 삭제되어 조회되지 않으면 기존 동작(원부자재=원가, 그 외 판관비)으로 대체
       const ct = costTypeByName.get(e.category) ?? (e.category === "원부자재" ? "cogs" : "sga");
-      if (ct === "cogs") cogs[s] += e.amount;
-      else if (ct === "nonop") nonop[s] += e.amount;
-      else if (ct === "none") excluded += e.amount;
-      else sga[s] += e.amount;
+      // 손익은 공급가액 기준 — 부가세가 포함된 지출만 ÷1.1
+      const amt = vatIncByName.get(e.category) === false ? e.amount : supplyOf(e.amount);
+      if (ct === "cogs") cogs[s] += amt;
+      else if (ct === "nonop") nonop[s] += amt;
+      else if (ct === "none") excluded += e.amount; // 손익 제외 금액은 실제 지출액 그대로 표기
+      else sga[s] += amt;
     }
 
     // 공통비 배분: '공통' 부문에 남은 비용을 부문별 매출 비율로 나눠 실제 수익성에 가깝게 만든다.
