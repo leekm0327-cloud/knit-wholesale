@@ -146,7 +146,7 @@ export default function Catalog() {
   const topNews = (newsList ?? []).slice(0, 4);
   const [qtyMap, setQtyMap] = useState<Record<number, number>>({});
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
-  const { add } = useCart();
+  const { add, items: cartItems } = useCart();
   const { toast } = useToast();
 
   function setQty(productId: number, qty: number) {
@@ -203,6 +203,23 @@ export default function Catalog() {
     const vat = Math.round(supplyAmount * 0.1);
     return { supplyAmount, vat, total: supplyAmount + vat };
   }, [products, qtyMap]);
+
+  // 최소주문(5kg) 진행 상황 — 장바구니에 담긴 것 + 지금 입력 중인 수량을 합산해 미리 안내한다.
+  const beanProgress = useMemo(() => {
+    const beanKeys = new Set(
+      categoryRows && categoryRows.length > 0
+        ? categoryRows.filter((c: any) => c.isBean).map((c: any) => c.key)
+        : ["blend", "decaf", "single", "single_espresso", "single_filter"],
+    );
+    const inCart = (cartItems ?? [])
+      .filter((i: any) => beanKeys.has(i.category))
+      .reduce((sum: number, i: any) => sum + i.qty, 0);
+    const typing = (products ?? []).reduce((sum, p) => {
+      if (!beanKeys.has(p.category)) return sum;
+      return sum + (qtyMap[p.id] ?? 0);
+    }, 0);
+    return { total: inCart + typing, inCart, typing };
+  }, [products, qtyMap, cartItems, categoryRows]);
 
   // 선택된 상품 수
   const selectedCount = useMemo(() => {
@@ -437,6 +454,23 @@ export default function Catalog() {
               {won(totals.total)}
             </span>
           </div>
+          {/* 최소주문 안내 — 담기 전에 미리 알 수 있도록 */}
+          {beanProgress.total > 0 && (
+            <div
+              className={`mt-1 flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs ${
+                beanProgress.total >= 5
+                  ? "bg-emerald-500/10 text-emerald-700"
+                  : "bg-amber-500/10 text-amber-700"
+              }`}
+              data-testid="text-bean-progress"
+            >
+              <span>원두 {beanProgress.total}개{beanProgress.inCart > 0 && ` (장바구니 ${beanProgress.inCart}개 포함)`}</span>
+              <span className="font-medium">
+                {beanProgress.total >= 5 ? "최소 주문 수량 충족" : `5개(5kg)까지 ${5 - beanProgress.total}개 남음`}
+              </span>
+            </div>
+          )}
+
           <Button
             className="mt-2 w-full"
             size="lg"
@@ -532,6 +566,10 @@ function ProductRow({
           <div className="font-ui text-sm tabular text-foreground">{won(unitPrice)}</div>
           {hasCustomPrice && (
             <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-teal-600">전용가</div>
+          )}
+          {/* 상품별 최소 주문 수량 — 장바구니에서야 알게 되지 않도록 여기서 미리 표시 */}
+          {(product as any).minOrderQty > 0 && (
+            <div className="text-[9px] text-muted-foreground">최소 {(product as any).minOrderQty}개</div>
           )}
         </div>
         <div className="shrink-0">
