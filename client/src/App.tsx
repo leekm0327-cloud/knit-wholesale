@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { CartProvider } from "@/lib/cart";
 import { Loader2 } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -208,7 +209,9 @@ function App() {
             <TooltipProvider>
               <Toaster />
               <Router hook={useHashLocation}>
-                <AppRouter />
+                <ErrorBoundary>
+                  <AppRouter />
+                </ErrorBoundary>
               </Router>
             </TooltipProvider>
           </CartProvider>
