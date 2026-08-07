@@ -103,6 +103,15 @@ export function analyzeFinancials(data: FinancialStatement): FsAnalysis {
     insights.push({ tone: "good", label: bizName(top), text: `${bizName(top)} 부문이 영업이익 ${won(top.operatingProfit)}(이익률 ${p1(pct(top.operatingProfit, top.revenue))})로 실적을 견인합니다.` });
   }
 
+  // ── 영업외비용 (이자 등) ──
+  const nonop = (t as any).nonOperating ?? 0;
+  const net = (t as any).netProfit ?? op;
+  if (nonop > 0) {
+    insights.push({ tone: op > 0 && net <= 0 ? "bad" : "info", label: "영업외비용",
+      text: `이자 등 영업외비용이 ${won(nonop)}입니다. 영업이익 ${won(op)}에서 차감하면 순이익은 ${won(net)}입니다.` });
+    if (op > 0 && net <= 0) suggestions.push("영업은 흑자지만 이자비용 때문에 순이익이 적자입니다. 대출 구조 조정을 검토해 보세요.");
+  }
+
   // ── 채권·채무 ──
   if (wc.receivables > 0) {
     if (rev > 0 && wc.receivables > rev) {
