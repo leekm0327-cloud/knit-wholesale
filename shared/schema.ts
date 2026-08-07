@@ -503,6 +503,11 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
   createdAt: true,
   role: true,
   adminRole: true,
+  // 아래 값들은 가입자가 스스로 정할 수 없어야 한다 (관리자만 변경 가능).
+  // isStore=1 이면 상품을 매입원가로 구매하고 최소주문 검증도 우회되므로 반드시 차단.
+  isStore: true,
+  bizVerified: true,
+  sampleUsed: true,
 });
 
 export const registerSchema = insertCustomerSchema.extend({
