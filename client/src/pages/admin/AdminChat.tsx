@@ -10,7 +10,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ensureChatNotifyPermission } from "@/hooks/use-chat-alert";
 import type { ChatThread, ChatMessage } from "@shared/schema";
-import { ArrowLeft, MessageSquare, Send } from "lucide-react";
+import { ArrowLeft, MessageSquare, Send, Trash2 } from "lucide-react";
 
 interface ThreadsResponse {
   threads: ChatThread[];
@@ -43,6 +43,20 @@ export default function AdminChat() {
     refetchInterval: 15000,
   });
   const threads = threadsData?.threads ?? [];
+  const { toast } = useToast();
+
+  async function removeThread(customerId: number, name: string) {
+    if (!confirm(`'${name}'와의 대화를 삭제할까요?\n주고받은 메시지가 모두 삭제되며 되돌릴 수 없습니다.`)) return;
+    try {
+      await apiRequest("DELETE", `/api/admin/chat/${customerId}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat/threads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat/unread-count"] });
+      if (selectedId === customerId) navigate("/admin/chat");
+      toast({ title: "대화를 삭제했습니다." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "삭제 실패", description: e?.message ?? "" });
+    }
+  }
 
   return (
     <AdminLayout>
@@ -70,29 +84,40 @@ export default function AdminChat() {
             ) : (
               <div className="max-h-[70vh] divide-y overflow-y-auto">
                 {threads.map((t) => (
-                  <button
+                  <div
                     key={t.customerId}
-                    onClick={() => navigate(`/admin/chat/${t.customerId}`)}
-                    data-testid={`thread-${t.customerId}`}
-                    className={`flex w-full flex-col gap-0.5 p-3.5 text-left hover-elevate ${
-                      selectedId === t.customerId ? "bg-muted/50" : ""
-                    }`}
+                    className={`flex items-center ${selectedId === t.customerId ? "bg-muted/50" : ""}`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-semibold text-foreground">{t.businessName}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(t.lastAt)}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs text-muted-foreground">
-                        {t.lastSender === "admin" ? "나: " : ""}{t.lastBody}
-                      </span>
-                      {t.unread > 0 && (
-                        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
-                          {t.unread}
+                    <button
+                      onClick={() => navigate(`/admin/chat/${t.customerId}`)}
+                      data-testid={`thread-${t.customerId}`}
+                      className="flex min-w-0 flex-1 flex-col gap-0.5 p-3.5 text-left hover-elevate"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground">{t.businessName}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(t.lastAt)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs text-muted-foreground">
+                          {t.lastSender === "admin" ? "나: " : ""}{t.lastBody}
                         </span>
-                      )}
-                    </div>
-                  </button>
+                        {t.unread > 0 && (
+                          <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+                            {t.unread}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => removeThread(t.customerId, t.businessName)}
+                      title="대화 삭제"
+                      aria-label={`${t.businessName} 대화 삭제`}
+                      data-testid={`delete-thread-${t.customerId}`}
+                      className="mr-2 shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -155,6 +180,32 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
     send.mutate(body, { onSettled: () => { sendingRef.current = false; } });
   };
 
+  async function removeThread() {
+    const name = data?.customer.businessName ?? "이 거래처";
+    if (!confirm(`'${name}'와의 대화를 삭제할까요?\n주고받은 메시지가 모두 삭제되며 되돌릴 수 없습니다.`)) return;
+    try {
+      await apiRequest("DELETE", `/api/admin/chat/${customerId}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat/threads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat/unread-count"] });
+      toast({ title: "대화를 삭제했습니다." });
+      onBack();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "삭제 실패", description: e?.message ?? "" });
+    }
+  }
+
+  async function removeMessage(id: number) {
+    if (!confirm("이 메시지를 삭제할까요?")) return;
+    try {
+      await apiRequest("DELETE", `/api/admin/chat/${customerId}/message/${id}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat", customerId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat/threads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat/unread-count"] });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "삭제 실패", description: e?.message ?? "" });
+    }
+  }
+
   return (
     <Card className="flex h-[70vh] flex-col overflow-hidden">
       {/* 헤더 */}
@@ -166,6 +217,14 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
           <div className="truncate text-sm font-semibold text-foreground">{data?.customer.businessName ?? "…"}</div>
           <div className="truncate text-xs text-muted-foreground">{data?.customer.managerName}</div>
         </div>
+        <button
+          onClick={removeThread}
+          title="대화 전체 삭제"
+          data-testid="button-delete-thread"
+          className="ml-auto shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
       {/* 메시지 목록 */}
@@ -183,7 +242,17 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
           messages.map((m) => {
             const mine = m.sender === "admin";
             return (
-              <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div key={m.id} className={`group flex items-center gap-1 ${mine ? "justify-end" : "justify-start"}`}>
+                {mine && (
+                  <button
+                    onClick={() => removeMessage(m.id)}
+                    title="메시지 삭제"
+                    aria-label="메시지 삭제"
+                    className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm ${
                   mine ? "bg-foreground text-background" : "border border-border bg-card text-foreground"
                 }`}>
@@ -192,6 +261,16 @@ function Conversation({ customerId, onBack }: { customerId: number; onBack: () =
                     {fmtTime(m.createdAt)}
                   </div>
                 </div>
+                {!mine && (
+                  <button
+                    onClick={() => removeMessage(m.id)}
+                    title="메시지 삭제"
+                    aria-label="메시지 삭제"
+                    className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             );
           })
