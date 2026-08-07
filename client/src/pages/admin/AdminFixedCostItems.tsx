@@ -84,7 +84,7 @@ export default function AdminFixedCostItems() {
     }
   }
 
-  async function patchItem(item: any, patch: { sector?: string; costType?: string }) {
+  async function patchItem(item: any, patch: { sector?: string; costType?: string; vatIncluded?: number }) {
     try {
       await apiRequest("PATCH", `/api/admin/fixed-cost-items/${item.id}`, patch);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/fixed-cost-items"] });
@@ -113,7 +113,7 @@ export default function AdminFixedCostItems() {
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">고정비 항목 관리</h1>
         <p className="mb-6 text-sm text-muted-foreground">
           지출 입력 시 선택할 항목을 관리합니다. <strong className="text-foreground">비용 구분</strong>은 손익계산서에서 어디로 집계할지 정합니다 —
-          매출원가·판매관리비는 영업이익에 반영되고, 영업외비용(이자 등)은 영업이익 아래에서 차감되며, ‘비용 아님’(부가세 납부·자산 취득 등)은 손익에서 제외됩니다.
+          매출원가·판매관리비는 영업이익에 반영되고, 영업외비용(이자 등)은 영업이익 아래에서 차감되며, ‘비용 아님’(부가세 납부·자산 취득 등)은 손익에서 제외됩니다. 손익은 <strong className="text-foreground">공급가액 기준</strong>이라, ‘부가세 포함’으로 표시된 항목은 집계 시 부가세를 뺀 금액으로 계산합니다.
         </p>
 
         {/* 추가 폼 */}
@@ -208,6 +208,16 @@ export default function AdminFixedCostItems() {
                       title="비용 구분"
                     >
                       {COST_TYPES.map((c) => <option key={c} value={c}>{COST_TYPE_LABEL[c]}</option>)}
+                    </select>
+                    <select
+                      className="h-7 rounded-md border border-input bg-transparent px-2 text-xs"
+                      value={String((item as any).vatIncluded ?? 1)}
+                      onChange={(e) => patchItem(item, { vatIncluded: Number(e.target.value) })}
+                      data-testid={`select-vat-${item.id}`}
+                      title="입력 금액의 부가세 포함 여부 (손익은 공급가액 기준으로 집계)"
+                    >
+                      <option value="1">부가세 포함</option>
+                      <option value="0">부가세 없음</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2">
