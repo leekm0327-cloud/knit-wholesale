@@ -1005,6 +1005,21 @@ export type PosSummary = {
   byWeekday: { weekday: number; qty: number; amount: number }[]; // 0=일 … 6=토
 };
 
+// 월별 비교
+export type PosMonthStat = { month: string; qty: number; amount: number; days: number };
+export type PosMonthDetail = {
+  month: string;
+  totals: { qty: number; amount: number; days: number };
+  byCategory: { category: string; qty: number; amount: number }[];
+  byProduct: { category: string; product: string; qty: number; amount: number }[];
+};
+export type PosCompare = {
+  months: PosMonthStat[];      // 저장된 전체 월 목록(추이 표)
+  categories: string[];        // 선택 가능한 카테고리
+  a: PosMonthDetail | null;    // 비교 대상 A (이전 달)
+  b: PosMonthDetail | null;    // 비교 대상 B (기준 달)
+};
+
 // ===== E: 개인 가계부 타입/스키마 =====
 export type PersonalCategory = typeof personalCategories.$inferSelect;
 export const insertPersonalCategorySchema = z.object({
