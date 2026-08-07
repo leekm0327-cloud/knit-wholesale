@@ -2389,6 +2389,20 @@ export async function registerRoutes(
     const msg = await storage.sendChatMessage(customerId, "admin", body);
     res.json(msg);
   });
+  // 대화 전체 삭제 — 관리자 계정과 잘못 생성된 스레드도 정리할 수 있도록 role 제한을 두지 않음
+  app.delete("/api/admin/chat/:customerId", requireAdmin, async (req, res) => {
+    const customerId = Number(req.params.customerId);
+    if (!Number.isFinite(customerId)) return res.status(400).json({ message: "잘못된 거래처" });
+    const deleted = await storage.deleteChatThread(customerId);
+    res.json({ ok: true, deleted });
+  });
+  // 메시지 1건 삭제
+  app.delete("/api/admin/chat/:customerId/message/:messageId", requireAdmin, async (req, res) => {
+    const messageId = Number(req.params.messageId);
+    if (!Number.isFinite(messageId)) return res.status(400).json({ message: "잘못된 메시지" });
+    await storage.deleteChatMessage(messageId);
+    res.json({ ok: true });
+  });
 
   // -- 거래처 --
   app.get("/api/account/chat", requireAuth, async (req, res) => {
@@ -2406,6 +2420,11 @@ export async function registerRoutes(
     const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
     if (!body) return res.status(400).json({ message: "메시지를 입력해 주세요." });
     if (body.length > 2000) return res.status(400).json({ message: "메시지가 너무 깁니다. (최대 2000자)" });
+    // 관리자 계정은 '거래처 문의' 채팅을 만들 수 없음 (자기 자신과의 대화가 생겨 열지도 지우지도 못하게 됨)
+    const meCheck = await storage.getCustomer(customerId);
+    if (meCheck?.role === "admin") {
+      return res.status(400).json({ message: "관리자 계정에서는 문의 채팅을 보낼 수 없습니다. 거래처 채팅 메뉴에서 해당 거래처를 선택해 대화해 주세요." });
+    }
     const msg = await storage.sendChatMessage(customerId, "customer", body);
     // 관리자 알림센터에 표시
     const me = await storage.getCustomer(customerId);

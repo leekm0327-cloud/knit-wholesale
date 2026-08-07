@@ -2439,12 +2439,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   // 관리자용: 전체 거래처 채팅 미읽음(거래처 발신) 총합
+  // 관리자 계정(자기 자신)과의 스레드나 삭제된 거래처의 메시지는 제외 — 열 수 없어 배지가 영구히 남는 것 방지.
   async countChatUnreadForAdmin(): Promise<number> {
-    return db
+    const rows = db
       .select()
       .from(chatMessages)
       .where(and(eq(chatMessages.sender, "customer"), eq(chatMessages.readByAdmin, 0)))
-      .all().length;
+      .all();
+    if (rows.length === 0) return 0;
+    const ids = [...new Set(rows.map((m) => m.customerId))];
+    const valid = new Set<number>();
+    for (const id of ids) {
+      const c = await this.getCustomer(id);
+      if (c && c.role !== "admin") valid.add(id);
+    }
+    return rows.filter((m) => valid.has(m.customerId)).length;
+  }
+
+  // 채팅 스레드 전체 삭제 (관리자 계정과의 잘못된 스레드 정리 포함)
+  async deleteChatThread(customerId: number): Promise<number> {
+    const n = db.select().from(chatMessages).where(eq(chatMessages.customerId, customerId)).all().length;
+    db.delete(chatMessages).where(eq(chatMessages.customerId, customerId)).run();
+    return n;
+  }
+
+  // 채팅 메시지 1건 삭제
+  async deleteChatMessage(id: number): Promise<void> {
+    db.delete(chatMessages).where(eq(chatMessages.id, id)).run();
   }
 
   // 거래처용: 자기 스레드의 관리자 발신 미읽음 수
@@ -2469,6 +2490,7 @@ export class DatabaseStorage implements IStorage {
     for (const [customerId, msgs] of byCustomer) {
       const cust = await this.getCustomer(customerId);
       if (!cust) continue; // 삭제된 거래처의 채팅은 건너뜀
+      if (cust.role === "admin") continue; // 관리자 계정(자기 자신)과의 스레드는 목록에서 제외
       msgs.sort((a, b) => a.createdAt - b.createdAt || a.id - b.id);
       const last = msgs[msgs.length - 1];
       const unread = msgs.filter((m) => m.sender === "customer" && m.readByAdmin === 0).length;
