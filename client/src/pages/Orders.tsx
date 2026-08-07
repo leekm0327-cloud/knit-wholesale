@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
+import { LoadError } from "@/components/LoadError";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ const DAY = 1000 * 60 * 60 * 24;
 
 export default function Orders() {
   const [, navigate] = useLocation();
-  const { data: orders, isLoading } = useQuery<Order[]>({ queryKey: ["/api/orders/mine"] });
+  const { data: orders, isLoading, isError, refetch } = useQuery<Order[]>({ queryKey: ["/api/orders/mine"] });
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -138,6 +139,8 @@ export default function Orders() {
               <Skeleton key={i} className="h-28 w-full rounded-none" />
             ))}
           </div>
+        ) : isError ? (
+          <LoadError onRetry={() => refetch()} title="주문 내역을 불러오지 못했습니다." />
         ) : !hasOrders ? (
           <Card className="flex flex-col items-center gap-3 py-16 text-center">
             <ClipboardList className="h-10 w-10 text-muted-foreground/50" />

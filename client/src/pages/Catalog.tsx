@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { KakaoChannelButton } from "@/components/KakaoChannelButton";
 import { EspressoLogCharts } from "@/components/EspressoLogCharts";
+import { LoadError } from "@/components/LoadError";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -130,7 +131,7 @@ function getCoffeeInfo(product: Product): {
 }
 
 export default function Catalog() {
-  const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const { data: products, isLoading, isError, refetch } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   // 카테고리(순서·표시 여부)는 관리자 설정을 따른다.
   const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
   const CATEGORY_ORDER = useMemo(() => {
@@ -344,6 +345,8 @@ export default function Catalog() {
               <Skeleton key={i} className="h-16 w-full rounded-none" />
             ))}
           </div>
+        ) : isError ? (
+          <LoadError onRetry={() => refetch()} title="상품 목록을 불러오지 못했습니다." />
         ) : grouped.length === 0 ? (
           <div className="py-24 text-center text-sm text-muted-foreground">
             판매 중인 상품이 없습니다.

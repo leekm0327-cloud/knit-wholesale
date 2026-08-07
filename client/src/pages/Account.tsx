@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
+import { LoadError } from "@/components/LoadError";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +49,7 @@ export default function Account() {
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const { data: ledger } = useQuery<{ balance: CustomerBalance; rows: LedgerRow[] }>({
+  const { data: ledger, isLoading: ledgerLoading, isError: ledgerError, refetch: refetchLedger } = useQuery<{ balance: CustomerBalance; rows: LedgerRow[] }>({
     queryKey: ["/api/account/ledger"],
     enabled: !!user,
     refetchInterval: 60000,
@@ -76,6 +78,15 @@ export default function Account() {
         <p className="mb-6 text-sm text-muted-foreground">
           주문 시 거래명세서에 자동으로 반영됩니다. 이메일({user?.email})은 변경할 수 없습니다.
         </p>
+
+        {ledgerLoading && !ledger && (
+          <Card className="mb-6 p-5"><Skeleton className="h-24 w-full" /></Card>
+        )}
+        {ledgerError && !ledger && (
+          <Card className="mb-6">
+            <LoadError compact onRetry={() => refetchLedger()} title="거래 잔액을 불러오지 못했습니다." />
+          </Card>
+        )}
 
         {ledger?.balance && (
           <Card className="mb-6 overflow-hidden">
