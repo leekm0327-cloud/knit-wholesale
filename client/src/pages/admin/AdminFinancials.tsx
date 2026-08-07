@@ -132,6 +132,9 @@ export default function AdminFinancials() {
   // 기간이 바뀌면 이전 AI 분석 결과는 무효화
   useEffect(() => { setAiText(null); setAiErr(null); }, [from, to]);
 
+  // 분석 결과 (규칙 기반) — 모든 훅은 early return 이전에 호출되어야 함
+  const analysis = useMemo(() => (data && data.totals ? analyzeFinancials(data) : null), [data]);
+
   async function runAiAnalysis() {
     setAiBusy(true);
     setAiErr(null);
@@ -169,7 +172,6 @@ export default function AdminFinancials() {
   const lines = data?.lines ?? [];
   const t = data?.totals;
   const wc = data?.workingCapital;
-  const analysis = useMemo(() => (data && data.totals ? analyzeFinancials(data) : null), [data]);
 
   // 값 포맷: 금액(won) 또는 비율(%)
   const fmtVal = (v: number, fmt: "won" | "pct") => (fmt === "pct" ? `${v.toFixed(1)}%` : won(v));
