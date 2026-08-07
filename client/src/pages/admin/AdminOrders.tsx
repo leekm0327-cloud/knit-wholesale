@@ -19,7 +19,8 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { won, fmtDate } from "@/lib/format";
 import type { Order, OrderItem } from "@shared/schema";
-import { CheckCircle2, RotateCcw, Plus } from "lucide-react";
+import { CheckCircle2, RotateCcw, Plus, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const DAY = 1000 * 60 * 60 * 24;
 
@@ -45,14 +46,32 @@ export default function AdminOrders() {
   const [dateRange, setDateRange] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const { toast } = useToast();
   const [quickOnly, setQuickOnly] = useState(false);
   const [sampleOnly, setSampleOnly] = useState(false);
 
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+
+  // 처리완료 전환은 클라리멘토 자동발주로 이어지므로 확인을 받고, 중복 클릭도 막는다.
   async function toggleStatus(o: Order) {
+    if (togglingId) return;
     const next = o.status === "pending" ? "done" : "pending";
-    await apiRequest("PATCH", `/api/admin/orders/${o.id}`, { status: next });
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+    const msg =
+      next === "done"
+        ? `${o.orderNo} 주문을 '처리완료'로 바꿀까요?\n공장(클라리멘토) 자동발주가 생성됩니다.`
+        : `${o.orderNo} 주문을 '접수됨'으로 되돌릴까요?`;
+    if (!confirm(msg)) return;
+    setTogglingId(o.id);
+    try {
+      await apiRequest("PATCH", `/api/admin/orders/${o.id}`, { status: next });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      toast({ title: next === "done" ? "처리완료로 변경했습니다." : "접수됨으로 되돌렸습니다." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "상태 변경 실패", description: e?.message ?? "" });
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   const filtered = useMemo(() => {
@@ -237,8 +256,16 @@ export default function AdminOrders() {
                     <div className="flex shrink-0 items-center gap-2">
                       <span className="text-sm font-semibold tabular text-foreground">{won(o.totalAmount)}</span>
                       {!cancelled && (
-                        <Button variant="ghost" size="sm" onClick={() => toggleStatus(o)} data-testid={`button-admin-toggle-${o.id}`} title="상태 토글">
-                          {o.status === "pending" ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleStatus(o)}
+                          disabled={togglingId === o.id}
+                          data-testid={`button-admin-toggle-${o.id}`}
+                          title={o.status === "pending" ? "처리완료로 변경 (자동발주 생성)" : "접수됨으로 되돌리기"}
+                          aria-label={o.status === "pending" ? `${o.orderNo} 처리완료로 변경` : `${o.orderNo} 접수됨으로 되돌리기`}
+                        >
+                          {togglingId === o.id ? <Loader2 className="h-4 w-4 animate-spin" /> : o.status === "pending" ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
                         </Button>
                       )}
                       <Button variant="outline" size="sm" onClick={() => navigate(`/admin/orders/${o.id}`)} data-testid={`button-admin-detail-${o.id}`}>
