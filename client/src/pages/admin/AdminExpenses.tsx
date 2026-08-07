@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { won, errMsg } from "@/lib/format";
 import type { Expense, FixedCostItem, Sector } from "@shared/schema";
-import { SECTORS, SECTOR_LABEL } from "@shared/schema";
+import { SECTORS, SECTOR_LABEL, COST_TYPES, COST_TYPE_LABEL } from "@shared/schema";
 import { Receipt, Trash2, Loader2 } from "lucide-react";
 
 const ETC_CATEGORY = "기타";
@@ -27,6 +27,29 @@ export default function AdminExpenses() {
   const { data: items } = useQuery<FixedCostItem[]>({ queryKey: ["/api/admin/fixed-cost-items"] });
 
   const categories = [...(items ?? []).map((i) => i.name), ETC_CATEGORY];
+
+  // 자주 쓰는 항목: 최근 입력 기록의 사용 빈도 상위 6개 (대부분의 입력이 소수 항목에 몰리므로 클릭 1번으로 끝나게)
+  const frequent = useMemo(() => {
+    const use = new Map<string, number>();
+    for (const e of expenses ?? []) use.set(e.category, (use.get(e.category) ?? 0) + 1);
+    return [...use.entries()]
+      .filter(([name]) => categories.includes(name))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name]) => name);
+  }, [expenses, items]);
+
+  // 비용 구분별로 묶은 선택 목록 (매출원가 / 판매관리비 / 영업외비용 / 비용 아님)
+  const grouped = useMemo(() => {
+    const g: { label: string; names: string[] }[] = COST_TYPES.map((ct) => ({
+      label: COST_TYPE_LABEL[ct],
+      names: (items ?? []).filter((i) => ((i as any).costType ?? "sga") === ct).map((i) => i.name),
+    })).filter((x) => x.names.length > 0);
+    if (!(items ?? []).some((i) => i.name === ETC_CATEGORY)) {
+      g.push({ label: "기타", names: [ETC_CATEGORY] });
+    }
+    return g;
+  }, [items]);
 
   const [expenseDate, setExpenseDate] = useState(todayStr());
   const [category, setCategory] = useState("");
@@ -80,9 +103,9 @@ export default function AdminExpenses() {
   }
 
   // 항목을 고르면 그 항목의 기본 부문을 자동 선택 (사용자가 부문을 직접 바꾼 뒤에는 유지)
-  function pickCategory(next: string) {
+  function pickCategory(next: string, force = false) {
     setCategory(next);
-    if (touchedRef.current) return;
+    if (touchedRef.current && !force) return;
     const it = (items ?? []).find((i) => i.name === next) as any;
     if (it?.sector) setSector(it.sector as Sector);
   }
@@ -118,7 +141,33 @@ export default function AdminExpenses() {
 
         {/* 입력 폼 */}
         <Card className="mb-6 p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">지출 등록</h2>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">지출 등록</h2>
+
+          {/* 자주 쓰는 항목 — 클릭 한 번으로 항목·기본 부문 선택 */}
+          {frequent.length > 0 && (
+            <div className="mb-4">
+              <p className="mb-1.5 text-[11px] text-muted-foreground">자주 쓰는 항목</p>
+              <div className="flex flex-wrap gap-1.5">
+                {frequent.map((c) => {
+                  const on = (category || categories[0]) === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => pickCategory(c)}
+                      data-testid={`chip-category-${c}`}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                        on ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs">지출일 *</Label>
@@ -132,8 +181,10 @@ export default function AdminExpenses() {
                 onChange={(e) => pickCategory(e.target.value)}
                 data-testid="select-expense-category"
               >
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {grouped.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.names.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
                 ))}
               </select>
             </div>

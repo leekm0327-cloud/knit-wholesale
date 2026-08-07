@@ -10,7 +10,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { won } from "@/lib/format";
-import { SECTORS, SECTOR_LABEL, type Sector, type Expense, type FixedCostItem } from "@shared/schema";
+import { SECTORS, SECTOR_LABEL, COST_TYPES, COST_TYPE_LABEL, type Sector, type Expense, type FixedCostItem } from "@shared/schema";
 import { Loader2, Wand2, CheckCircle2 } from "lucide-react";
 
 const ETC = "기타";
@@ -148,7 +148,14 @@ export default function AdminExpenseCleanup() {
                 data-testid="select-new-category"
               >
                 <option value="">(변경 안 함)</option>
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                {COST_TYPES.map((ct) => {
+                  const names = (items ?? []).filter((i) => ((i as any).costType ?? "sga") === ct).map((i) => i.name);
+                  return names.length ? (
+                    <optgroup key={ct} label={COST_TYPE_LABEL[ct]}>
+                      {names.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </optgroup>
+                  ) : null;
+                })}
               </select>
             </div>
             <div className="space-y-1.5">
