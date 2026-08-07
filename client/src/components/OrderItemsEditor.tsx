@@ -37,6 +37,7 @@ interface Props {
 export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const { toast } = useToast();
   const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
 
   // 관리자 수정 시: 이 주문 거래처의 등록단가(커스텀) + 매장 내부 계정 여부를 반영해 단가 결정
   const isAdmin = mode === "admin";
@@ -124,7 +125,26 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
     (p) => p.available === 1 && !items.some((i) => i.productId === p.id),
   );
 
+  // 저장 시점에 서버가 거절하지 않도록, 장바구니와 동일한 규칙을 화면에서 미리 검증한다.
+  const beanKeys = new Set(
+    categoryRows && categoryRows.length > 0
+      ? categoryRows.filter((c: any) => c.isBean).map((c: any) => c.key)
+      : ["blend", "decaf", "single", "single_espresso", "single_filter"],
+  );
+  const minMap = new Map<number, number>((products ?? []).map((p) => [p.id, (p as any).minOrderQty ?? 0]));
+  const isSampleOrder = (order as any).isSample === 1;
+  const beanQty = items.filter((i) => beanKeys.has(i.category)).reduce((s, i) => s + i.qty, 0);
+  const belowMin = !isSampleOrder && beanQty > 0 && beanQty < 5;
+  const minViolations = items
+    .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get(i.productId) ?? 0 }))
+    .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
+  const blocked = belowMin || minViolations.length > 0;
+
   async function submit() {
+    if (blocked) {
+      toast({ title: "주문 조건을 확인해 주세요.", variant: "destructive" });
+      return;
+    }
     if (items.length === 0) {
       toast({ title: "주문 품목을 선택해 주세요.", variant: "destructive" });
       return;
@@ -314,11 +334,21 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
         </div>
       </div>
 
+      {/* 저장이 막히는 이유를 미리 보여준다 (저장 눌렀다가 거절당하지 않도록) */}
+      {blocked && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive" data-testid="text-edit-blocked">
+          {belowMin && <p>원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQty}개 — {5 - beanQty}개 더 필요합니다.</p>}
+          {minViolations.map((v) => (
+            <p key={v.name}>‘{v.name}’은(는) 최소 {v.min}개부터 주문 가능합니다. (현재 {v.qty}개)</p>
+          ))}
+        </div>
+      )}
+
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel} disabled={saving} data-testid="button-cancel-edit">
           취소
         </Button>
-        <Button onClick={submit} disabled={saving} data-testid="button-save-edit">
+        <Button onClick={submit} disabled={saving || blocked} data-testid="button-save-edit">
           {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           수정 저장
         </Button>
