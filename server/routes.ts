@@ -43,6 +43,7 @@ import {
   insertStoreSaleSchema,
   insertFixedCostItemSchema,
   insertExpenseSchema,
+  posImportSchema,
   insertPersonalCategorySchema,
   insertPersonalLedgerSchema,
   SECTORS,
@@ -1733,6 +1734,24 @@ export async function registerRoutes(
       console.error("[ai-analysis] error", e);
       res.status(500).json({ message: "AI 분석 중 오류가 발생했습니다." });
     }
+  });
+
+  // ===== POS 매출 (엑셀 업로드 → 집계 저장 · 분석) =====
+  app.post("/api/admin/pos-sales/import", requireOwner, async (req, res) => {
+    const parsed = posImportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    if (parsed.data.products.length === 0 && parsed.data.hourly.length === 0) {
+      return res.status(400).json({ message: "업로드할 판매 데이터를 찾지 못했습니다. 올바른 POS 매출리포트 파일인지 확인해 주세요." });
+    }
+    const r = await storage.importPosSales(parsed.data);
+    res.json(r);
+  });
+  app.get("/api/admin/pos-sales/summary", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    const category = typeof req.query.category === "string" ? req.query.category : undefined;
+    res.json(await storage.getPosSummary(from, to, category));
   });
 
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반

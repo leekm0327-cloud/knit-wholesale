@@ -1,4 +1,4 @@
-import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications, chatMessages, quotes } from "@shared/schema";
+import { customers, products, productCategories, orders, payments, ecountSettings, ecountLogs, posts, comments, customerPrices, activityLogs, passwordResetTokens, favorites, suppliers, purchases, supplierPayments, storeSales, fixedCostItems, expenses, personalCategories, personalLedger, kakaoTokens, news, wholesaleInquiries, visitRequests, espressoSetup, notifications, chatMessages, quotes, posProductSales, posHourlySales } from "@shared/schema";
 import type {
   Customer,
   InsertCustomer,
@@ -45,6 +45,8 @@ import type {
   InsertFixedCostItem,
   Expense,
   InsertExpense,
+  PosImport,
+  PosSummary,
   DashboardSummary,
   FinancialStatement,
   ItemSummaryRow,
@@ -269,6 +271,26 @@ CREATE TABLE IF NOT EXISTS quotes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_quotes_created ON quotes(created_at DESC);
+CREATE TABLE IF NOT EXISTS pos_product_sales (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sale_date TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT '',
+  product TEXT NOT NULL DEFAULT '',
+  qty INTEGER NOT NULL DEFAULT 0,
+  amount INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pos_product_date ON pos_product_sales(sale_date);
+CREATE TABLE IF NOT EXISTS pos_hourly_sales (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sale_date TEXT NOT NULL,
+  hour INTEGER NOT NULL DEFAULT 0,
+  category TEXT NOT NULL DEFAULT '',
+  qty INTEGER NOT NULL DEFAULT 0,
+  amount INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pos_hourly_date ON pos_hourly_sales(sale_date);
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL,
@@ -1538,6 +1560,90 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteExpense(id: number): Promise<void> {
     db.delete(expenses).where(eq(expenses.id, id)).run();
+  }
+
+  // ===== POS 매출 =====
+  // 업로드된 집계 데이터를 저장. 같은 기간(from~to) 기존 데이터는 삭제 후 교체(재업로드 중복 방지).
+  async importPosSales(p: PosImport): Promise<{ products: number; hourly: number; from: string; to: string }> {
+    const now = Date.now();
+    db.delete(posProductSales).where(and(gte(posProductSales.saleDate, p.from), lte(posProductSales.saleDate, p.to))).run();
+    db.delete(posHourlySales).where(and(gte(posHourlySales.saleDate, p.from), lte(posHourlySales.saleDate, p.to))).run();
+    const prodRows = p.products
+      .filter((r) => r.date)
+      .map((r) => ({ saleDate: r.date, category: r.category || "", product: r.product || "", qty: Math.round(r.qty) || 0, amount: Math.round(r.amount) || 0, createdAt: now }));
+    const hourRows = p.hourly
+      .filter((r) => r.date)
+      .map((r) => ({ saleDate: r.date, hour: r.hour || 0, category: r.category || "", qty: Math.round(r.qty) || 0, amount: Math.round(r.amount) || 0, createdAt: now }));
+    const chunk = <T>(arr: T[], n: number): T[][] => { const o: T[][] = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
+    for (const c of chunk(prodRows, 200)) if (c.length) db.insert(posProductSales).values(c).run();
+    for (const c of chunk(hourRows, 200)) if (c.length) db.insert(posHourlySales).values(c).run();
+    return { products: prodRows.length, hourly: hourRows.length, from: p.from, to: p.to };
+  }
+
+  async getPosSummary(from: string, to: string, category?: string): Promise<PosSummary> {
+    const catFilter = category && category !== "all" ? category : null;
+    let prod = db.select().from(posProductSales)
+      .where(and(gte(posProductSales.saleDate, from), lte(posProductSales.saleDate, to))).all();
+    let hour = db.select().from(posHourlySales)
+      .where(and(gte(posHourlySales.saleDate, from), lte(posHourlySales.saleDate, to))).all();
+
+    // 카테고리 목록(필터 적용 전, 기간 내 존재하는 것)
+    const catSet = new Set<string>();
+    prod.forEach((r) => { if (r.category) catSet.add(r.category); });
+    const categories = [...catSet].sort();
+
+    if (catFilter) {
+      prod = prod.filter((r) => r.category === catFilter);
+      hour = hour.filter((r) => r.category === catFilter);
+    }
+
+    const bump = (m: Map<string, { qty: number; amount: number }>, k: string, qty: number, amount: number) => {
+      const cur = m.get(k) || { qty: 0, amount: 0 };
+      cur.qty += qty; cur.amount += amount; m.set(k, cur);
+    };
+
+    const catMap = new Map<string, { qty: number; amount: number }>();
+    const prodMap = new Map<string, { category: string; product: string; qty: number; amount: number }>();
+    const dateMap = new Map<string, { qty: number; amount: number }>();
+    const monthMap = new Map<string, { qty: number; amount: number }>();
+    let totalQty = 0, totalAmount = 0;
+    const dateSet = new Set<string>();
+    for (const r of prod) {
+      totalQty += r.qty; totalAmount += r.amount;
+      dateSet.add(r.saleDate);
+      bump(catMap, r.category || "(미분류)", r.qty, r.amount);
+      const pk = `${r.category}||${r.product}`;
+      const pc = prodMap.get(pk) || { category: r.category || "(미분류)", product: r.product || "(미상)", qty: 0, amount: 0 };
+      pc.qty += r.qty; pc.amount += r.amount; prodMap.set(pk, pc);
+      bump(dateMap, r.saleDate, r.qty, r.amount);
+      bump(monthMap, r.saleDate.slice(0, 7), r.qty, r.amount);
+    }
+
+    const hourMap = new Map<number, { qty: number; amount: number }>();
+    const wdMap = new Map<number, { qty: number; amount: number }>();
+    for (const r of hour) {
+      const hc = hourMap.get(r.hour) || { qty: 0, amount: 0 };
+      hc.qty += r.qty; hc.amount += r.amount; hourMap.set(r.hour, hc);
+      const wd = new Date(`${r.saleDate}T00:00:00Z`).getUTCDay(); // 0=일 … 6=토
+      const wc = wdMap.get(wd) || { qty: 0, amount: 0 };
+      wc.qty += r.qty; wc.amount += r.amount; wdMap.set(wd, wc);
+    }
+
+    // 전체 데이터 커버리지(기간 무관, 저장된 최소·최대 날짜)
+    const minRow = db.select().from(posProductSales).orderBy(asc(posProductSales.saleDate)).limit(1).all();
+    const maxRow = db.select().from(posProductSales).orderBy(desc(posProductSales.saleDate)).limit(1).all();
+    const coverage = minRow.length && maxRow.length ? { from: minRow[0].saleDate, to: maxRow[0].saleDate } : null;
+
+    return {
+      from, to, coverage, categories,
+      totals: { qty: totalQty, amount: totalAmount, days: dateSet.size },
+      byCategory: [...catMap.entries()].map(([category, v]) => ({ category, ...v })).sort((a, b) => b.amount - a.amount),
+      byProduct: [...prodMap.values()].sort((a, b) => b.qty - a.qty),
+      byDate: [...dateMap.entries()].map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date)),
+      byMonth: [...monthMap.entries()].map(([month, v]) => ({ month, ...v })).sort((a, b) => a.month.localeCompare(b.month)),
+      byHour: [...hourMap.entries()].map(([hour, v]) => ({ hour, ...v })).sort((a, b) => a.hour - b.hour),
+      byWeekday: [...wdMap.entries()].map(([weekday, v]) => ({ weekday, ...v })).sort((a, b) => a.weekday - b.weekday),
+    };
   }
 
   // ===== 경영 대시보드 (C): 손익 요약 =====
