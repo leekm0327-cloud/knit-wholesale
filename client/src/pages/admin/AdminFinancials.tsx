@@ -10,7 +10,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { won } from "@/lib/format";
 import type { FinancialStatement, Sector } from "@shared/schema";
-import { FileSpreadsheet } from "lucide-react";
+import { analyzeFinancials, type FsTone } from "@/lib/financialAnalysis";
+import { FileSpreadsheet, Sparkles, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react";
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -27,6 +28,14 @@ const BIZ_LABEL: Partial<Record<Sector, string>> = {
 function bizLabel(sector: Sector, fallback: string): string {
   return BIZ_LABEL[sector] ?? fallback;
 }
+
+// 분석 톤별 색상·아이콘
+const TONE: Record<FsTone, { icon: typeof Info; cls: string; dot: string }> = {
+  good: { icon: CheckCircle2, cls: "text-emerald-600", dot: "bg-emerald-500" },
+  warn: { icon: AlertTriangle, cls: "text-amber-600", dot: "bg-amber-500" },
+  bad: { icon: XCircle, cls: "text-destructive", dot: "bg-destructive" },
+  info: { icon: Info, cls: "text-muted-foreground", dot: "bg-muted-foreground/60" },
+};
 
 export default function AdminFinancials() {
   const { user } = useAuth();
@@ -58,6 +67,13 @@ export default function AdminFinancials() {
     setFrom(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`);
     setTo(ymd(now));
   }
+  function lastMonth() {
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1); // 지난달 1일
+    const last = new Date(now.getFullYear(), now.getMonth(), 0);      // 지난달 말일
+    setFrom(ymd(first));
+    setTo(ymd(last));
+  }
   function lastYear() {
     const y = new Date().getFullYear() - 1;
     setFrom(`${y}-01-01`);
@@ -77,6 +93,7 @@ export default function AdminFinancials() {
   const lines = data?.lines ?? [];
   const t = data?.totals;
   const wc = data?.workingCapital;
+  const analysis = useMemo(() => (data && data.totals ? analyzeFinancials(data) : null), [data]);
 
   // 값 포맷: 금액(won) 또는 비율(%)
   const fmtVal = (v: number, fmt: "won" | "pct") => (fmt === "pct" ? `${v.toFixed(1)}%` : won(v));
@@ -124,8 +141,9 @@ export default function AdminFinancials() {
               <Label className="text-xs">종료일</Label>
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" data-testid="input-fs-to" />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={thisMonth} data-testid="button-fs-month">이번 달</Button>
+              <Button variant="outline" size="sm" onClick={lastMonth} data-testid="button-fs-lastmonth">지난달</Button>
               <Button variant="outline" size="sm" onClick={thisYear} data-testid="button-fs-year">올해</Button>
               <Button variant="outline" size="sm" onClick={lastYear} data-testid="button-fs-lastyear">작년</Button>
             </div>
@@ -239,6 +257,87 @@ export default function AdminFinancials() {
                 채권·채무는 기간과 무관하게 현재 미수·미지급 잔액 스냅샷입니다.
               </p>
             </Card>
+
+            {/* 재무 분석 (규칙 기반 자동) */}
+            {analysis && (
+              <Card className="mt-6 overflow-hidden">
+                <div className="flex items-center gap-2 border-b bg-muted/30 p-5">
+                  <Sparkles className="h-4 w-4 text-foreground" />
+                  <h2 className="text-sm font-semibold text-foreground">재무 분석</h2>
+                  <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">자동 진단</span>
+                </div>
+
+                <div className="p-5">
+                  {/* 종합 진단 */}
+                  {(() => {
+                    const T = TONE[analysis.headline.tone];
+                    const Icon = T.icon;
+                    return (
+                      <div className="mb-5 flex items-start gap-2.5 rounded-md border bg-card p-4">
+                        <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${T.cls}`} />
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">종합 진단</p>
+                          <p className="mt-0.5 text-sm font-medium text-foreground">{analysis.headline.text}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 핵심 지표 */}
+                  <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                    {analysis.metrics.map((m) => (
+                      <div key={m.label} className="rounded-md border p-3">
+                        <p className="text-[11px] text-muted-foreground">{m.label}</p>
+                        <p className={`font-display mt-1 text-sm font-semibold tabular ${m.tone ? TONE[m.tone].cls : "text-foreground"}`}>
+                          {m.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 관찰·경고 */}
+                  {analysis.insights.length > 0 && (
+                    <div className="mb-5">
+                      <p className="mb-2 text-xs font-semibold text-foreground">주요 관찰</p>
+                      <ul className="space-y-2">
+                        {analysis.insights.map((ins, i) => {
+                          const T = TONE[ins.tone];
+                          const Icon = T.icon;
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${T.cls}`} />
+                              <p className="text-sm leading-relaxed text-foreground">
+                                <span className="mr-1.5 text-xs font-medium text-muted-foreground">[{ins.label}]</span>
+                                {ins.text}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* 개선 제안 */}
+                  {analysis.suggestions.length > 0 && (
+                    <div className="rounded-md border border-dashed p-4">
+                      <p className="mb-2 text-xs font-semibold text-foreground">개선 제안</p>
+                      <ul className="space-y-1.5">
+                        {analysis.suggestions.map((s, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" />
+                            <span className="leading-relaxed">{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t p-3 text-[11px] text-muted-foreground">
+                  앱에 입력된 매출·지출·발주 데이터를 규칙 기반으로 자동 진단한 내부 참고 자료입니다. 공인회계사·세무사의 전문 자문이나 공식 세무신고를 대체하지 않습니다.
+                </div>
+              </Card>
+            )}
           </>
         )}
       </div>
