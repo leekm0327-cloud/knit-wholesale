@@ -1635,6 +1635,30 @@ export async function registerRoutes(
         .map((l) => `- ${bizName[l.sector] ?? l.label}: 매출 ${l.revenue}원, 매출원가 ${l.cogs}원(원가율 ${pct(l.cogs, l.revenue)}), 매출총이익 ${l.grossProfit}원, 판관비 ${l.sga}원, 영업이익 ${l.operatingProfit}원(영업이익률 ${pct(l.operatingProfit, l.revenue)})`)
         .join("\n");
 
+      // 개별 지출 내역 (사용자가 직접 입력한 수기 지출) — 하나하나 뜯어보도록 그대로 제공
+      const expenseRows = await storage.listExpenses(from, to); // 최신순
+      const expenseTotal = expenseRows.reduce((s, e) => s + e.amount, 0);
+      // 항목(category)별 소계
+      const byCat = new Map<string, { sum: number; count: number }>();
+      for (const e of expenseRows) {
+        const k = e.category || "기타";
+        const cur = byCat.get(k) || { sum: 0, count: 0 };
+        cur.sum += e.amount; cur.count += 1; byCat.set(k, cur);
+      }
+      const catText = [...byCat.entries()]
+        .sort((a, b) => b[1].sum - a[1].sum)
+        .map(([k, v]) => `- ${k}: ${v.sum}원 (${v.count}건, 전체 지출의 ${pct(v.sum, expenseTotal)})`)
+        .join("\n");
+      // 개별 내역 (금액 큰 순). 과다 토큰 방지를 위해 최대 250건까지, 초과분은 별도 합산 표기.
+      const CAP = 250;
+      const sortedExp = [...expenseRows].sort((a, b) => b.amount - a.amount);
+      const shown = sortedExp.slice(0, CAP);
+      const rest = sortedExp.slice(CAP);
+      const itemText = shown
+        .map((e) => `- ${e.expenseDate} | ${bizName[(e as any).sector] ?? (e as any).sector ?? "공통"} | ${e.category || "기타"} | ${e.amount}원${e.memo ? ` | ${e.memo}` : ""}`)
+        .join("\n");
+      const restNote = rest.length > 0 ? `\n(그 외 소액 지출 ${rest.length}건 합계 ${rest.reduce((s, e) => s + e.amount, 0)}원 — 지면상 개별 생략)` : "";
+
       const dataBlock = [
         `[분석 기간] ${fs.from} ~ ${fs.to}`,
         ``,
@@ -1642,11 +1666,18 @@ export async function registerRoutes(
         `- 매출액: ${t.revenue}원`,
         `- 매출원가: ${t.cogs}원 (매출원가율 ${pct(t.cogs, t.revenue)})`,
         `- 매출총이익: ${t.grossProfit}원 (매출총이익률 ${pct(t.grossProfit, t.revenue)})`,
-        `- 판매관리비: ${t.sga}원 (판관비율 ${pct(t.sga, t.revenue)})`,
+        `- 판매관리비(수기 지출): ${t.sga}원 (판관비율 ${pct(t.sga, t.revenue)})`,
         `- 영업이익: ${t.operatingProfit}원 (영업이익률 ${pct(t.operatingProfit, t.revenue)})`,
         ``,
         `[부문별 손익]`,
         lineText || "(부문별 데이터 없음)",
+        ``,
+        `[지출 항목별 소계] (수기 입력 지출 총 ${expenseRows.length}건, 합계 ${expenseTotal}원)`,
+        catText || "(입력된 지출 없음)",
+        ``,
+        `[개별 지출 내역] 형식: 날짜 | 부문 | 항목 | 금액 | 메모`,
+        itemText || "(입력된 지출 없음)",
+        restNote,
         ``,
         `[채권·채무 현재 잔액]`,
         `- 거래처 미수금(채권): ${fs.workingCapital.receivables}원`,
@@ -1661,14 +1692,15 @@ export async function registerRoutes(
         "제공된 숫자만 근거로 삼고 임의로 수치를 지어내지 마세요. 정중한 한국어 존댓말로, 실무적으로 도움이 되게 작성하세요.";
 
       const userPrompt =
-        `아래는 니트커피의 내부 경영용 재무 데이터입니다. 회계 전문가 관점에서 분석해 주세요.\n\n` +
+        `아래는 니트커피의 내부 경영용 재무 데이터입니다. 특히 [개별 지출 내역]을 하나하나 꼼꼼히 뜯어보며 회계 전문가 관점에서 분석해 주세요.\n\n` +
         dataBlock +
         `\n\n다음 순서로 마크다운(##, 굵게, - 목록)으로 작성해 주세요:\n` +
         `## 종합 진단 (2~3문장, 흑자/적자와 수익성 핵심)\n` +
+        `## 지출 심층 분석 (개별 지출 내역을 근거로: 금액이 큰 지출, 반복·정기 지출, 과다하거나 이상해 보이는 지출, 절감 여지가 있는 항목을 구체적인 날짜·항목·금액을 인용해 짚어주세요. 필요하면 항목을 그룹지어 설명)\n` +
         `## 부문별 코멘트 (부문별 이익 기여와 문제 지점)\n` +
         `## 리스크 및 주의점 (원가율·판관비·채권채무 유동성 관점)\n` +
-        `## 개선 제안 (구체적이고 실행 가능한 3~5가지)\n\n` +
-        `수치는 원 단위 그대로 쓰되 읽기 쉽게 천단위 콤마를 넣어주세요. 전체 500~700자 내외로 간결하게.`;
+        `## 개선 제안 (구체적이고 실행 가능한 3~5가지, 가능하면 예상 절감액 포함)\n\n` +
+        `수치는 원 단위 그대로 쓰되 읽기 쉽게 천단위 콤마를 넣어주세요. 지출 심층 분석은 실제 입력된 개별 내역을 반드시 근거로 삼고, 데이터에 없는 항목은 지어내지 마세요.`;
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -1679,7 +1711,7 @@ export async function registerRoutes(
         },
         body: JSON.stringify({
           model,
-          max_tokens: 1500,
+          max_tokens: 2500,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
         }),
