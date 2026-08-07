@@ -468,6 +468,8 @@ for (const [table, col] of [
   ["purchases", "customer_name TEXT NOT NULL DEFAULT ''"],
   // 견적서 별첨(원두 정보) — quotes 테이블이 이미 만들어진 배포 대비 컬럼 추가
   ["quotes", "appendix TEXT NOT NULL DEFAULT '[]'"],
+  // 지출 항목의 비용 구분 (매출원가·판관비·영업외비용·비용아님)
+  ["fixed_cost_items", "cost_type TEXT NOT NULL DEFAULT 'sga'"],
   // 견적서 '받는 분' 정보(선택) — 사업자등록번호/담당자/연락처
   ["quotes", "customer_biz_no TEXT NOT NULL DEFAULT ''"],
   ["quotes", "customer_manager TEXT NOT NULL DEFAULT ''"],
@@ -484,6 +486,20 @@ for (const [table, col] of [
       console.warn(`[migration ${table}]`, e?.message);
     }
   }
+}
+
+// ===== 지출 항목 비용구분 초기값 보정 (멱등) =====
+// cost_type 컬럼이 새로 생기면 모든 항목이 'sga'가 되므로, 기존 동작(원부자재=매출원가)을 유지하고
+// 이름으로 성격이 명확한 항목만 한 번 보정한다. 이후에는 사용자가 화면에서 직접 바꾼다.
+try {
+  const seedOnce = sqlite.prepare(`SELECT COUNT(*) AS n FROM fixed_cost_items WHERE cost_type <> 'sga'`).get() as { n: number };
+  if (!seedOnce || seedOnce.n === 0) {
+    sqlite.exec(`UPDATE fixed_cost_items SET cost_type='cogs' WHERE name IN ('원부자재','식자재(매장)','포장·부자재','생산 외주(도매)');`);
+    sqlite.exec(`UPDATE fixed_cost_items SET cost_type='nonop' WHERE name LIKE '%이자%';`);
+    sqlite.exec(`UPDATE fixed_cost_items SET cost_type='none' WHERE name LIKE '%부가세%' OR name LIKE '%자산 취득%' OR name LIKE '%사업주 개인%';`);
+  }
+} catch (e: any) {
+  console.warn("[migration] fixed_cost_items cost_type seed", e?.message);
 }
 
 // ===== V6: 상호명(business_name) 고유 인덱스 (멱등) =====
@@ -811,8 +827,11 @@ export interface IStorage {
   createExpense(e: InsertExpense): Promise<Expense>;
   updateExpense(id: number, patch: Partial<Expense>): Promise<Expense | undefined>;
   deleteExpense(id: number): Promise<void>;
+  bulkRecategorizeExpenses(ids: number[], patch: { category?: string; sector?: string }): Promise<number>;
+  suggestExpenseClassification(memo: string): Promise<{ category: string; sector: string; basedOn: number } | null>;
+  seedRecommendedCostItems(): Promise<{ added: string[] }>;
   getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
-  getFinancialStatement(from: string, to: string): Promise<FinancialStatement>;
+  getFinancialStatement(from: string, to: string, allocate?: boolean): Promise<FinancialStatement>;
   getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
   getPurchaseItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
   getPurchaseItemDetail(name: string, from: string, to: string): Promise<ItemDetailRow[]>;
@@ -1565,6 +1584,81 @@ export class DatabaseStorage implements IStorage {
     db.delete(expenses).where(eq(expenses.id, id)).run();
   }
 
+  // 여러 지출의 항목/부문을 한 번에 변경 (기존 '기타' 정리용)
+  async bulkRecategorizeExpenses(ids: number[], patch: { category?: string; sector?: string }): Promise<number> {
+    const set: any = {};
+    if (patch.category) set.category = patch.category;
+    if (patch.sector) set.sector = patch.sector;
+    if (Object.keys(set).length === 0 || ids.length === 0) return 0;
+    let n = 0;
+    for (const id of ids) {
+      const r = db.update(expenses).set(set).where(eq(expenses.id, id)).returning().get();
+      if (r) n++;
+    }
+    return n;
+  }
+
+  // 메모를 근거로 과거 입력에서 항목·부문 추천 (같은 거래처/내용을 반복 입력할 때 자동 선택)
+  async suggestExpenseClassification(memo: string): Promise<{ category: string; sector: string; basedOn: number } | null> {
+    const q = (memo || "").trim().toLowerCase();
+    if (q.length < 2) return null;
+    const rows = db.select().from(expenses).all();
+    const hit = rows.filter((e) => {
+      const m = (e.memo || "").trim().toLowerCase();
+      if (!m) return false;
+      return m === q || m.includes(q) || q.includes(m);
+    });
+    if (hit.length === 0) return null;
+    // 가장 자주 쓰인 (항목, 부문) 조합
+    const m = new Map<string, number>();
+    for (const e of hit) m.set(`${e.category}||${(e as any).sector || "common"}`, (m.get(`${e.category}||${(e as any).sector || "common"}`) ?? 0) + 1);
+    const best = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+    const [category, sector] = best[0].split("||");
+    return { category, sector, basedOn: best[1] };
+  }
+
+  // 권장 지출 항목 세트 — 없는 것만 추가 (기존 항목은 건드리지 않음)
+  async seedRecommendedCostItems(): Promise<{ added: string[] }> {
+    const RECOMMENDED: { name: string; costType: string; sector: string }[] = [
+      // 매출원가
+      { name: "식자재(매장)", costType: "cogs", sector: "store" },
+      { name: "포장·부자재", costType: "cogs", sector: "common" },
+      { name: "생산 외주(도매)", costType: "cogs", sector: "wholesale" },
+      // 판매관리비
+      { name: "급여", costType: "sga", sector: "common" },
+      { name: "4대보험", costType: "sga", sector: "common" },
+      { name: "퇴직급여", costType: "sga", sector: "common" },
+      { name: "관리비", costType: "sga", sector: "common" },
+      { name: "소프트웨어·구독료", costType: "sga", sector: "common" },
+      { name: "지급수수료", costType: "sga", sector: "common" },
+      { name: "차량비", costType: "sga", sector: "common" },
+      { name: "여비교통비", costType: "sga", sector: "common" },
+      { name: "교육훈련비", costType: "sga", sector: "common" },
+      { name: "시설관리·보안", costType: "sga", sector: "store" },
+      { name: "소모품·비품", costType: "sga", sector: "store" },
+      { name: "수선비", costType: "sga", sector: "store" },
+      // 영업외비용
+      { name: "이자비용", costType: "nonop", sector: "common" },
+      // 비용 아님
+      { name: "부가세·세금 납부", costType: "none", sector: "common" },
+      { name: "자산 취득(장비)", costType: "none", sector: "common" },
+      { name: "사업주 개인", costType: "none", sector: "common" },
+    ];
+    const existing = new Set((await this.listFixedCostItems()).map((i) => i.name));
+    const maxOrder = (await this.listFixedCostItems()).reduce((m, i) => Math.max(m, i.sortOrder), 0);
+    const added: string[] = [];
+    let order = maxOrder;
+    for (const r of RECOMMENDED) {
+      if (existing.has(r.name)) continue;
+      order += 1;
+      db.insert(fixedCostItems).values({
+        name: r.name, sortOrder: order, active: 1, sector: r.sector, costType: r.costType, createdAt: Date.now(),
+      } as any).run();
+      added.push(r.name);
+    }
+    return { added };
+  }
+
   // ===== POS 매출 =====
   // 업로드된 집계 데이터를 저장. 같은 기간(from~to) 기존 데이터는 삭제 후 교체(재업로드 중복 방지).
   async importPosSales(p: PosImport): Promise<{ products: number; hourly: number; from: string; to: string }> {
@@ -1823,7 +1917,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ===== 재무제표 (내부 경영용): 업종별 손익계산서 + 채권·채무 요약 =====
-  async getFinancialStatement(from: string, to: string): Promise<FinancialStatement> {
+  async getFinancialStatement(from: string, to: string, allocate = true): Promise<FinancialStatement> {
     const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
     const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
 
@@ -1840,10 +1934,11 @@ export class DatabaseStorage implements IStorage {
     const norm = (s: string, fallback: Sector): Sector =>
       (SECTORS as readonly string[]).includes(s) ? (s as Sector) : fallback;
 
-    // 부문별 매출/매출원가/판관비 집계
+    // 부문별 매출/매출원가/판관비/영업외비용 집계
     const rev: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
     const cogs: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
     const sga: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
+    const nonop: Record<Sector, number> = SECTORS.reduce((a, s) => ((a[s] = 0), a), {} as Record<Sector, number>);
 
     // 매장 내부 계정(주문) 구분 — 매장 주문은 자기거래이므로 도매 매출에서 제외
     const storeIds = new Set((await this.listCustomers()).filter((c) => (c as any).isStore).map((c) => c.id));
@@ -1857,12 +1952,44 @@ export class DatabaseStorage implements IStorage {
       const seg: Sector = (p as any).segment === "store" ? "store" : "wholesale";
       cogs[seg] += p.totalAmount + Math.round(p.totalAmount * 0.1);
     }
-    // 지출 분류: '원부자재' 항목은 매출원가(원가성 비용), 그 외는 판매관리비 → 각 행의 sector
-    const COGS_EXPENSE_CATEGORIES = ["원부자재"];
+    // 지출 분류: 항목(고정비 항목)에 지정된 비용 구분을 따른다.
+    //  cogs 매출원가 / sga 판매관리비 / nonop 영업외비용 / none 손익 제외(부가세 납부·자산취득·사업주 개인 등)
+    const costItems = await this.listFixedCostItems();
+    const costTypeByName = new Map<string, string>(costItems.map((i) => [i.name, (i as any).costType || "sga"]));
+    let excluded = 0;
     for (const e of expenseRows) {
       const s = norm((e as any).sector, "common");
-      if (COGS_EXPENSE_CATEGORIES.includes(e.category)) cogs[s] += e.amount;
+      // 항목이 삭제되어 조회되지 않으면 기존 동작(원부자재=원가, 그 외 판관비)으로 대체
+      const ct = costTypeByName.get(e.category) ?? (e.category === "원부자재" ? "cogs" : "sga");
+      if (ct === "cogs") cogs[s] += e.amount;
+      else if (ct === "nonop") nonop[s] += e.amount;
+      else if (ct === "none") excluded += e.amount;
       else sga[s] += e.amount;
+    }
+
+    // 공통비 배분: '공통' 부문에 남은 비용을 부문별 매출 비율로 나눠 실제 수익성에 가깝게 만든다.
+    const allocatedCommon = allocate ? cogs.common + sga.common + nonop.common : 0;
+    if (allocate) {
+      const targets = (SECTORS as readonly Sector[]).filter((s) => s !== "common");
+      const revSum = targets.reduce((n, t) => n + rev[t], 0);
+      if (revSum > 0) {
+        const spread = (pool: Record<Sector, number>) => {
+          const amount = pool.common;
+          if (amount === 0) return;
+          let rest = amount;
+          let biggest: Sector = targets[0];
+          targets.forEach((t) => { if (rev[t] > rev[biggest]) biggest = t; });
+          for (const t of targets) {
+            if (t === biggest) continue;
+            const part = Math.round((amount * rev[t]) / revSum);
+            pool[t] += part;
+            rest -= part;
+          }
+          pool[biggest] += rest; // 반올림 잔액은 매출이 가장 큰 부문에
+          pool.common = 0;
+        };
+        spread(cogs); spread(sga); spread(nonop);
+      }
     }
 
     const lines: FinancialStatement["lines"] = SECTORS.map((s) => {
@@ -1870,6 +1997,8 @@ export class DatabaseStorage implements IStorage {
       const c = cogs[s];
       const grossProfit = revenue - c;
       const g = sga[s];
+      const operatingProfit = grossProfit - g;
+      const n = nonop[s];
       return {
         sector: s,
         label: SECTOR_LABEL[s],
@@ -1877,9 +2006,11 @@ export class DatabaseStorage implements IStorage {
         cogs: c,
         grossProfit,
         sga: g,
-        operatingProfit: grossProfit - g,
+        operatingProfit,
+        nonOperating: n,
+        netProfit: operatingProfit - n,
       };
-    }).filter((l) => l.revenue !== 0 || l.cogs !== 0 || l.sga !== 0);
+    }).filter((l) => l.revenue !== 0 || l.cogs !== 0 || l.sga !== 0 || l.nonOperating !== 0);
 
     const totals = lines.reduce(
       (acc, l) => {
@@ -1888,9 +2019,11 @@ export class DatabaseStorage implements IStorage {
         acc.grossProfit += l.grossProfit;
         acc.sga += l.sga;
         acc.operatingProfit += l.operatingProfit;
+        acc.nonOperating += l.nonOperating;
+        acc.netProfit += l.netProfit;
         return acc;
       },
-      { revenue: 0, cogs: 0, grossProfit: 0, sga: 0, operatingProfit: 0 },
+      { revenue: 0, cogs: 0, grossProfit: 0, sga: 0, operatingProfit: 0, nonOperating: 0, netProfit: 0 },
     );
 
     // 채권·채무 (현재 시점 스냅샷)
@@ -1904,6 +2037,9 @@ export class DatabaseStorage implements IStorage {
       to,
       lines,
       totals,
+      allocated: allocate,
+      allocatedCommon,
+      excluded,
       workingCapital: { receivables, payables, net: receivables - payables },
     };
   }

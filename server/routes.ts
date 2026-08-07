@@ -1479,6 +1479,11 @@ export async function registerRoutes(
     res.json(await storage.listFixedCostItems(includeInactive));
   });
 
+  // 권장 항목 세트 추가 (없는 것만)
+  app.post("/api/admin/fixed-cost-items/seed-recommended", requireOwner, async (_req, res) => {
+    res.json(await storage.seedRecommendedCostItems());
+  });
+
   app.post("/api/admin/fixed-cost-items", requireOwner, async (req, res) => {
     const parsed = insertFixedCostItemSchema.safeParse(req.body);
     if (!parsed.success)
@@ -1534,6 +1539,31 @@ export async function registerRoutes(
     const from = typeof req.query.from === "string" ? req.query.from : undefined;
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
     res.json(await storage.listExpenses(from, to));
+  });
+
+  // 메모 기반 항목·부문 추천
+  app.get("/api/admin/expenses/suggest", requireOwner, async (req, res) => {
+    const memo = typeof req.query.memo === "string" ? req.query.memo : "";
+    res.json((await storage.suggestExpenseClassification(memo)) ?? {});
+  });
+
+  // 여러 지출의 항목·부문 일괄 변경 (기존 '기타' 정리)
+  app.post("/api/admin/expenses/bulk-recategorize", requireOwner, async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [];
+    const category = typeof req.body?.category === "string" && req.body.category ? req.body.category : undefined;
+    const sector = typeof req.body?.sector === "string" && req.body.sector ? req.body.sector : undefined;
+    if (ids.length === 0) return res.status(400).json({ message: "변경할 지출을 선택해 주세요." });
+    if (!category && !sector) return res.status(400).json({ message: "변경할 항목 또는 부문을 선택해 주세요." });
+    const n = await storage.bulkRecategorizeExpenses(ids, { category, sector });
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "expense.bulkRecategorize",
+      targetType: "expense",
+      targetId: ids.slice(0, 20).join(","),
+      summary: `지출 ${n}건 일괄 변경 (${category ?? "-"} / ${sector ?? "-"})`,
+    });
+    res.json({ ok: true, updated: n });
   });
 
   app.post("/api/admin/expenses", requireOwner, async (req, res) => {
@@ -1609,7 +1639,8 @@ export async function registerRoutes(
     const from = typeof req.query.from === "string" ? req.query.from : "";
     const to = typeof req.query.to === "string" ? req.query.to : "";
     if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
-    res.json(await storage.getFinancialStatement(from, to));
+    const allocate = req.query.allocate !== "0"; // 기본: 공통비를 매출 비율로 배분
+    res.json(await storage.getFinancialStatement(from, to, allocate));
   });
 
   // AI(Claude) 심층 재무 분석 — 서버가 재무 데이터를 모아 Anthropic API로 분석문을 받아옵니다.
@@ -1669,6 +1700,10 @@ export async function registerRoutes(
         `- 매출총이익: ${t.grossProfit}원 (매출총이익률 ${pct(t.grossProfit, t.revenue)})`,
         `- 판매관리비(수기 지출): ${t.sga}원 (판관비율 ${pct(t.sga, t.revenue)})`,
         `- 영업이익: ${t.operatingProfit}원 (영업이익률 ${pct(t.operatingProfit, t.revenue)})`,
+        `- 영업외비용(이자 등): ${t.nonOperating}원`,
+        `- 순이익: ${t.netProfit}원`,
+        fs.allocated && fs.allocatedCommon > 0 ? `※ 공통 부문 비용 ${fs.allocatedCommon}원은 부문별 매출 비율로 배분되어 각 부문에 포함돼 있습니다.` : ``,
+        fs.excluded > 0 ? `※ 부가세 납부·자산 취득 등 ${fs.excluded}원은 비용이 아니므로 손익에서 제외했습니다.` : ``,
         ``,
         `[부문별 손익]`,
         lineText || "(부문별 데이터 없음)",
@@ -1699,7 +1734,7 @@ export async function registerRoutes(
         `## 종합 진단 (2~3문장, 흑자/적자와 수익성 핵심)\n` +
         `## 지출 심층 분석 (개별 지출 내역을 근거로: 금액이 큰 지출, 반복·정기 지출, 과다하거나 이상해 보이는 지출, 절감 여지가 있는 항목을 구체적인 날짜·항목·금액을 인용해 짚어주세요. 필요하면 항목을 그룹지어 설명)\n` +
         `## 부문별 코멘트 (부문별 이익 기여와 문제 지점)\n` +
-        `## 리스크 및 주의점 (원가율·판관비·채권채무 유동성 관점)\n` +
+        `## 리스크 및 주의점 (원가율·판관비·이자부담·채권채무 유동성 관점)\n` +
         `## 개선 제안 (구체적이고 실행 가능한 3~5가지, 가능하면 예상 절감액 포함)\n\n` +
         `수치는 원 단위 그대로 쓰되 읽기 쉽게 천단위 콤마를 넣어주세요. 지출 심층 분석은 실제 입력된 개별 내역을 반드시 근거로 삼고, 데이터에 없는 항목은 지어내지 마세요.`;
 
