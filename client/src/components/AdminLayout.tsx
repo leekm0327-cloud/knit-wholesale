@@ -43,6 +43,7 @@ import {
   Coffee,
   MessagesSquare,
   FileText,
+  BarChart3,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -98,6 +99,7 @@ const NAV_GROUPS: NavGroup[] = [
       // 방문자 통계 — Cloudflare 토큰 이슈로 우선 중단(메뉴 숨김). 토큰 수정 후 이 줄을 되살리면 재개.
       // { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity, ownerOnly: true },
       { href: "/admin/store-sales", label: "매장매출", icon: Store, ownerOnly: true },
+      { href: "/admin/pos-sales", label: "POS 매출 분석", icon: BarChart3, ownerOnly: true },
       { href: "/admin/money", label: "지출·가계부", icon: Receipt, ownerOnly: true },
       { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
     ],
