@@ -262,8 +262,10 @@ export const fixedCostItems = sqliteTable("fixed_cost_items", {
   name: text("name").notNull(), // 항목명 (예: 임대료)
   sortOrder: integer("sort_order").notNull().default(0),
   active: integer("active").notNull().default(1), // 1 사용 / 0 숨김
-  // D: 재무 부문 (고정비도 부문 지정)
+  // D: 재무 부문 (고정비도 부문 지정) — 지출 입력 시 기본 선택되는 부문
   sector: text("sector").notNull().default("common"),
+  // 비용 구분: 손익계산서에서 어디로 집계할지 ("cogs" 매출원가 | "sga" 판매관리비 | "nonop" 영업외비용 | "none" 비용 아님)
+  costType: text("cost_type").notNull().default("sga"),
   createdAt: integer("created_at").notNull(),
 });
 
@@ -947,11 +949,23 @@ export const insertStoreSaleSchema = z.object({
 export type InsertStoreSale = z.infer<typeof insertStoreSaleSchema>;
 
 export type FixedCostItem = typeof fixedCostItems.$inferSelect;
+// 비용 구분 (손익계산서 집계 위치)
+export const COST_TYPES = ["cogs", "sga", "nonop", "none"] as const;
+export type CostType = (typeof COST_TYPES)[number];
+export const COST_TYPE_LABEL: Record<CostType, string> = {
+  cogs: "매출원가",
+  sga: "판매관리비",
+  nonop: "영업외비용",
+  none: "비용 아님",
+};
+export const costTypeSchema = z.enum(COST_TYPES);
+
 export const insertFixedCostItemSchema = z.object({
   name: z.string().min(1, "항목명을 입력해 주세요."),
   sortOrder: z.number().int().optional().default(0),
   active: z.number().int().min(0).max(1).optional().default(1),
   sector: sectorSchema.optional().default("common"),
+  costType: costTypeSchema.optional().default("sga"),
 });
 export type InsertFixedCostItem = z.infer<typeof insertFixedCostItemSchema>;
 
@@ -1095,6 +1109,8 @@ export type FinancialStatementLine = {
   grossProfit: number; // 매출총이익 = 매출 - 원가
   sga: number; // 판매관리비 (수기 지출)
   operatingProfit: number; // 영업이익 = 매출총이익 - 판관비
+  nonOperating: number; // 영업외비용 (이자비용 등)
+  netProfit: number; // 순이익 = 영업이익 - 영업외비용
 };
 export type FinancialStatement = {
   from: string;
@@ -1106,7 +1122,14 @@ export type FinancialStatement = {
     grossProfit: number;
     sga: number;
     operatingProfit: number;
+    nonOperating: number;
+    netProfit: number;
   };
+  // 공통비 배분 여부 / 배분된 금액
+  allocated: boolean;
+  allocatedCommon: number;
+  // 손익에서 제외된 '비용 아님' 지출 합계 (부가세 납부·자산취득·사업주 개인 등)
+  excluded: number;
   // 채권·채무 (현재 시점 스냅샷)
   workingCapital: {
     receivables: number; // 거래처 미수금 합 (양수 잔액)
