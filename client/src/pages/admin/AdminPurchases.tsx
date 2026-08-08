@@ -376,11 +376,11 @@ export default function AdminPurchases() {
               <p className="text-sm text-muted-foreground">등록된 발주가 없습니다.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="table-scroll">
               <table className="w-full min-w-[760px] text-sm">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium">발주번호</th>
+                    <th className="sticky-col px-4 py-2 text-left font-medium">발주번호</th>
                     <th className="px-4 py-2 text-left font-medium">발주일</th>
                     <th className="px-4 py-2 text-left font-medium">공급처</th>
                     <th className="px-4 py-2 text-left font-medium">거래처(주문)</th>
@@ -403,7 +403,7 @@ export default function AdminPurchases() {
                     } catch {}
                     return (
                       <tr key={p.id} data-testid={`row-purchase-${p.id}`}>
-                        <td className="px-4 py-3 font-display tabular text-xs font-semibold text-foreground whitespace-nowrap">{p.purchaseNo}</td>
+                        <td className="sticky-col px-4 py-3 font-display tabular text-xs font-semibold text-foreground whitespace-nowrap">{p.purchaseNo}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{p.purchaseDate}</td>
                         <td className="px-4 py-3 text-foreground">{supplierName(p.supplierId)}</td>
                         <td className="px-4 py-3 text-xs">

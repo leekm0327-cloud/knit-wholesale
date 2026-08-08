@@ -304,7 +304,7 @@ export default function AdminTransactions() {
             </div>
 
             {/* 거래 명세 테이블 */}
-            <div className="mt-5 overflow-x-auto">
+            <div className="mt-5 table-scroll">
               {result.orders.length === 0 ? (
                 <div className="border border-border py-16 text-center text-sm text-muted-foreground">
                   해당 기간에 거래 내역이 없습니다.
@@ -366,7 +366,8 @@ export default function AdminTransactions() {
                   해당 기간에 입금 내역이 없습니다.
                 </div>
               ) : (
-                <table className="w-full border-collapse text-sm">
+                <div className="table-scroll">
+                <table className="w-full min-w-[520px] border-collapse text-sm">
                   <thead>
                     <tr className="border-y border-foreground bg-muted/30">
                       <th className="px-2 py-2 text-left text-[11px] font-semibold text-foreground">입금일</th>
@@ -392,6 +393,7 @@ export default function AdminTransactions() {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               )}
             </div>
 

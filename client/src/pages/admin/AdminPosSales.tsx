@@ -299,7 +299,7 @@ export default function AdminPosSales() {
             </div>
 
             {/* 월별 추이 표 */}
-            <div className="overflow-x-auto">
+            <div className="table-scroll">
               <table className="w-full min-w-[600px] text-sm">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>
@@ -408,7 +408,7 @@ export default function AdminPosSales() {
                       <p className="mb-2 text-xs font-semibold text-foreground">
                         메뉴별 증감 <span className="font-normal text-muted-foreground">· 변동이 큰 20개</span>
                       </p>
-                      <div className="overflow-x-auto">
+                      <div className="table-scroll">
                         <table className="w-full min-w-[560px] text-sm">
                           <thead className="bg-muted/40 text-xs text-muted-foreground">
                             <tr>
@@ -511,7 +511,7 @@ export default function AdminPosSales() {
                 <h2 className="text-sm font-semibold text-foreground">메뉴별 판매 순위 {category !== "all" && <span className="text-muted-foreground">· {category}</span>}</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">판매수량 기준 상위 {topProducts.length}개</p>
               </div>
-              <div className="overflow-x-auto">
+              <div className="table-scroll">
                 <table className="w-full min-w-[520px] text-sm">
                   <thead className="bg-muted/40 text-xs text-muted-foreground">
                     <tr>

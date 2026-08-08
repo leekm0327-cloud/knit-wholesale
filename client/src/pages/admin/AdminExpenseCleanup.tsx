@@ -202,7 +202,7 @@ export default function AdminExpenseCleanup() {
               <p className="text-sm text-muted-foreground">정리할 지출이 없습니다.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="table-scroll">
               <table className="w-full min-w-[620px] text-sm">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>

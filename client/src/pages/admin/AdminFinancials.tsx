@@ -276,11 +276,11 @@ export default function AdminFinancials() {
               {lines.length === 0 ? (
                 <div className="py-16 text-center text-sm text-muted-foreground">이 기간에 집계된 손익이 없습니다.</div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="table-scroll">
                   <table className="w-full min-w-[640px] text-sm">
                     <thead className="bg-muted/40 text-xs text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium">항목</th>
+                        <th className="sticky-col px-4 py-2 text-left font-medium">항목</th>
                         {lines.map((l) => (
                           <th key={l.sector} className="px-4 py-2 text-right font-medium whitespace-nowrap">
                             {bizLabel(l.sector, l.label)}
@@ -292,7 +292,7 @@ export default function AdminFinancials() {
                     <tbody className="divide-y">
                       {rows.map((r) => (
                         <tr key={r.key} className={r.strong && !r.muted ? "bg-muted/20" : ""}>
-                          <td className={`px-4 py-3 whitespace-nowrap ${r.muted ? "text-xs text-muted-foreground" : r.strong ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                          <td className={`sticky-col px-4 py-3 whitespace-nowrap ${r.muted ? "text-xs text-muted-foreground" : r.strong ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                             {r.label}
                           </td>
                           {lines.map((l) => {
