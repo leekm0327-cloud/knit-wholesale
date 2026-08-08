@@ -181,6 +181,29 @@ export async function registerRoutes(
     next();
   }
   // Owner 전용 미들웨어 (#9)
+  // 로그인 무차별 대입 완화 — 같은 키(IP+아이디)로 연속 실패가 쌓이면 잠시 막는다.
+  const loginFails = new Map<string, { n: number; until: number }>();
+  const LOGIN_MAX = 8;              // 허용 실패 횟수
+  const LOGIN_BLOCK_MS = 10 * 60 * 1000; // 초과 시 차단 시간
+  function loginKey(req: Request, id: string) {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "";
+    return `${ip}|${String(id || "").toLowerCase()}`;
+  }
+  function loginBlocked(key: string): number {
+    const rec = loginFails.get(key);
+    if (!rec) return 0;
+    if (Date.now() > rec.until) { loginFails.delete(key); return 0; }
+    return rec.n >= LOGIN_MAX ? Math.ceil((rec.until - Date.now()) / 60000) : 0;
+  }
+  function loginFailed(key: string) {
+    const rec = loginFails.get(key) ?? { n: 0, until: 0 };
+    rec.n += 1;
+    rec.until = Date.now() + LOGIN_BLOCK_MS;
+    loginFails.set(key, rec);
+    if (loginFails.size > 5000) loginFails.clear(); // 메모리 방어
+  }
+  function loginOk(key: string) { loginFails.delete(key); }
+
   function requireOwner(req: Request, res: Response, next: NextFunction) {
     if (!req.session.userId || req.session.role !== "admin")
       return res.status(403).json({ message: "관리자 권한이 필요합니다." });
@@ -279,9 +302,15 @@ export async function registerRoutes(
       const parsedAdmin = adminLoginSchema.safeParse(req.body);
       if (!parsedAdmin.success)
         return res.status(400).json({ message: parsedAdmin.error.errors[0]?.message ?? "입력값 오류" });
+      const kA = loginKey(req, parsedAdmin.data.email);
+      const waitA = loginBlocked(kA);
+      if (waitA) return res.status(429).json({ message: `로그인 시도가 많습니다. ${waitA}분 후 다시 시도해 주세요.` });
       const admin = await storage.getCustomerByEmail(parsedAdmin.data.email);
-      if (!admin || admin.role !== "admin" || !bcrypt.compareSync(parsedAdmin.data.password, admin.password))
+      if (!admin || admin.role !== "admin" || !bcrypt.compareSync(parsedAdmin.data.password, admin.password)) {
+        loginFailed(kA);
         return res.status(401).json({ message: "이메일 또는 비밀번호가 올바르지 않습니다." });
+      }
+      loginOk(kA);
       req.session.userId = admin.id;
       req.session.role = admin.role;
       req.session.adminRole = admin.adminRole;
@@ -294,9 +323,15 @@ export async function registerRoutes(
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const kC = loginKey(req, parsed.data.businessName);
+    const waitC = loginBlocked(kC);
+    if (waitC) return res.status(429).json({ message: `로그인 시도가 많습니다. ${waitC}분 후 다시 시도해 주세요.` });
     const customer = await storage.getCustomerByBusinessName(parsed.data.businessName);
-    if (!customer || !bcrypt.compareSync(parsed.data.password, customer.password))
+    if (!customer || !bcrypt.compareSync(parsed.data.password, customer.password)) {
+      loginFailed(kC);
       return res.status(401).json({ message: "상호명 또는 비밀번호가 올바르지 않습니다." });
+    }
+    loginOk(kC);
     req.session.userId = customer.id;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
@@ -319,9 +354,15 @@ export async function registerRoutes(
     const parsed = adminLoginSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
+    const k = loginKey(req, parsed.data.email);
+    const wait = loginBlocked(k);
+    if (wait) return res.status(429).json({ message: `로그인 시도가 많습니다. ${wait}분 후 다시 시도해 주세요.` });
     const admin = await storage.getCustomerByEmail(parsed.data.email);
-    if (!admin || admin.role !== "admin" || !bcrypt.compareSync(parsed.data.password, admin.password))
+    if (!admin || admin.role !== "admin" || !bcrypt.compareSync(parsed.data.password, admin.password)) {
+      loginFailed(k);
       return res.status(401).json({ message: "이메일 또는 비밀번호가 올바르지 않습니다." });
+    }
+    loginOk(k);
     req.session.userId = admin.id;
     req.session.role = admin.role;
     req.session.adminRole = admin.adminRole;
@@ -361,11 +402,27 @@ export async function registerRoutes(
       "paymentMethod",
     ];
     const patch: any = {};
-    for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
-    // email을 변경하는 경우 taxEmail도 동시 업데이트 (이메일 완전 통합 #43)
-    if (typeof patch.email === "string") {
-      patch.email = patch.email.trim();
+    // 문자열 값만 허용 (객체·배열이 그대로 DB로 흘러가지 않도록)
+    for (const k of allowed) if (k in req.body && typeof req.body[k] === "string") patch[k] = req.body[k].trim();
+
+    // 상호명은 로그인 ID이자 고유값 — 빈 값·중복을 막는다 (관리자 수정 경로와 동일 규칙)
+    if ("businessName" in patch) {
+      if (!patch.businessName) return res.status(400).json({ message: "상호명을 입력해 주세요." });
+      const dup = await storage.getCustomerByBusinessName(patch.businessName);
+      if (dup && dup.id !== req.session.userId)
+        return res.status(400).json({ message: "이미 등록된 상호명입니다. 다른 상호명을 사용해 주세요." });
+    }
+    // 이메일 형식 검증 (가입 시와 동일 기준). 변경 시 taxEmail도 함께 갱신 (#43)
+    if ("email" in patch) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patch.email))
+        return res.status(400).json({ message: "이메일 형식이 올바르지 않습니다." });
       patch.taxEmail = patch.email;
+    }
+    // 사업자등록번호를 바꾸면 체크섬을 다시 검증해 승인 상태를 갱신
+    if ("bizRegNo" in patch && patch.bizRegNo) {
+      if (!isValidBizRegNo(patch.bizRegNo))
+        return res.status(400).json({ message: "사업자등록번호 형식이 올바르지 않습니다." });
+      patch.bizVerified = 1;
     }
     const updated = await storage.updateCustomer(req.session.userId!, patch);
     if (!updated) return res.status(404).json({ message: "사용자 없음" });
@@ -2329,7 +2386,7 @@ export async function registerRoutes(
   });
 
   // ===== 매니저 관리 (#9) =====
-  app.get("/api/admin/managers", requireAdmin, async (_req, res) => {
+  app.get("/api/admin/managers", requireOwner, async (_req, res) => {
     const admins = await storage.listAdmins();
     res.json(admins.map(toPublic));
   });
@@ -2339,6 +2396,9 @@ export async function registerRoutes(
     const name = req.body.name ?? req.body.managerName; // 클라이언트가 managerName으로 보냄
     if (!email || !name || !password)
       return res.status(400).json({ message: "이메일, 이름, 비밀번호는 필수입니다." });
+    // 거래처 가입·비밀번호 변경과 동일하게 최소 6자 이상 요구
+    if (typeof password !== "string" || password.length < 6)
+      return res.status(400).json({ message: "비밀번호는 6자 이상이어야 합니다." });
     const existing = await storage.getCustomerByEmail(email);
     if (existing) return res.status(409).json({ message: "이미 사용 중인 이메일입니다." });
     // 상호명(business_name)은 유일해야 함 — 소유자가 "니트커피"를 쓰므로 매니저는 유일한 값으로.
@@ -2377,7 +2437,11 @@ export async function registerRoutes(
     const nm = req.body.name ?? req.body.managerName; // 생성/수정 모두 managerName 사용
     if (nm) patch.managerName = nm;
     if (req.body.phone !== undefined) patch.phone = req.body.phone;
-    if (req.body.password) patch.password = bcrypt.hashSync(req.body.password, 10);
+    if (req.body.password) {
+      if (typeof req.body.password !== "string" || req.body.password.length < 6)
+        return res.status(400).json({ message: "비밀번호는 6자 이상이어야 합니다." });
+      patch.password = bcrypt.hashSync(req.body.password, 10);
+    }
     const updated = await storage.updateCustomer(id, patch);
     if (!updated) return res.status(404).json({ message: "매니저 없음" });
     res.json(toPublic(updated));

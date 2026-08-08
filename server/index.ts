@@ -60,8 +60,11 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      // 응답 본문 전체를 로그에 남기면 거래처 연락처·사업자번호·채권잔액·재무 데이터가
+      // 배포 로그에 그대로 쌓인다. 오류 응답의 메시지만 남기고 정상 응답 본문은 기록하지 않는다.
+      if (capturedJsonResponse && res.statusCode >= 400) {
+        const msg = (capturedJsonResponse as any)?.message;
+        if (typeof msg === "string") logLine += ` :: ${msg.slice(0, 200)}`;
       }
 
       log(logLine);
