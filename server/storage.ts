@@ -1702,7 +1702,7 @@ export class DatabaseStorage implements IStorage {
 
   // ===== POS 매출 =====
   // 업로드된 집계 데이터를 저장. 같은 기간(from~to) 기존 데이터는 삭제 후 교체(재업로드 중복 방지).
-  async importPosSales(p: PosImport): Promise<{ products: number; hourly: number; from: string; to: string }> {
+  async importPosSales(p: PosImport): Promise<{ products: number; hourly: number; storeDays: number; from: string; to: string }> {
     const now = Date.now();
     db.delete(posProductSales).where(and(gte(posProductSales.saleDate, p.from), lte(posProductSales.saleDate, p.to))).run();
     db.delete(posHourlySales).where(and(gte(posHourlySales.saleDate, p.from), lte(posHourlySales.saleDate, p.to))).run();
@@ -1715,7 +1715,19 @@ export class DatabaseStorage implements IStorage {
     const chunk = <T>(arr: T[], n: number): T[][] => { const o: T[][] = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o; };
     for (const c of chunk(prodRows, 200)) if (c.length) db.insert(posProductSales).values(c).run();
     for (const c of chunk(hourRows, 200)) if (c.length) db.insert(posHourlySales).values(c).run();
-    return { products: prodRows.length, hourly: hourRows.length, from: p.from, to: p.to };
+
+    // POS를 매장 매출의 원천으로 삼는다 — 일자별 합계를 store_sales(매장 부문)에 자동 반영.
+    // 같은 매출을 수기로 또 입력하지 않게 하고, 입력 누락으로 매출이 통째로 빠지는 일을 막는다.
+    // (수기로 보정한 값이 있어도 같은 기간을 다시 업로드하면 POS 값으로 덮어쓴다)
+    const byDate = new Map<string, number>();
+    for (const r of prodRows) byDate.set(r.saleDate, (byDate.get(r.saleDate) ?? 0) + r.amount);
+    let storeDays = 0;
+    for (const [saleDate, amount] of Array.from(byDate.entries())) {
+      await this.upsertStoreSale({ saleDate, sector: "store", amount, memo: "POS 자동 반영" } as any);
+      storeDays += 1;
+    }
+
+    return { products: prodRows.length, hourly: hourRows.length, storeDays, from: p.from, to: p.to };
   }
 
   // 해당 기간에 이미 저장된 POS 데이터 규모 (업로드 시 덮어쓰기 안내용)
