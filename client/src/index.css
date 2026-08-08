@@ -304,3 +304,30 @@
     inset: -1px;
   }
 }
+
+/* ===== 모바일 표 가로 스크롤 보조 =====
+   관리자 화면의 넓은 표는 좁은 화면에서 좌우로 밀어야 한다.
+   .table-scroll 을 감싸면 (1) 스크롤이 가능하다는 그림자 힌트가 보이고
+   (2) .sticky-col 을 지정한 첫 열이 고정되어 어느 행을 보는지 놓치지 않는다. */
+.table-scroll {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, hsl(var(--background)) 30%, transparent),
+    linear-gradient(to left, hsl(var(--background)) 30%, transparent) 100% 0,
+    linear-gradient(to right, rgba(0, 0, 0, 0.10), transparent),
+    linear-gradient(to left, rgba(0, 0, 0, 0.10), transparent) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 32px 100%, 32px 100%, 12px 100%, 12px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+@media (max-width: 640px) {
+  .table-scroll .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: hsl(var(--background));
+  }
+  .table-scroll thead .sticky-col {
+    background: hsl(var(--muted));
+  }
+}
