@@ -69,6 +69,9 @@ export default function AdminPosSales() {
   const [category, setCategory] = useState<string>("all");
   const [uploading, setUploading] = useState(false);
   const [groupOrigin, setGroupOrigin] = useState(true); // 산지 원두를 Filter Coffee 한 줄로 묶기
+  const [cmpMode, setCmpMode] = useState<"month" | "range">("month"); // 월 단위 vs 임의 기간
+  const [rngA, setRngA] = useState({ from: "", to: "" });
+  const [rngB, setRngB] = useState({ from: "", to: "" });
   const [cmpA, setCmpA] = useState<string>("");
   const [cmpB, setCmpB] = useState<string>("");
 
@@ -83,13 +86,17 @@ export default function AdminPosSales() {
 
   // 월별 비교 (a=이전 달, b=기준 달. 미지정이면 서버가 최근 2개월 자동 선택)
   const { data: cmp } = useQuery<PosCompare>({
-    queryKey: ["/api/admin/pos-sales/compare", { cmpA, cmpB, category, groupOrigin }],
+    queryKey: ["/api/admin/pos-sales/compare", { cmpA, cmpB, category, groupOrigin, cmpMode, rngA, rngB }],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (cmpA) qs.set("a", cmpA);
       if (cmpB) qs.set("b", cmpB);
       qs.set("category", category);
       qs.set("groupOrigin", groupOrigin ? "1" : "0");
+      if (cmpMode === "range" && rngA.from && rngA.to && rngB.from && rngB.to) {
+        qs.set("aFrom", rngA.from); qs.set("aTo", rngA.to);
+        qs.set("bFrom", rngB.from); qs.set("bTo", rngB.to);
+      }
       const res = await apiRequest("GET", `/api/admin/pos-sales/compare?${qs.toString()}`);
       return res.json();
     },
@@ -319,7 +326,7 @@ export default function AdminPosSales() {
         {cmp && cmp.months.length > 0 && (
           <Card className="mb-6 overflow-hidden">
             <div className="border-b p-5">
-              <h2 className="text-sm font-semibold text-foreground">월별 비교</h2>
+              <h2 className="text-sm font-semibold text-foreground">{cmpMode === "range" ? "기간 비교" : "월별 비교"}</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 저장된 전체 월 기준입니다{category !== "all" ? ` · ${category}` : ""}. 위 기간 선택과는 별개로 동작합니다.
               </p>
@@ -359,26 +366,80 @@ export default function AdminPosSales() {
               </table>
             </div>
 
-            {/* 두 달 선택 */}
-            <div className="flex flex-wrap items-center gap-2 border-t p-4">
-              <span className="text-xs text-muted-foreground">비교</span>
-              <select
-                value={cmp.a?.month ?? ""}
-                onChange={(e) => setCmpA(e.target.value)}
-                className="rounded-md border bg-background px-2 py-1 text-sm"
-                data-testid="select-cmp-a"
-              >
-                {cmp.months.map((m) => <option key={m.month} value={m.month}>{m.month}</option>)}
-              </select>
-              <span className="text-xs text-muted-foreground">→</span>
-              <select
-                value={cmp.b?.month ?? ""}
-                onChange={(e) => setCmpB(e.target.value)}
-                className="rounded-md border bg-background px-2 py-1 text-sm"
-                data-testid="select-cmp-b"
-              >
-                {cmp.months.map((m) => <option key={m.month} value={m.month}>{m.month}</option>)}
-              </select>
+            {/* 비교 대상 선택 — 월 단위 또는 임의 기간 */}
+            <div className="flex flex-col gap-3 border-t p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">비교 기준</span>
+                <div className="flex overflow-hidden rounded-md border">
+                  <button
+                    onClick={() => setCmpMode("month")}
+                    className={`px-3 py-1 text-xs ${cmpMode === "month" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"}`}
+                    data-testid="button-cmp-month"
+                  >
+                    월 단위
+                  </button>
+                  <button
+                    onClick={() => {
+                      // 처음 전환할 때 최근 두 달을 기본값으로 채워 바로 쓸 수 있게 한다
+                      if (!rngA.from && cmp.months.length > 0) {
+                        const last = cmp.months[cmp.months.length - 1].month;
+                        const prev = cmp.months.length > 1 ? cmp.months[cmp.months.length - 2].month : last;
+                        const endOf = (m: string) => {
+                          const [y, mm] = m.split("-").map(Number);
+                          return `${m}-${String(new Date(Date.UTC(y, mm, 0)).getUTCDate()).padStart(2, "0")}`;
+                        };
+                        setRngA({ from: `${prev}-01`, to: endOf(prev) });
+                        setRngB({ from: `${last}-01`, to: endOf(last) });
+                      }
+                      setCmpMode("range");
+                    }}
+                    className={`px-3 py-1 text-xs ${cmpMode === "range" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"}`}
+                    data-testid="button-cmp-range"
+                  >
+                    기간 직접 선택
+                  </button>
+                </div>
+              </div>
+
+              {cmpMode === "month" ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={cmp.a?.month ?? ""}
+                    onChange={(e) => setCmpA(e.target.value)}
+                    className="rounded-md border bg-background px-2 py-1 text-sm"
+                    data-testid="select-cmp-a"
+                  >
+                    {cmp.months.map((m) => <option key={m.month} value={m.month}>{m.month}</option>)}
+                  </select>
+                  <span className="text-xs text-muted-foreground">→</span>
+                  <select
+                    value={cmp.b?.month ?? ""}
+                    onChange={(e) => setCmpB(e.target.value)}
+                    className="rounded-md border bg-background px-2 py-1 text-sm"
+                    data-testid="select-cmp-b"
+                  >
+                    {cmp.months.map((m) => <option key={m.month} value={m.month}>{m.month}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-10 shrink-0 text-xs text-muted-foreground">이전</span>
+                    <Input type="date" value={rngA.from} onChange={(e) => setRngA({ ...rngA, from: e.target.value })} className="w-36" data-testid="input-cmp-a-from" />
+                    <span className="text-xs text-muted-foreground">~</span>
+                    <Input type="date" value={rngA.to} onChange={(e) => setRngA({ ...rngA, to: e.target.value })} className="w-36" data-testid="input-cmp-a-to" />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-10 shrink-0 text-xs text-muted-foreground">기준</span>
+                    <Input type="date" value={rngB.from} onChange={(e) => setRngB({ ...rngB, from: e.target.value })} className="w-36" data-testid="input-cmp-b-from" />
+                    <span className="text-xs text-muted-foreground">~</span>
+                    <Input type="date" value={rngB.to} onChange={(e) => setRngB({ ...rngB, to: e.target.value })} className="w-36" data-testid="input-cmp-b-to" />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    같은 길이의 기간끼리 비교해야 증감이 의미 있습니다. 예: 지난달 1~15일 vs 이번달 1~15일
+                  </p>
+                </div>
+              )}
             </div>
 
             {cmp.a && cmp.b ? (
@@ -440,8 +501,8 @@ export default function AdminPosSales() {
                           <thead className="bg-muted/40 text-xs text-muted-foreground">
                             <tr>
                               <th className="px-3 py-2 text-left font-medium">메뉴</th>
-                              <th className="px-3 py-2 text-right font-medium">{cmp.a!.month}</th>
-                              <th className="px-3 py-2 text-right font-medium">{cmp.b!.month}</th>
+                              <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{cmp.a!.month}</th>
+                              <th className="whitespace-nowrap px-3 py-2 text-right font-medium">{cmp.b!.month}</th>
                               <th className="px-3 py-2 text-right font-medium">수량 증감</th>
                               <th className="px-3 py-2 text-right font-medium">매출 증감</th>
                             </tr>
