@@ -245,7 +245,6 @@ export async function registerRoutes(
       password: hashed,
       role: "customer",
       isStore: 0,
-      sampleUsed: 0,
       bizVerified,
     });
     // B-3: 승인 상태를 활동 로그로 기록.
@@ -1738,7 +1737,7 @@ export async function registerRoutes(
       const fs = await storage.getFinancialStatement(from, to);
       const pct = (n: number, d: number) => (d > 0 ? ((n / d) * 100).toFixed(1) + "%" : "-");
       const t = fs.totals;
-      const bizName: Record<string, string> = { store: "음식점업(매장)", wholesale: "원두도매업(도매)", online: "온라인", atelier: "아뜰리에", common: "공통" };
+      const bizName: Record<string, string> = { store: "음식점업(매장)", wholesale: "원두도매업(도매)", online: "온라인", atelier: "아뜰리에", consulting: "컨설팅", common: "공통" };
       const lineText = fs.lines
         .filter((l) => l.revenue !== 0 || l.cogs !== 0 || l.sga !== 0 || l.operatingProfit !== 0)
         .map((l) => `- ${bizName[l.sector] ?? l.label}: 매출 ${l.revenue}원, 매출원가 ${l.cogs}원(원가율 ${pct(l.cogs, l.revenue)}), 매출총이익 ${l.grossProfit}원, 판관비 ${l.sga}원, 영업이익 ${l.operatingProfit}원(영업이익률 ${pct(l.operatingProfit, l.revenue)})`)
