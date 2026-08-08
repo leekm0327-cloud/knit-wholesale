@@ -170,6 +170,22 @@ export default function AdminPosSales() {
       const dates = products.map((p) => p.date).sort();
       const payload = { from: dates[0], to: dates[dates.length - 1], products, hourly };
 
+      // 업로드는 해당 기간을 통째로 교체한다. 이미 저장된 데이터가 있으면 규모를 보여주고 확인받는다.
+      // (기간이 겹치는 파일을 실수로 올려 기존 데이터가 사라지는 것을 막기 위함)
+      try {
+        const infoRes = await apiRequest("GET", `/api/admin/pos-sales/range-info?from=${payload.from}&to=${payload.to}`);
+        const info = await infoRes.json();
+        if (info?.products > 0) {
+          const ok = confirm(
+            `${payload.from} ~ ${payload.to} 구간에 이미 저장된 데이터가 있습니다.\n\n` +
+            `기존: ${info.days}일 · ${info.products.toLocaleString()}건 · ${info.amount.toLocaleString()}원\n` +
+            `새 파일: ${new Set(products.map((p) => p.date)).size}일 · ${products.length.toLocaleString()}건 · ${products.reduce((s, p) => s + p.amount, 0).toLocaleString()}원\n\n` +
+            `이 구간은 새 파일 내용으로 교체됩니다. 진행할까요?`,
+          );
+          if (!ok) { setUploading(false); if (fileRef.current) fileRef.current.value = ""; return; }
+        }
+      } catch { /* 확인 조회 실패는 업로드를 막지 않음 */ }
+
       const res = await apiRequest("POST", "/api/admin/pos-sales/import", payload);
       const info = await res.json();
       toast({ title: "업로드 완료", description: `${info.from} ~ ${info.to} · 상품 ${info.products}행 저장${skipped ? ` (제외 ${skipped}행)` : ""}` });

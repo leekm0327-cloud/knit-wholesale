@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import { won } from "@/lib/format";
-import type { FinancialStatement, Sector } from "@shared/schema";
+import type { FinancialStatement, FinancialMonth, Sector } from "@shared/schema";
 import { analyzeFinancials, type FsTone } from "@/lib/financialAnalysis";
 import { FileSpreadsheet, Sparkles, CheckCircle2, AlertTriangle, XCircle, Info, Loader2, Bot, Printer } from "lucide-react";
 
@@ -105,6 +105,16 @@ export default function AdminFinancials() {
   const [aiTruncated, setAiTruncated] = useState(false);
   const [allocate, setAllocate] = useState(true);
   const aiPrintRef = useRef<HTMLDivElement>(null);
+
+  // 월별 추이 (선택 기간에 걸친 각 달의 손익)
+  const { data: monthly } = useQuery<FinancialMonth[]>({
+    queryKey: ["/api/admin/financial-statement/monthly", { from, to, allocate }],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/admin/financial-statement/monthly?from=${from}&to=${to}&allocate=${allocate ? 1 : 0}`);
+      return res.json();
+    },
+    enabled: isOwner,
+  });
 
   const { data, isLoading } = useQuery<FinancialStatement>({
     queryKey: ["/api/admin/financial-statement", { from, to, allocate }],
@@ -332,6 +342,59 @@ export default function AdminFinancials() {
                 {(data?.excluded ?? 0) > 0 && <> · ‘비용 아님’(부가세 납부·자산 취득 등) {won(data!.excluded)}은 손익에서 제외했습니다.</>}
               </div>
             </Card>
+
+            {/* 월별 추이 — 2개월 이상일 때만 */}
+            {monthly && monthly.length > 1 && (
+              <Card className="overflow-hidden">
+                <div className="border-b p-5">
+                  <h2 className="text-sm font-semibold text-foreground">월별 추이</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    선택한 기간을 달별로 나눠 본 손익입니다. 증감은 전월 대비 영업이익 기준입니다.
+                  </p>
+                </div>
+                <div className="table-scroll">
+                  <table className="w-full min-w-[680px] text-sm">
+                    <thead className="bg-muted/40 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="sticky-col px-4 py-2 text-left font-medium">월</th>
+                        <th className="px-4 py-2 text-right font-medium">매출액</th>
+                        <th className="px-4 py-2 text-right font-medium">매출총이익</th>
+                        <th className="px-4 py-2 text-right font-medium">판관비</th>
+                        <th className="px-4 py-2 text-right font-medium">영업이익</th>
+                        <th className="px-4 py-2 text-right font-medium">전월 대비</th>
+                        <th className="px-4 py-2 text-right font-medium">순이익</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {monthly.map((m, i) => {
+                        const prev = i > 0 ? monthly[i - 1] : null;
+                        const d = prev ? m.operatingProfit - prev.operatingProfit : null;
+                        return (
+                          <tr key={m.month} data-testid={`row-month-${m.month}`}>
+                            <td className="sticky-col px-4 py-2.5 font-medium text-foreground whitespace-nowrap">{m.month}</td>
+                            <td className="px-4 py-2.5 text-right tabular text-foreground">{won(m.revenue)}</td>
+                            <td className="px-4 py-2.5 text-right tabular text-muted-foreground">
+                              {won(m.grossProfit)}
+                              <span className="ml-1 text-[10px]">{m.revenue > 0 ? `${((m.grossProfit / m.revenue) * 100).toFixed(0)}%` : ""}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right tabular text-muted-foreground">{won(m.sga)}</td>
+                            <td className={`px-4 py-2.5 text-right tabular font-semibold ${m.operatingProfit >= 0 ? "text-foreground" : "text-destructive"}`}>
+                              {won(m.operatingProfit)}
+                            </td>
+                            <td className={`px-4 py-2.5 text-right tabular text-xs ${d == null ? "text-muted-foreground" : d >= 0 ? "text-emerald-600" : "text-destructive"}`}>
+                              {d == null ? "—" : `${d >= 0 ? "▲" : "▼"} ${won(Math.abs(d))}`}
+                            </td>
+                            <td className={`px-4 py-2.5 text-right tabular ${m.netProfit >= 0 ? "text-foreground" : "text-destructive"}`}>
+                              {won(m.netProfit)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
 
             {/* 채권·채무 요약 */}
             <Card className="p-5">
