@@ -17,7 +17,11 @@ import { Store, Trash2, Loader2 } from "lucide-react";
 
 // 매장매출 입력에서 선택 가능한 부문 (매장·온라인만)
 // 수기로 입력하는 매출 부문 (도매는 주문에서 자동 집계되므로 제외)
-const STORE_SECTORS: Sector[] = ["store", "online", "atelier", "consulting"];
+// 수기로 입력하는 매출 부문. 매장은 POS 업로드로 자동 반영되므로 '보정용'으로만 남긴다.
+const STORE_SECTORS: Sector[] = ["online", "atelier", "consulting", "store"];
+const SECTOR_OPTION_LABEL: Partial<Record<Sector, string>> = {
+  store: "매장 (POS 자동 · 보정용)",
+};
 
 function todayStr(): string {
   const d = new Date();
@@ -31,7 +35,7 @@ export default function AdminStoreSales() {
   const { data: sales, isLoading } = useQuery<StoreSale[]>({ queryKey: ["/api/admin/store-sales"] });
 
   const [saleDate, setSaleDate] = useState(todayStr());
-  const [sector, setSector] = useState<Sector>("store");
+  const [sector, setSector] = useState<Sector>("online");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -85,12 +89,17 @@ export default function AdminStoreSales() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-        <div className="eyebrow">Store Sales</div>
-        <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">매출 입력</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          주문 시스템을 거치지 않는 매출을 기록합니다 — 매장 일별 매출, 온라인, 아뜰리에, 컨설팅 용역료.
-          금액은 <strong className="text-foreground">부가세 포함</strong>으로 입력하시면 손익에는 공급가액으로 반영됩니다.
+        <div className="eyebrow">Other Sales</div>
+        <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">기타매출 입력</h1>
+        <p className="mb-2 text-sm text-muted-foreground">
+          온라인·아뜰리에·컨설팅처럼 <strong className="text-foreground">주문 시스템과 POS를 거치지 않는 매출</strong>을 기록합니다.
+          금액은 부가세 포함으로 입력하시면 손익에는 공급가액으로 반영됩니다.
           같은 날짜·같은 부문은 덮어쓰기 되니, 건별로 남기시려면 메모에 내용을 적어 주세요.
+        </p>
+        <p className="mb-6 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+          <strong className="text-foreground">매장 매출은 입력하지 않으셔도 됩니다.</strong> POS 매출 분석에서 엑셀을 올리시면 일자별 매장 매출이 자동으로 반영됩니다.
+          도매 매출도 주문에서 자동 집계됩니다. 매장 값을 직접 고쳐야 할 때만 부문에서 ‘매장(보정용)’을 선택하세요 —
+          같은 기간 POS를 다시 올리면 그 값으로 덮어써집니다.
         </p>
 
         {/* 입력 폼 */}
@@ -110,7 +119,7 @@ export default function AdminStoreSales() {
                 data-testid="select-sale-sector"
               >
                 {STORE_SECTORS.map((s) => (
-                  <option key={s} value={s}>{SECTOR_LABEL[s]}</option>
+                  <option key={s} value={s}>{SECTOR_OPTION_LABEL[s] ?? SECTOR_LABEL[s]}</option>
                 ))}
               </select>
             </div>
@@ -163,7 +172,12 @@ export default function AdminStoreSales() {
                   {sales.map((s) => (
                     <tr key={s.id} data-testid={`row-sale-${s.id}`}>
                       <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{s.saleDate}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{SECTOR_LABEL[(s as any).sector as Sector] ?? "-"}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {SECTOR_LABEL[(s as any).sector as Sector] ?? "-"}
+                        {(s.memo || "").includes("POS 자동") && (
+                          <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">POS 자동</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground truncate max-w-[220px]">{s.memo || "-"}</td>
                       <td className="px-4 py-3 text-right font-display tabular font-semibold text-foreground">{won(s.amount)}</td>
                       <td className="px-4 py-3 text-right">

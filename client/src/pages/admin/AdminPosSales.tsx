@@ -188,7 +188,7 @@ export default function AdminPosSales() {
 
       const res = await apiRequest("POST", "/api/admin/pos-sales/import", payload);
       const info = await res.json();
-      toast({ title: "업로드 완료", description: `${info.from} ~ ${info.to} · 상품 ${info.products}행 저장${skipped ? ` (제외 ${skipped}행)` : ""}` });
+      toast({ title: "업로드 완료", description: `${info.from} ~ ${info.to} · 상품 ${info.products}행 저장${info.storeDays ? ` · 매장매출 ${info.storeDays}일 자동 반영` : ""}${skipped ? ` (제외 ${skipped}행)` : ""}` });
       setFrom(info.from); setTo(info.to); setCategory("all");
       setCmpA(""); setCmpB(""); // 최근 2개월 자동 선택으로 초기화
       qc.invalidateQueries({ queryKey: ["/api/admin/pos-sales/summary"] });
