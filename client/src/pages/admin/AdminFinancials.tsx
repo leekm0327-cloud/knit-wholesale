@@ -24,6 +24,7 @@ const BIZ_LABEL: Partial<Record<Sector, string>> = {
   online: "온라인",
   atelier: "아뜰리에",
   consulting: "컨설팅",
+  popup: "팝업 (단발 이벤트)",
   common: "공통",
 };
 function bizLabel(sector: Sector, fallback: string): string {

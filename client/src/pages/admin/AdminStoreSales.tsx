@@ -18,7 +18,7 @@ import { Store, Trash2, Loader2 } from "lucide-react";
 // 매장매출 입력에서 선택 가능한 부문 (매장·온라인만)
 // 수기로 입력하는 매출 부문 (도매는 주문에서 자동 집계되므로 제외)
 // 수기로 입력하는 매출 부문. 매장은 POS 업로드로 자동 반영되므로 '보정용'으로만 남긴다.
-const STORE_SECTORS: Sector[] = ["online", "atelier", "consulting", "store"];
+const STORE_SECTORS: Sector[] = ["online", "atelier", "consulting", "popup", "store"];
 const SECTOR_OPTION_LABEL: Partial<Record<Sector, string>> = {
   store: "매장 (POS 자동 · 보정용)",
 };
@@ -92,7 +92,7 @@ export default function AdminStoreSales() {
         <div className="eyebrow">Other Sales</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">기타매출 입력</h1>
         <p className="mb-2 text-sm text-muted-foreground">
-          온라인·아뜰리에·컨설팅처럼 <strong className="text-foreground">주문 시스템과 POS를 거치지 않는 매출</strong>을 기록합니다.
+          온라인·아뜰리에·컨설팅·팝업처럼 <strong className="text-foreground">주문 시스템과 POS를 거치지 않는 매출</strong>을 기록합니다.
           금액은 부가세 포함으로 입력하시면 손익에는 공급가액으로 반영됩니다.
           같은 날짜·같은 부문은 덮어쓰기 되니, 건별로 남기시려면 메모에 내용을 적어 주세요.
         </p>
