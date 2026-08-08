@@ -860,6 +860,7 @@ export interface IStorage {
   bulkRecategorizeExpenses(ids: number[], patch: { category?: string; sector?: string }): Promise<number>;
   suggestExpenseClassification(memo: string): Promise<{ category: string; sector: string; basedOn: number } | null>;
   seedRecommendedCostItems(): Promise<{ added: string[] }>;
+  bulkImportLegacy(p: { sales?: any[]; expenses?: any[]; personal?: any[] }): Promise<{ sales: number; expenses: number; personal: number }>;
   getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
   getFinancialStatement(from: string, to: string, allocate?: boolean): Promise<FinancialStatement>;
   getFinancialMonthly(from: string, to: string, allocate?: boolean): Promise<FinancialMonth[]>;
@@ -1699,6 +1700,47 @@ export class DatabaseStorage implements IStorage {
       added.push(r.name);
     }
     return { added };
+  }
+
+  // 과거 회계자료(Numbers 리포트 등) 일괄 이관 — 1회성 마이그레이션용.
+  // 매출은 (일자, 부문) 단위 업서트라 같은 파일을 다시 올려도 중복되지 않고,
+  // 지출·가계부는 이관분에 표식을 남겨 재실행 시 이전 이관분을 지우고 다시 넣는다.
+  async bulkImportLegacy(p: { sales?: any[]; expenses?: any[]; personal?: any[] }): Promise<{ sales: number; expenses: number; personal: number }> {
+    const now = Date.now();
+    const TAG = "[이관]";
+    let ns = 0, ne = 0, np = 0;
+
+    for (const r of p.sales ?? []) {
+      if (!r?.saleDate || typeof r.amount !== "number") continue;
+      await this.upsertStoreSale({ saleDate: r.saleDate, sector: r.sector ?? "store", amount: Math.round(r.amount), memo: r.memo ?? "" } as any);
+      ns += 1;
+    }
+
+    // 재실행 대비: 기존 이관분(메모에 표식) 제거 후 다시 삽입
+    const oldEx = db.select().from(expenses).all().filter((e) => (e.memo || "").startsWith(TAG));
+    for (const e of oldEx) db.delete(expenses).where(eq(expenses.id, e.id)).run();
+    const exRows = (p.expenses ?? [])
+      .filter((r) => r?.expenseDate && typeof r.amount === "number")
+      .map((r) => ({ expenseDate: r.expenseDate, category: r.category || "기타", sector: r.sector || "common",
+                     amount: Math.round(r.amount), memo: `${TAG} ${r.memo ?? ""}`.trim().slice(0, 300), createdAt: now }));
+    for (let i = 0; i < exRows.length; i += 200) {
+      const c = exRows.slice(i, i + 200);
+      if (c.length) { db.insert(expenses).values(c).run(); ne += c.length; }
+    }
+
+    const oldPl = db.select().from(personalLedger).all().filter((r) => (r.memo || "").startsWith(TAG));
+    for (const r of oldPl) db.delete(personalLedger).where(eq(personalLedger.id, r.id)).run();
+    const plRows = (p.personal ?? [])
+      .filter((r) => r?.date && typeof r.amount === "number")
+      .map((r) => ({ date: r.date, type: r.type === "income" ? "income" : "expense",
+                     categoryId: Number(r.categoryId) || 7, amount: Math.round(r.amount),
+                     memo: `${TAG} ${r.memo ?? ""}`.trim().slice(0, 300), createdAt: now }));
+    for (let i = 0; i < plRows.length; i += 200) {
+      const c = plRows.slice(i, i + 200);
+      if (c.length) { db.insert(personalLedger).values(c).run(); np += c.length; }
+    }
+
+    return { sales: ns, expenses: ne, personal: np };
   }
 
   // ===== POS 매출 =====

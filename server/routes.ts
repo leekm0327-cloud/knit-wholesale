@@ -1883,6 +1883,18 @@ export async function registerRoutes(
     }
   });
 
+  // 과거 회계자료 일괄 이관 (1회성). 같은 파일을 다시 올려도 중복되지 않는다.
+  app.post("/api/admin/migrate/legacy", requireOwner, async (req, res) => {
+    const b = req.body ?? {};
+    if (!Array.isArray(b.sales) && !Array.isArray(b.expenses) && !Array.isArray(b.personal))
+      return res.status(400).json({ message: "이관할 데이터가 없습니다. (sales / expenses / personal)" });
+    const r = await storage.bulkImportLegacy(b);
+    const actor = await getActor(req);
+    await storage.logActivity({ ...actor, action: "migrate.legacy", targetType: "system", targetId: "-",
+      summary: `과거 자료 이관 — 매출 ${r.sales} · 지출 ${r.expenses} · 가계부 ${r.personal}` });
+    res.json(r);
+  });
+
   // ===== POS 매출 (엑셀 업로드 → 집계 저장 · 분석) =====
   app.post("/api/admin/pos-sales/import", requireOwner, async (req, res) => {
     const parsed = posImportSchema.safeParse(req.body);
