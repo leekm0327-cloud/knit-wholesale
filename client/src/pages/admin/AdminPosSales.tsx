@@ -18,7 +18,10 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+// 판매가 아닌 기록용 항목 — POS에서 테이블번호·인원수·좌석을 상품처럼 찍는 값들
 const NOISE_CATS = new Set(["Number", "Seat"]);
+// 상품명 자체가 표시용인 것 (매장/포장 구분 표시 등)
+const NOISE_NAMES = new Set(["매장", "포장", "홀", "테이크아웃"]);
 const SHEET_CANDIDATES = ["상품 주문 상세내역", "상품 주문 합계"];
 
 // SheetJS(CDN) 동적 로드 — 서버 의존성 없이 브라우저에서 엑셀 파싱
@@ -137,6 +140,8 @@ export default function AdminPosSales() {
       // 상세시트는 설명행(1행)을 건너뜀
       const start = isDetail ? 2 : 1;
       let skipped = 0;
+      let zeroPriced = 0; // 선결제 소진 등 0원으로 제공된 실제 판매 건수
+      const zeroNames = new Set<string>(); // 0원으로 잡힌 메뉴 (예상과 다른 항목이 섞였는지 확인용)
       for (let i = start; i < rows.length; i++) {
         const r = rows[i];
         if (!r || r.length === 0) continue;
@@ -149,8 +154,12 @@ export default function AdminPosSales() {
         const name = String(r[cName] ?? "").trim();
         const qty = Math.round(toNum(r[cQty]));
         const amount = Math.round(toNum(r[cAmt]));
-        // 노이즈 제외: 테이블번호/좌석(0원), '매장' 표시(0원), 금액 0 이하
-        if (NOISE_CATS.has(cat) || name === "매장" || amount <= 0) { skipped++; continue; }
+        // 노이즈 제외 — '금액 0원'이 아니라 '항목의 성격'으로 판단한다.
+        //  선결제 고객이 마신 음료는 100% 할인되어 0원으로 찍히지만 실제 판매이므로 수량을 세야 한다.
+        //  (매출은 선결제 판매 시점에 이미 잡혔으므로 0원이 더해져도 금액은 영향 없음)
+        if (!name || NOISE_CATS.has(cat) || NOISE_NAMES.has(name) || amount < 0) { skipped++; continue; }
+
+        if (amount === 0) { zeroPriced += 1; zeroNames.add(name); }
 
         const pk = `${date}||${cat}||${name}`;
         const pc = prodMap.get(pk) || { date, category: cat, product: name, qty: 0, amount: 0 };
@@ -188,7 +197,7 @@ export default function AdminPosSales() {
 
       const res = await apiRequest("POST", "/api/admin/pos-sales/import", payload);
       const info = await res.json();
-      toast({ title: "업로드 완료", description: `${info.from} ~ ${info.to} · 상품 ${info.products}행 저장${info.storeDays ? ` · 매장매출 ${info.storeDays}일 자동 반영` : ""}${skipped ? ` (제외 ${skipped}행)` : ""}` });
+      toast({ title: "업로드 완료", description: `${info.from} ~ ${info.to} · 상품 ${info.products}행 저장${info.storeDays ? ` · 매장매출 ${info.storeDays}일 자동 반영` : ""}${zeroPriced ? ` · 0원 제공 ${zeroPriced}건 포함 (${Array.from(zeroNames).slice(0, 3).join(", ")}${zeroNames.size > 3 ? ` 외 ${zeroNames.size - 3}종` : ""})` : ""}${skipped ? ` (제외 ${skipped}행)` : ""}` });
       setFrom(info.from); setTo(info.to); setCategory("all");
       setCmpA(""); setCmpB(""); // 최근 2개월 자동 선택으로 초기화
       qc.invalidateQueries({ queryKey: ["/api/admin/pos-sales/summary"] });
