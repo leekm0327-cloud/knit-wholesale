@@ -1719,6 +1719,15 @@ export async function registerRoutes(
     res.json(await storage.getFinancialStatement(from, to, allocate));
   });
 
+  // 재무제표 월별 추이
+  app.get("/api/admin/financial-statement/monthly", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    const allocate = req.query.allocate !== "0";
+    res.json(await storage.getFinancialMonthly(from, to, allocate));
+  });
+
   // AI(Claude) 심층 재무 분석 — 서버가 재무 데이터를 모아 Anthropic API로 분석문을 받아옵니다.
   // 대표(Owner) 전용. ANTHROPIC_API_KEY 환경변수 필요, 호출 시마다 소액 비용 발생.
   app.post("/api/admin/financial-statement/ai-analysis", requireOwner, async (req, res) => {
@@ -1883,6 +1892,13 @@ export async function registerRoutes(
     }
     const r = await storage.importPosSales(parsed.data);
     res.json(r);
+  });
+  // 업로드 시 교체될 기존 데이터 규모 (덮어쓰기 전 확인용)
+  app.get("/api/admin/pos-sales/range-info", requireOwner, async (req, res) => {
+    const from = typeof req.query.from === "string" ? req.query.from : "";
+    const to = typeof req.query.to === "string" ? req.query.to : "";
+    if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
+    res.json(await storage.getPosRangeInfo(from, to));
   });
   app.get("/api/admin/pos-sales/summary", requireOwner, async (req, res) => {
     const from = typeof req.query.from === "string" ? req.query.from : "";

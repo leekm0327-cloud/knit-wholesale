@@ -52,6 +52,7 @@ import type {
   PosMonthStat,
   DashboardSummary,
   FinancialStatement,
+  FinancialMonth,
   ItemSummaryRow,
   ItemDetailRow,
   DashboardGranularity,
@@ -861,6 +862,7 @@ export interface IStorage {
   seedRecommendedCostItems(): Promise<{ added: string[] }>;
   getDashboardSummary(from: string, to: string, granularity: DashboardGranularity, sector?: "all" | Sector): Promise<DashboardSummary>;
   getFinancialStatement(from: string, to: string, allocate?: boolean): Promise<FinancialStatement>;
+  getFinancialMonthly(from: string, to: string, allocate?: boolean): Promise<FinancialMonth[]>;
   getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
   getPurchaseItemSummary(from: string, to: string): Promise<ItemSummaryRow[]>;
   getPurchaseItemDetail(name: string, from: string, to: string): Promise<ItemDetailRow[]>;
@@ -1716,6 +1718,20 @@ export class DatabaseStorage implements IStorage {
     return { products: prodRows.length, hourly: hourRows.length, from: p.from, to: p.to };
   }
 
+  // 해당 기간에 이미 저장된 POS 데이터 규모 (업로드 시 덮어쓰기 안내용)
+  async getPosRangeInfo(from: string, to: string): Promise<{ products: number; hourly: number; days: number; amount: number }> {
+    const prod = db.select().from(posProductSales)
+      .where(and(gte(posProductSales.saleDate, from), lte(posProductSales.saleDate, to))).all();
+    const hour = db.select().from(posHourlySales)
+      .where(and(gte(posHourlySales.saleDate, from), lte(posHourlySales.saleDate, to))).all();
+    return {
+      products: prod.length,
+      hourly: hour.length,
+      days: new Set(prod.map((r) => r.saleDate)).size,
+      amount: prod.reduce((s, r) => s + r.amount, 0),
+    };
+  }
+
   async getPosSummary(from: string, to: string, category?: string): Promise<PosSummary> {
     const catFilter = category && category !== "all" ? category : null;
     let prod = db.select().from(posProductSales)
@@ -1836,6 +1852,37 @@ export class DatabaseStorage implements IStorage {
     };
 
     return { months, categories, a: detail(ma), b: detail(mb) };
+  }
+
+  // 재무제표 월별 추이 — 기간에 걸친 각 달의 손익을 한 줄씩 반환
+  async getFinancialMonthly(from: string, to: string, allocate = true): Promise<FinancialMonth[]> {
+    const out: FinancialMonth[] = [];
+    // from~to 사이의 달을 순회 (최대 36개월로 제한해 과도한 조회 방지)
+    let y = Number(from.slice(0, 4));
+    let m = Number(from.slice(5, 7));
+    const endY = Number(to.slice(0, 4));
+    const endM = Number(to.slice(5, 7));
+    for (let guard = 0; guard < 36; guard++) {
+      if (y > endY || (y === endY && m > endM)) break;
+      const mm = String(m).padStart(2, "0");
+      const first = `${y}-${mm}-01`;
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // 해당 월의 말일
+      const last = `${y}-${mm}-${String(lastDay).padStart(2, "0")}`;
+      // 조회 기간을 벗어나지 않도록 양끝을 자른다
+      const s = first < from ? from : first;
+      const e = last > to ? to : last;
+      const fs = await this.getFinancialStatement(s, e, allocate);
+      const t = fs.totals;
+      out.push({
+        month: `${y}-${mm}`,
+        revenue: t.revenue, cogs: t.cogs, grossProfit: t.grossProfit,
+        sga: t.sga, operatingProfit: t.operatingProfit,
+        nonOperating: t.nonOperating, netProfit: t.netProfit,
+      });
+      m += 1;
+      if (m > 12) { m = 1; y += 1; }
+    }
+    return out;
   }
 
   // ===== 경영 대시보드 (C): 손익 요약 =====
