@@ -1032,6 +1032,18 @@ export type PosSummary = {
   byWeekday: { weekday: number; qty: number; amount: number }[]; // 0=일 … 6=토
 };
 
+// 재무제표 월별 추이 (한 줄 = 한 달의 손익 요약)
+export type FinancialMonth = {
+  month: string; // YYYY-MM
+  revenue: number;
+  cogs: number;
+  grossProfit: number;
+  sga: number;
+  operatingProfit: number;
+  nonOperating: number;
+  netProfit: number;
+};
+
 // 월별 비교
 export type PosMonthStat = { month: string; qty: number; amount: number; days: number };
 export type PosMonthDetail = {
