@@ -1672,6 +1672,7 @@ export class DatabaseStorage implements IStorage {
       { name: "소프트웨어·구독료", costType: "sga", sector: "common" },
       { name: "지급수수료", costType: "sga", sector: "common" },
       { name: "차량비", costType: "sga", sector: "common" },
+      { name: "물류비", costType: "sga", sector: "online" },
       { name: "여비교통비", costType: "sga", sector: "common" },
       { name: "교육훈련비", costType: "sga", sector: "common" },
       { name: "시설관리·보안", costType: "sga", sector: "store" },
