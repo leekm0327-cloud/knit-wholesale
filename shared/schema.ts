@@ -938,7 +938,7 @@ export type SupplierLedgerPeriod = {
 
 // ===== D: 재무 부문(sector) =====
 // 5개 고정 부문. store(매장)/wholesale(홀세일)/online(온라인)/atelier(아뜰리에)/common(공통)
-export const SECTORS = ["store", "wholesale", "online", "atelier", "common"] as const;
+export const SECTORS = ["store", "wholesale", "online", "atelier", "consulting", "common"] as const;
 export type Sector = (typeof SECTORS)[number];
 export const sectorSchema = z.enum(SECTORS);
 export const SECTOR_LABEL: Record<Sector, string> = {
@@ -946,6 +946,7 @@ export const SECTOR_LABEL: Record<Sector, string> = {
   wholesale: "홀세일",
   online: "온라인",
   atelier: "아뜰리에",
+  consulting: "컨설팅",
   common: "공통",
 };
 
