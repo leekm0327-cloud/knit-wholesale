@@ -68,13 +68,14 @@ export default function AdminPosSales() {
   const [to, setTo] = useState(init.to);
   const [category, setCategory] = useState<string>("all");
   const [uploading, setUploading] = useState(false);
+  const [groupOrigin, setGroupOrigin] = useState(true); // 산지 원두를 Filter Coffee 한 줄로 묶기
   const [cmpA, setCmpA] = useState<string>("");
   const [cmpB, setCmpB] = useState<string>("");
 
   const { data, isLoading } = useQuery<PosSummary>({
-    queryKey: ["/api/admin/pos-sales/summary", { from, to, category }],
+    queryKey: ["/api/admin/pos-sales/summary", { from, to, category, groupOrigin }],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/admin/pos-sales/summary?from=${from}&to=${to}&category=${encodeURIComponent(category)}`);
+      const res = await apiRequest("GET", `/api/admin/pos-sales/summary?from=${from}&to=${to}&category=${encodeURIComponent(category)}&groupOrigin=${groupOrigin ? 1 : 0}`);
       return res.json();
     },
     enabled: isOwner,
@@ -82,12 +83,13 @@ export default function AdminPosSales() {
 
   // 월별 비교 (a=이전 달, b=기준 달. 미지정이면 서버가 최근 2개월 자동 선택)
   const { data: cmp } = useQuery<PosCompare>({
-    queryKey: ["/api/admin/pos-sales/compare", { cmpA, cmpB, category }],
+    queryKey: ["/api/admin/pos-sales/compare", { cmpA, cmpB, category, groupOrigin }],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (cmpA) qs.set("a", cmpA);
       if (cmpB) qs.set("b", cmpB);
       qs.set("category", category);
+      qs.set("groupOrigin", groupOrigin ? "1" : "0");
       const res = await apiRequest("GET", `/api/admin/pos-sales/compare?${qs.toString()}`);
       return res.json();
     },
@@ -533,8 +535,17 @@ export default function AdminPosSales() {
             {/* 메뉴별 순위 */}
             <Card className="mb-6 overflow-hidden">
               <div className="border-b p-5">
-                <h2 className="text-sm font-semibold text-foreground">메뉴별 판매 순위 {category !== "all" && <span className="text-muted-foreground">· {category}</span>}</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">판매수량 기준 상위 {topProducts.length}개</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-foreground">메뉴별 판매 순위 {category !== "all" && <span className="text-muted-foreground">· {category}</span>}</h2>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <input type="checkbox" checked={groupOrigin} onChange={(e) => setGroupOrigin(e.target.checked)} data-testid="check-group-origin" />
+                    산지 원두를 ‘Filter Coffee’로 묶기
+                  </label>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  판매수량 기준 상위 {topProducts.length}개
+                  {groupOrigin && " · Colombia·Ethiopia처럼 산지명으로 시작하는 음료는 한 줄로 합산됩니다"}
+                </p>
               </div>
               <div className="table-scroll">
                 <table className="w-full min-w-[520px] text-sm">
