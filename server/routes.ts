@@ -1926,7 +1926,9 @@ export async function registerRoutes(
     const b = typeof req.query.b === "string" ? req.query.b : undefined;
     const category = typeof req.query.category === "string" ? req.query.category : undefined;
     const groupOrigin = req.query.groupOrigin !== "0";
-    res.json(await storage.getPosCompare(a, b, category, groupOrigin));
+    const q = (k: string) => (typeof req.query[k] === "string" ? (req.query[k] as string) : undefined);
+    const range = { aFrom: q("aFrom"), aTo: q("aTo"), bFrom: q("bFrom"), bTo: q("bTo") };
+    res.json(await storage.getPosCompare(a, b, category, groupOrigin, range));
   });
 
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반

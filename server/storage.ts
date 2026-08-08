@@ -1865,7 +1865,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // 월별 비교 — 저장된 전체 월 목록 + 선택한 두 달의 상세(카테고리·메뉴)
-  async getPosCompare(monthA?: string, monthB?: string, category?: string, groupOrigin = true): Promise<PosCompare> {
+  async getPosCompare(
+    monthA?: string,
+    monthB?: string,
+    category?: string,
+    groupOrigin = true,
+    // 월 단위 대신 임의 기간으로 비교할 때 사용 (둘 다 있어야 적용)
+    range?: { aFrom?: string; aTo?: string; bFrom?: string; bTo?: string },
+  ): Promise<PosCompare> {
     const catFilter = category && category !== "all" ? category : null;
     const all = db.select().from(posProductSales).all();
 
@@ -1893,9 +1900,12 @@ export class DatabaseStorage implements IStorage {
     const mi = months.findIndex((m) => m.month === mb);
     const ma = monthA || (mi > 0 ? months[mi - 1].month : "");
 
-    const detail = (month: string): PosMonthDetail | null => {
-      if (!month) return null;
-      const rs = rows.filter((r) => r.saleDate.slice(0, 7) === month);
+    // label = 화면에 보일 이름, 필터는 (월) 또는 (시작~종료) 둘 중 하나
+    const detail = (label: string, from?: string, to?: string): PosMonthDetail | null => {
+      if (!label) return null;
+      const rs = from && to
+        ? rows.filter((r) => r.saleDate >= from && r.saleDate <= to)
+        : rows.filter((r) => r.saleDate.slice(0, 7) === label);
       const days = new Set<string>();
       const cMap = new Map<string, { qty: number; amount: number }>();
       const pMap = new Map<string, { category: string; product: string; qty: number; amount: number }>();
@@ -1911,13 +1921,23 @@ export class DatabaseStorage implements IStorage {
         pc.qty += r.qty; pc.amount += r.amount; pMap.set(pk, pc);
       }
       return {
-        month,
+        month: label,
         totals: { qty, amount, days: days.size },
         byCategory: [...cMap.entries()].map(([c, v]) => ({ category: c, ...v })).sort((x, y) => y.amount - x.amount),
         byProduct: [...pMap.values()].sort((x, y) => y.qty - x.qty),
       };
     };
 
+    // 임의 기간이 지정되면 그 기간으로, 아니면 월 단위로 비교
+    const useRange = !!(range?.aFrom && range?.aTo && range?.bFrom && range?.bTo);
+    if (useRange) {
+      const lab = (f: string, t: string) => (f === t ? f : `${f} ~ ${t}`);
+      return {
+        months, categories,
+        a: detail(lab(range!.aFrom!, range!.aTo!), range!.aFrom, range!.aTo),
+        b: detail(lab(range!.bFrom!, range!.bTo!), range!.bFrom, range!.bTo),
+      };
+    }
     return { months, categories, a: detail(ma), b: detail(mb) };
   }
 
