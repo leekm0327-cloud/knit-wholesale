@@ -1917,14 +1917,16 @@ export async function registerRoutes(
     const to = typeof req.query.to === "string" ? req.query.to : "";
     if (!from || !to) return res.status(400).json({ message: "기간(from, to)이 필요합니다." });
     const category = typeof req.query.category === "string" ? req.query.category : undefined;
-    res.json(await storage.getPosSummary(from, to, category));
+    const groupOrigin = req.query.groupOrigin !== "0"; // 기본: 산지 원두를 Filter Coffee로 묶음
+    res.json(await storage.getPosSummary(from, to, category, groupOrigin));
   });
   // 월별 비교 (a=이전 달, b=기준 달, 미지정 시 최근 2개월 자동)
   app.get("/api/admin/pos-sales/compare", requireOwner, async (req, res) => {
     const a = typeof req.query.a === "string" ? req.query.a : undefined;
     const b = typeof req.query.b === "string" ? req.query.b : undefined;
     const category = typeof req.query.category === "string" ? req.query.category : undefined;
-    res.json(await storage.getPosCompare(a, b, category));
+    const groupOrigin = req.query.groupOrigin !== "0";
+    res.json(await storage.getPosCompare(a, b, category, groupOrigin));
   });
 
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반

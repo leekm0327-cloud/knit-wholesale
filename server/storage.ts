@@ -887,6 +887,16 @@ function dateFromYmd(ymd: string): Date {
   return new Date(`${ymd}T00:00:00+09:00`);
 }
 // KST 캘린더 값 (서버 타임존과 무관하게 UTC 시프트로 계산)
+// 산지(국가)명으로 시작하는 음료 = 싱글 오리진 필터 커피.
+// 메뉴 분석에서 개별 원두로 흩어지지 않도록 'Filter Coffee' 한 줄로 묶는다.
+// (원두 소매 'Coffee Bean' 카테고리는 상품 자체가 원두이므로 묶지 않는다)
+const ORIGIN_RE = /^(Colombia|Ethiopia|Ethiopa|Brazil|Brasil|Guatemala|Kenya|Costa\s?rica|Costarica|Panama|Peru|Honduras|El\s?Salvador|Nicaragua|Bolivia|Ecuador|Rwanda|Burundi|Tanzania|Uganda|Yemen|Indonesia|India|Vietnam|Mexico|Jamaica|Cuba|Zambia|Malawi|China|Thailand|Myanmar|Timor|Philippines|Sumatra|Java|Sulawesi|Papua|콜롬비아|에티오피아|브라질|과테말라|케냐|코스타리카|파나마|페루|온두라스|엘살바도르|니카라과|볼리비아|에콰도르|르완다|부룬디|탄자니아|우간다|예멘|인도네시아|인도|베트남|멕시코)\b/i;
+export const FILTER_COFFEE = "Filter Coffee";
+function menuName(category: string, product: string, group: boolean): string {
+  if (!group) return product;
+  return category === "Drinks" && ORIGIN_RE.test(product) ? FILTER_COFFEE : product;
+}
+
 // 부가세 포함 금액 → 공급가액 (손익은 공급가액 기준으로 집계한다)
 function supplyOf(vatIncluded: number): number {
   return Math.round(vatIncluded / 1.1);
@@ -1787,7 +1797,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getPosSummary(from: string, to: string, category?: string): Promise<PosSummary> {
+  async getPosSummary(from: string, to: string, category?: string, groupOrigin = true): Promise<PosSummary> {
     const catFilter = category && category !== "all" ? category : null;
     let prod = db.select().from(posProductSales)
       .where(and(gte(posProductSales.saleDate, from), lte(posProductSales.saleDate, to))).all();
@@ -1819,8 +1829,9 @@ export class DatabaseStorage implements IStorage {
       totalQty += r.qty; totalAmount += r.amount;
       dateSet.add(r.saleDate);
       bump(catMap, r.category || "(미분류)", r.qty, r.amount);
-      const pk = `${r.category}||${r.product}`;
-      const pc = prodMap.get(pk) || { category: r.category || "(미분류)", product: r.product || "(미상)", qty: 0, amount: 0 };
+      const nm = menuName(r.category, r.product || "(미상)", groupOrigin);
+      const pk = `${r.category}||${nm}`;
+      const pc = prodMap.get(pk) || { category: r.category || "(미분류)", product: nm, qty: 0, amount: 0 };
       pc.qty += r.qty; pc.amount += r.amount; prodMap.set(pk, pc);
       bump(dateMap, r.saleDate, r.qty, r.amount);
       bump(monthMap, r.saleDate.slice(0, 7), r.qty, r.amount);
@@ -1854,7 +1865,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // 월별 비교 — 저장된 전체 월 목록 + 선택한 두 달의 상세(카테고리·메뉴)
-  async getPosCompare(monthA?: string, monthB?: string, category?: string): Promise<PosCompare> {
+  async getPosCompare(monthA?: string, monthB?: string, category?: string, groupOrigin = true): Promise<PosCompare> {
     const catFilter = category && category !== "all" ? category : null;
     const all = db.select().from(posProductSales).all();
 
@@ -1894,8 +1905,9 @@ export class DatabaseStorage implements IStorage {
         const ck = r.category || "(미분류)";
         const cc = cMap.get(ck) || { qty: 0, amount: 0 };
         cc.qty += r.qty; cc.amount += r.amount; cMap.set(ck, cc);
-        const pk = `${r.category}||${r.product}`;
-        const pc = pMap.get(pk) || { category: r.category || "(미분류)", product: r.product || "(미상)", qty: 0, amount: 0 };
+        const nm = menuName(r.category, r.product || "(미상)", groupOrigin);
+        const pk = `${r.category}||${nm}`;
+        const pc = pMap.get(pk) || { category: r.category || "(미분류)", product: nm, qty: 0, amount: 0 };
         pc.qty += r.qty; pc.amount += r.amount; pMap.set(pk, pc);
       }
       return {
