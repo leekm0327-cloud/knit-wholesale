@@ -16,7 +16,8 @@ import { SECTOR_LABEL } from "@shared/schema";
 import { Store, Trash2, Loader2 } from "lucide-react";
 
 // 매장매출 입력에서 선택 가능한 부문 (매장·온라인만)
-const STORE_SECTORS: Sector[] = ["store", "online"];
+// 수기로 입력하는 매출 부문 (도매는 주문에서 자동 집계되므로 제외)
+const STORE_SECTORS: Sector[] = ["store", "online", "atelier", "consulting"];
 
 function todayStr(): string {
   const d = new Date();
@@ -85,8 +86,12 @@ export default function AdminStoreSales() {
     <AdminLayout>
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Store Sales</div>
-        <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">매장매출 입력</h1>
-        <p className="mb-6 text-sm text-muted-foreground">오프라인 매장의 일별 매출을 기록합니다. 같은 날짜는 덮어쓰기 됩니다.</p>
+        <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">매출 입력</h1>
+        <p className="mb-6 text-sm text-muted-foreground">
+          주문 시스템을 거치지 않는 매출을 기록합니다 — 매장 일별 매출, 온라인, 아뜰리에, 컨설팅 용역료.
+          금액은 <strong className="text-foreground">부가세 포함</strong>으로 입력하시면 손익에는 공급가액으로 반영됩니다.
+          같은 날짜·같은 부문은 덮어쓰기 되니, 건별로 남기시려면 메모에 내용을 적어 주세요.
+        </p>
 
         {/* 입력 폼 */}
         <Card className="mb-6 p-5">
