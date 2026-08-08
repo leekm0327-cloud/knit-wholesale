@@ -8,6 +8,10 @@ import { errMsg } from "@/lib/format";
 import { Download, Upload, AlertTriangle, Loader2 } from "lucide-react";
 
 export default function AdminBackup() {
+  // 과거 회계자료(JSON) 이관 — 1회성. 같은 파일을 다시 올려도 중복되지 않는다.
+  const migRef = useRef<HTMLInputElement>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migResult, setMigResult] = useState<{ sales: number; expenses: number; personal: number } | null>(null);
   const { toast } = useToast();
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -113,6 +117,49 @@ export default function AdminBackup() {
             )}
             {downloading ? "다운로드 중…" : "백업 다운로드"}
           </Button>
+        </div>
+
+        {/* 과거 자료 이관 */}
+        <div className="mb-6 rounded-none border p-5">
+          <h2 className="mb-1 text-sm font-semibold text-foreground">과거 회계자료 이관</h2>
+          <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
+            기존에 쓰시던 월별 손익 자료를 앱 형식으로 변환한 <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">.json</code> 파일을 올리면
+            매출·지출·가계부에 한 번에 반영됩니다. 같은 파일을 다시 올려도 중복되지 않으며,
+            앱에 이미 있는 기간(POS·주문·발주)은 변환 단계에서 제외되어 있습니다.
+          </p>
+          <Button variant="outline" onClick={() => migRef.current?.click()} disabled={migrating} data-testid="button-migrate-legacy">
+            {migrating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+            {migrating ? "이관 중… (수 분 걸릴 수 있습니다)" : "이관 파일 선택"}
+          </Button>
+          <input
+            ref={migRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={async (ev) => {
+              const f = ev.target.files?.[0];
+              if (!f) return;
+              setMigrating(true);
+              setMigResult(null);
+              try {
+                const payload = JSON.parse(await f.text());
+                const res = await apiRequest("POST", "/api/admin/migrate/legacy", payload);
+                const j = await res.json();
+                setMigResult(j);
+                toast({ title: "이관 완료", description: `매출 ${j.sales}행 · 지출 ${j.expenses}건 · 가계부 ${j.personal}건` });
+              } catch (e: any) {
+                toast({ variant: "destructive", title: "이관 실패", description: e?.message ?? "파일을 처리하지 못했습니다." });
+              } finally {
+                setMigrating(false);
+                if (migRef.current) migRef.current.value = "";
+              }
+            }}
+          />
+          {migResult && (
+            <p className="mt-3 text-xs text-emerald-700">
+              반영 완료 — 매출 {migResult.sales}행 · 지출 {migResult.expenses}건 · 가계부 {migResult.personal}건
+            </p>
+          )}
         </div>
 
         {/* 백업 복원 */}
