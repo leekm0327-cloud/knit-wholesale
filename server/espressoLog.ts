@@ -66,11 +66,16 @@ function extractTags(notes: string[]): { label: string; count: number }[] {
 // 직원 이름 제거 (담당자 컬럼에서 수집한 이름 + 존칭 접미사)
 function anonymize(note: string, nameSet: Set<string>): string {
   let s = note;
+  let removed = false;
   for (const nm of nameSet) {
     if (nm.length < 2) continue;
+    if (s.includes(nm)) removed = true;
     s = s.split(nm).join("");
   }
-  return s.replace(/(이|씨|님|형|누나|쌤)\s/g, " ").replace(/\s{2,}/g, " ").replace(/^[\s,·]+|[\s,·]+$/g, "").trim();
+  // 존칭 접미사 제거는 실제로 이름을 지운 문장에만 적용한다.
+  // (그렇지 않으면 '여운이 깁니다' 같은 조사까지 잘려 문장이 어색해진다)
+  if (removed) s = s.replace(/(이|씨|님|형|누나|쌤)\s/g, " ");
+  return s.replace(/\s{2,}/g, " ").replace(/^[\s,·]+|[\s,·]+$/g, "").trim();
 }
 
 // 원두별 대표 코멘트 1~2개 선별 (맛 위주, 세팅 메모·이름 제외)
@@ -101,8 +106,8 @@ function pickNotes(comments: { veryPos: boolean; note: string }[], nameSet: Set<
   return out;
 }
 
-let cache: EspressoStats | null = null;
-let cacheAt = 0;
+let csvCache: string | null = null;
+let csvCacheAt = 0;
 
 // 따옴표/줄바꿈을 처리하는 최소 CSV 파서
 function parseCsv(text: string): string[][] {
@@ -168,10 +173,32 @@ function addRecipe(a: BinAcc, d: number, y: number, t: number) {
   if (Number.isFinite(t)) { a.time += t; a.timeN++; }
 }
 
-function aggregate(csv: string): EspressoStats {
+/** 직원 앱에서 기록한 추출 로그 (시트와 합쳐서 집계) */
+export type EspressoExtraRow = {
+  date: string; // YYYY-MM-DD
+  bean: string;
+  dose: number;
+  yield: number;
+  time: number;
+  rating: number; // 1~5 (0이면 미평가)
+  note: string; // 맛 태그 + 메모
+  staff: string;
+};
+
+// 별점(1~5)을 시트의 평가 표기로 변환
+function ratingLabel(n: number): string {
+  if (n >= 5) return "매우 긍정";
+  if (n === 4) return "긍정";
+  if (n === 3) return "보통";
+  if (n === 2) return "부정";
+  if (n === 1) return "매우 부정";
+  return "";
+}
+
+function aggregate(csv: string, extra: EspressoExtraRow[] = []): EspressoStats {
   const rows = parseCsv(csv);
   const empty: EspressoStats = { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [], byHumidity: [], byTemp: [] };
-  if (rows.length < 2) return empty;
+  if (rows.length === 0) return empty; // 헤더만 있고 직원 기록만 있는 경우도 집계한다
   const header = rows[0].map((h) => h.trim());
   const col = (kw: string) => header.findIndex((h) => h.includes(kw));
   const cDate = col("날짜");
@@ -184,6 +211,21 @@ function aggregate(csv: string): EspressoStats {
   const cTemp = col("실내 온도") >= 0 ? col("실내 온도") : col("실내온도");
   const cNote = col("코멘트") >= 0 ? col("코멘트") : col("NOTE");
   const cStaff = col("담당자");
+  // 직원 앱 기록을 시트와 같은 열 구조로 변환해 뒤에 붙인다
+  for (const e of extra) {
+    const r: string[] = new Array(header.length).fill("");
+    const put = (idx: number, v: string) => { if (idx >= 0 && idx < r.length) r[idx] = v; };
+    put(cDate, e.date);
+    put(cBean, e.bean);
+    put(cDose, e.dose ? String(e.dose) : "");
+    put(cYield, e.yield ? String(e.yield) : "");
+    put(cTime, e.time ? String(e.time) : "");
+    put(cRating, ratingLabel(e.rating));
+    put(cNote, e.note);
+    put(cStaff, e.staff);
+    rows.push(r);
+  }
+
   const humAcc = HUM_BINS.map(newAcc);
   const tempAcc = TEMP_BINS.map(newAcc);
 
@@ -307,19 +349,24 @@ function aggregate(csv: string): EspressoStats {
   };
 }
 
-export async function fetchEspressoStats(): Promise<EspressoStats> {
-  if (cache && Date.now() - cacheAt < TTL_MS) return cache;
+export async function fetchEspressoStats(extra: EspressoExtraRow[] = []): Promise<EspressoStats> {
   try {
-    const res = await fetch(CSV_URL, { redirect: "follow" });
-    if (!res.ok) throw new Error(`시트 응답 오류 (HTTP ${res.status})`);
-    const text = await res.text();
-    const stats = aggregate(text);
-    cache = stats;
-    cacheAt = Date.now();
-    return stats;
+    let text = csvCache;
+    if (!text || Date.now() - csvCacheAt >= TTL_MS) {
+      const res = await fetch(CSV_URL, { redirect: "follow" });
+      if (!res.ok) throw new Error(`시트 응답 오류 (HTTP ${res.status})`);
+      text = await res.text();
+      csvCache = text;
+      csvCacheAt = Date.now();
+    }
+    return aggregate(text, extra);
   } catch (e: any) {
-    // 실패 시 이전 캐시라도 반환, 없으면 에러 표시
-    if (cache) return cache;
-    return { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [], byHumidity: [], byTemp: [], error: e?.message ?? String(e) };
+    // 시트를 못 불러와도 직원 앱 기록만으로 집계해서 보여준다
+    if (csvCache) return aggregate(csvCache, extra);
+    if (extra.length > 0) return aggregate("날짜,원두,도징,추출량,추출 시간,종합 평가,코멘트,담당자\n", extra);
+    return {
+      totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [],
+      byHumidity: [], byTemp: [], error: e?.message ?? String(e),
+    };
   }
 }

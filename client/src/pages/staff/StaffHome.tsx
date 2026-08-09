@@ -170,7 +170,7 @@ export default function StaffHome() {
 
             <div className="flex gap-2">
               <Button
-                className="flex-1"
+                className="flex-1 rounded-none"
                 onClick={() => punch("clock-in")}
                 disabled={busy || workedIn}
                 data-testid="button-clock-in"

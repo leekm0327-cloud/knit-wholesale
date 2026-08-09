@@ -10,7 +10,8 @@ import { registerStaffRoutes } from "./staff-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
-import { fetchEspressoStats } from "./espressoLog";
+import { fetchEspressoStats, type EspressoExtraRow } from "./espressoLog";
+import { staffStorage } from "./staff-storage";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, sendPurchaseToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
@@ -1934,7 +1935,28 @@ export async function registerRoutes(
 
   // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
   app.get("/api/espresso-log-stats", async (_req, res) => {
-    res.json(await fetchEspressoStats());
+    // 직원 앱에 쌓인 추출 기록을 구글시트 로그와 합쳐서 집계한다
+    let extra: EspressoExtraRow[] = [];
+    try {
+      const logs = await staffStorage.listEspressoLogs("0000-01-01", "9999-12-31");
+      extra = logs.map((l) => {
+        let tags: string[] = [];
+        try { tags = JSON.parse(l.flavorTags); } catch { tags = []; }
+        return {
+          date: l.logDate,
+          bean: l.beanName,
+          dose: l.doseG,
+          yield: l.yieldG,
+          time: l.timeSec,
+          rating: l.rating,
+          note: [tags.join(", "), l.memo].filter(Boolean).join(" · "),
+          staff: l.staffName,
+        };
+      });
+    } catch {
+      /* 직원 기록을 못 읽어도 시트 집계는 그대로 내보낸다 */
+    }
+    res.json(await fetchEspressoStats(extra));
   });
 
   // 에스프레소 추출 환경 (공개 조회, 관리자 수정)
