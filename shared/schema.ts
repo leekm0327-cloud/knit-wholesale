@@ -1357,9 +1357,20 @@ export const espressoLogs = sqliteTable("espresso_logs", {
   createdAt: integer("created_at").notNull(),
 });
 
-/** 디저트 생산일지 */
+/** 디저트 품목 마스터 — 관리자가 관리하고, 직원은 여기에 수량만 입력한다 */
+export const dessertItems = sqliteTable("dessert_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  unit: text("unit").notNull().default("개"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 디저트 생산일지 — (생산일, 품목) 하나에 한 줄 */
 export const dessertLogs = sqliteTable("dessert_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  itemId: integer("item_id").notNull().default(0),
   staffId: integer("staff_id").notNull(),
   staffName: text("staff_name").notNull().default(""),
   prodDate: text("prod_date").notNull(), // YYYY-MM-DD 생산일
@@ -1477,14 +1488,31 @@ export const insertEspressoLogSchema = z.object({
   memo: z.string().optional().default(""),
 });
 
-export const insertDessertLogSchema = z.object({
+export const insertDessertItemSchema = z.object({
+  name: z.string().trim().min(1, "품목명을 입력해 주세요.").max(40, "품목명이 너무 깁니다."),
+  unit: z.string().trim().optional().default("개"),
+});
+
+export const updateDessertItemSchema = z.object({
+  name: z.string().trim().min(1).max(40).optional(),
+  unit: z.string().trim().optional(),
+  sortOrder: z.number().int().optional(),
+  active: z.number().int().min(0).max(1).optional(),
+});
+
+/** 하루치 생산일지 저장 — 품목별 생산량·폐기량을 한 번에 보낸다 */
+export const saveDessertLogsSchema = z.object({
   prodDate: z.string().optional(),
-  itemName: z.string().min(1, "품목을 입력해 주세요."),
-  qty: z.number().int().min(0).optional().default(0),
-  unit: z.string().optional().default("개"),
-  discardQty: z.number().int().min(0).optional().default(0),
-  expiryDate: z.string().optional().default(""),
-  memo: z.string().optional().default(""),
+  rows: z
+    .array(
+      z.object({
+        itemId: z.number().int().positive(),
+        qty: z.number().int().min(0).max(100000),
+        discardQty: z.number().int().min(0).max(100000),
+        memo: z.string().optional().default(""),
+      }),
+    )
+    .max(200),
 });
 
 export const insertShiftSchema = z.object({
@@ -1522,8 +1550,10 @@ export type InsertStaff = z.infer<typeof insertStaffSchema>;
 export type Attendance = typeof attendance.$inferSelect;
 export type EspressoLog = typeof espressoLogs.$inferSelect;
 export type InsertEspressoLog = z.infer<typeof insertEspressoLogSchema>;
+export type DessertItem = typeof dessertItems.$inferSelect;
+export type InsertDessertItem = z.infer<typeof insertDessertItemSchema>;
 export type DessertLog = typeof dessertLogs.$inferSelect;
-export type InsertDessertLog = z.infer<typeof insertDessertLogSchema>;
+export type SaveDessertLogs = z.infer<typeof saveDessertLogsSchema>;
 export type Shift = typeof shifts.$inferSelect;
 export type InsertShift = z.infer<typeof insertShiftSchema>;
 export type Announcement = typeof announcements.$inferSelect;

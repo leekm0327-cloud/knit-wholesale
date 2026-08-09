@@ -3,11 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { EspressoLog, DessertLog, PublicStaff } from "@shared/schema";
-import { Coffee, CakeSlice } from "lucide-react";
+import type { EspressoLog, DessertLog, PublicStaff, DessertItem } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { errMsg } from "@/lib/format";
+import { useAuth } from "@/lib/auth";
+import { Coffee, CakeSlice, Plus, Trash2, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 
 function monthStart(): string {
   const d = new Date(Date.now() + 9 * 3600 * 1000);
@@ -49,6 +54,8 @@ export default function AdminStaffLogs() {
           <TabButton active={tab === "espresso"} onClick={() => setTab("espresso")} icon={Coffee} label="에스프레소 추출" />
           <TabButton active={tab === "dessert"} onClick={() => setTab("dessert")} icon={CakeSlice} label="디저트 생산" />
         </div>
+
+        {tab === "dessert" && <DessertItemManager />}
 
         <Card className="mb-5 p-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -138,6 +145,134 @@ export default function AdminStaffLogs() {
         </Card>
       </div>
     </AdminLayout>
+  );
+}
+
+/** 디저트 품목 관리 — 직원 앱의 생산일지에 뜨는 목록 */
+function DessertItemManager() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isOwner = (user as any)?.adminRole === "owner";
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState("개");
+  const [busy, setBusy] = useState(false);
+
+  const { data: items, isLoading } = useQuery<DessertItem[]>({ queryKey: ["/api/admin/staff/dessert-items"] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/dessert-items"] });
+  const active = (items ?? []).filter((i) => i.active === 1);
+
+  async function add() {
+    if (!name.trim()) {
+      toast({ variant: "destructive", title: "품목명을 입력해 주세요." });
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest("POST", "/api/admin/staff/dessert-items", { name: name.trim(), unit: unit.trim() || "개" });
+      setName("");
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "추가 실패", description: errMsg(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: number, itemName: string) {
+    if (!confirm(`'${itemName}'을(를) 목록에서 뺄까요? 지난 생산 기록은 그대로 남습니다.`)) return;
+    try {
+      await apiRequest("DELETE", `/api/admin/staff/dessert-items/${id}`);
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "삭제 실패", description: errMsg(err) });
+    }
+  }
+
+  async function move(idx: number, delta: number) {
+    const next = active.slice();
+    const to = idx + delta;
+    if (to < 0 || to >= next.length) return;
+    [next[idx], next[to]] = [next[to], next[idx]];
+    try {
+      await apiRequest("POST", "/api/admin/staff/dessert-items/reorder", { ids: next.map((i) => i.id) });
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "순서 변경 실패", description: errMsg(err) });
+    }
+  }
+
+  return (
+    <Card className="mb-5 overflow-hidden">
+      <div className="border-b p-5">
+        <h2 className="text-sm font-semibold text-foreground">디저트 품목</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          여기 등록한 품목이 직원 앱의 생산일지에 그대로 나옵니다. 직원은 수량만 입력합니다.
+        </p>
+      </div>
+
+      {isOwner && (
+        <div className="flex flex-wrap items-end gap-2 border-b p-4">
+          <div>
+            <Label className="text-xs text-muted-foreground">품목명</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="예: 바스크 치즈케이크"
+              className="w-56"
+              data-testid="input-dessert-item-name"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">단위</Label>
+            <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="개" className="w-20" />
+          </div>
+          <Button onClick={add} disabled={busy} data-testid="button-add-dessert-item">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            추가
+          </Button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
+      ) : active.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">등록된 품목이 없습니다.</p>
+      ) : (
+        <div className="divide-y">
+          {active.map((it, idx) => (
+            <div key={it.id} className="flex items-center gap-2 px-4 py-2.5" data-testid={`row-dessert-item-${it.id}`}>
+              <span className="flex-1 text-sm text-foreground">{it.name}</span>
+              <span className="text-xs text-muted-foreground">{it.unit}</span>
+              {isOwner && (
+                <>
+                  <button
+                    onClick={() => move(idx, -1)}
+                    disabled={idx === 0}
+                    className="p-1 text-muted-foreground disabled:opacity-30"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => move(idx, 1)}
+                    disabled={idx === active.length - 1}
+                    className="p-1 text-muted-foreground disabled:opacity-30"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => remove(it.id, it.name)} className="p-1 text-muted-foreground hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

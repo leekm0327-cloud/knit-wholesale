@@ -7,6 +7,7 @@ import {
   staff,
   attendance,
   espressoLogs,
+  dessertItems,
   dessertLogs,
   shifts,
   announcements,
@@ -17,8 +18,9 @@ import {
   type Attendance,
   type EspressoLog,
   type InsertEspressoLog,
+  type DessertItem,
+  type InsertDessertItem,
   type DessertLog,
-  type InsertDessertLog,
   type Shift,
   type InsertShift,
   type Announcement,
@@ -89,6 +91,15 @@ sqlite.exec(`
     created_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS dessert_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    unit TEXT NOT NULL DEFAULT '개',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS shifts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     staff_id INTEGER NOT NULL,
@@ -119,12 +130,24 @@ sqlite.exec(`
   );
 `);
 
+// 기존 DB에 컬럼 추가 (멱등)
+for (const [table, col] of [["dessert_logs", "item_id INTEGER NOT NULL DEFAULT 0"]]) {
+  try {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
+  } catch (e: any) {
+    if (!/duplicate column/i.test(String(e?.message ?? ""))) {
+      console.warn(`[staff migration ${table}]`, e?.message);
+    }
+  }
+}
+
 for (const stmt of [
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_login_id ON staff(login_id);",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_staff_date ON attendance(staff_id, work_date);",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_ann_read ON announcement_reads(announcement_id, staff_id);",
   "CREATE INDEX IF NOT EXISTS idx_espresso_logs_date ON espresso_logs(log_date);",
   "CREATE INDEX IF NOT EXISTS idx_dessert_logs_date ON dessert_logs(prod_date);",
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_dessert_logs_day_item ON dessert_logs(prod_date, item_id);",
   "CREATE INDEX IF NOT EXISTS idx_shifts_date ON shifts(work_date);",
 ]) {
   try {
@@ -434,38 +457,101 @@ export class StaffStorage {
     return staffId ? rows.filter((r) => r.staffId === staffId) : rows;
   }
 
-  async createDessertLog(staffId: number, staffName: string, p: InsertDessertLog): Promise<DessertLog> {
+  /** 하루치 생산일지 저장 — (생산일, 품목) 기준으로 덮어쓴다. 0/0이면 삭제. */
+  async saveDessertLogs(
+    staffId: number,
+    staffName: string,
+    prodDate: string,
+    rows: { itemId: number; qty: number; discardQty: number; memo?: string }[],
+  ): Promise<DessertLog[]> {
+    const items = await this.listDessertItems(true);
+    const byId = new Map(items.map((i) => [i.id, i]));
+    for (const r of rows) {
+      const item = byId.get(r.itemId);
+      if (!item) continue;
+      const cur = db
+        .select()
+        .from(dessertLogs)
+        .where(and(eq(dessertLogs.prodDate, prodDate), eq(dessertLogs.itemId, r.itemId)))
+        .get();
+
+      if (r.qty === 0 && r.discardQty === 0) {
+        if (cur) db.delete(dessertLogs).where(eq(dessertLogs.id, cur.id)).run();
+        continue;
+      }
+
+      if (cur) {
+        db.update(dessertLogs)
+          .set({
+            qty: r.qty,
+            discardQty: r.discardQty,
+            memo: r.memo ?? cur.memo,
+            staffId,
+            staffName,
+            itemName: item.name,
+            unit: item.unit,
+          })
+          .where(eq(dessertLogs.id, cur.id))
+          .run();
+      } else {
+        db.insert(dessertLogs)
+          .values({
+            itemId: r.itemId,
+            staffId,
+            staffName,
+            prodDate,
+            itemName: item.name,
+            qty: r.qty,
+            unit: item.unit,
+            discardQty: r.discardQty,
+            expiryDate: "",
+            memo: r.memo ?? "",
+            createdAt: Date.now(),
+          })
+          .run();
+      }
+    }
+    return this.listDessertLogs(prodDate, prodDate);
+  }
+
+  // ===== 디저트 품목 (관리자) =====
+  async listDessertItems(includeInactive = false): Promise<DessertItem[]> {
+    const rows = db
+      .select()
+      .from(dessertItems)
+      .orderBy(asc(dessertItems.sortOrder), asc(dessertItems.id))
+      .all();
+    return includeInactive ? rows : rows.filter((r) => r.active === 1);
+  }
+
+  async createDessertItem(p: InsertDessertItem): Promise<DessertItem> {
+    const rows = await this.listDessertItems(true);
     return db
-      .insert(dessertLogs)
+      .insert(dessertItems)
       .values({
-        staffId,
-        staffName,
-        prodDate: p.prodDate && p.prodDate.length > 0 ? p.prodDate : kstToday(),
-        itemName: p.itemName,
-        qty: p.qty ?? 0,
-        unit: p.unit ?? "개",
-        discardQty: p.discardQty ?? 0,
-        expiryDate: p.expiryDate ?? "",
-        memo: p.memo ?? "",
+        name: p.name,
+        unit: p.unit && p.unit.length > 0 ? p.unit : "개",
+        sortOrder: rows.length,
+        active: 1,
         createdAt: Date.now(),
       })
       .returning()
       .get();
   }
 
-  async deleteDessertLog(id: number): Promise<void> {
-    db.delete(dessertLogs).where(eq(dessertLogs.id, id)).run();
+  async updateDessertItem(id: number, patch: Partial<DessertItem>): Promise<DessertItem | undefined> {
+    return db.update(dessertItems).set(patch).where(eq(dessertItems.id, id)).returning().get();
   }
 
-  async recentDessertItems(limit = 15): Promise<string[]> {
-    const rows = db.select().from(dessertLogs).orderBy(desc(dessertLogs.id)).limit(200).all();
-    const seen: string[] = [];
-    for (const r of rows) {
-      const n = (r.itemName ?? "").trim();
-      if (n && !seen.includes(n)) seen.push(n);
-      if (seen.length >= limit) break;
-    }
-    return seen;
+  async deleteDessertItem(id: number): Promise<void> {
+    // 기록은 남기고 목록에서만 감춘다 (지난 생산일지가 사라지면 안 되므로)
+    db.update(dessertItems).set({ active: 0 }).where(eq(dessertItems.id, id)).run();
+  }
+
+  async reorderDessertItems(orderedIds: number[]): Promise<void> {
+    orderedIds.forEach((id, i) =>
+      db.update(dessertItems).set({ sortOrder: i }).where(eq(dessertItems.id, id)).run(),
+    );
   }
 
   // ===== 스케줄 =====

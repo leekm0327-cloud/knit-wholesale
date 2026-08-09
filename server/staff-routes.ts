@@ -10,7 +10,9 @@ import {
   updateStaffSchema,
   upsertAttendanceSchema,
   insertEspressoLogSchema,
-  insertDessertLogSchema,
+  insertDessertItemSchema,
+  updateDessertItemSchema,
+  saveDessertLogsSchema,
   insertShiftSchema,
   assignShiftSchema,
   clearShiftSchema,
@@ -198,27 +200,39 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json(rows);
   });
 
-  app.get("/api/staff/dessert-logs/items", requireStaff, async (_req, res) => {
-    res.json(await staffStorage.recentDessertItems());
+  app.get("/api/staff/dessert-items", requireStaff, async (_req, res) => {
+    res.json(await staffStorage.listDessertItems());
   });
 
-  app.post("/api/staff/dessert-logs", requireStaff, async (req, res) => {
-    const parsed = insertDessertLogSchema.safeParse(req.body);
+  /** 그날의 품목별 입력값 (없으면 0) */
+  app.get("/api/staff/dessert-logs/day", requireStaff, async (req, res) => {
+    const date = typeof req.query.date === "string" && req.query.date ? req.query.date : kstToday();
+    const items = await staffStorage.listDessertItems();
+    const logs = await staffStorage.listDessertLogs(date, date);
+    const byItem = new Map(logs.map((l) => [l.itemId, l]));
+    res.json({
+      date,
+      rows: items.map((it) => {
+        const l = byItem.get(it.id);
+        return {
+          itemId: it.id,
+          name: it.name,
+          unit: it.unit,
+          qty: l?.qty ?? 0,
+          discardQty: l?.discardQty ?? 0,
+          memo: l?.memo ?? "",
+          staffName: l?.staffName ?? "",
+        };
+      }),
+    });
+  });
+
+  app.post("/api/staff/dessert-logs/save", requireStaff, async (req, res) => {
+    const parsed = saveDessertLogsSchema.safeParse(req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
     const s = await staffStorage.getStaff(req.session.staffId!);
-    const row = await staffStorage.createDessertLog(req.session.staffId!, s?.name ?? "", parsed.data);
-    res.json(row);
-  });
-
-  app.delete("/api/staff/dessert-logs/:id", requireStaff, async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
-    const rows = await staffStorage.listDessertLogs("0000-01-01", "9999-12-31");
-    const row = rows.find((r) => r.id === id);
-    if (!row) return res.status(404).json({ message: "기록을 찾을 수 없습니다." });
-    if (row.staffId !== req.session.staffId)
-      return res.status(403).json({ message: "본인이 작성한 기록만 삭제할 수 있습니다." });
-    await staffStorage.deleteDessertLog(id);
+    const date = parsed.data.prodDate && parsed.data.prodDate.length > 0 ? parsed.data.prodDate : kstToday();
+    await staffStorage.saveDessertLogs(req.session.staffId!, s?.name ?? "", date, parsed.data.rows);
     res.json({ ok: true });
   });
 
@@ -417,6 +431,39 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const { from, to } = rangeOf(req);
     const staffId = req.query.staffId ? Number(req.query.staffId) : undefined;
     res.json(await staffStorage.listEspressoLogs(from, to, staffId));
+  });
+
+  app.get("/api/admin/staff/dessert-items", requireAdmin, async (_req, res) => {
+    res.json(await staffStorage.listDessertItems(true));
+  });
+
+  app.post("/api/admin/staff/dessert-items", requireOwner, async (req, res) => {
+    const parsed = insertDessertItemSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    res.json(await staffStorage.createDessertItem(parsed.data));
+  });
+
+  app.patch("/api/admin/staff/dessert-items/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = updateDessertItemSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    const row = await staffStorage.updateDessertItem(id, parsed.data as any);
+    if (!row) return res.status(404).json({ message: "품목을 찾을 수 없습니다." });
+    res.json(row);
+  });
+
+  app.delete("/api/admin/staff/dessert-items/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteDessertItem(id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/admin/staff/dessert-items/reorder", requireOwner, async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Number.isFinite) : [];
+    await staffStorage.reorderDessertItems(ids);
+    res.json({ ok: true });
   });
 
   app.get("/api/admin/staff/dessert-logs", requireAdmin, async (req, res) => {
