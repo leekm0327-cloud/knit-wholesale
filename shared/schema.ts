@@ -1378,6 +1378,11 @@ export const dessertLogs = sqliteTable("dessert_logs", {
   qty: integer("qty").notNull().default(0),
   unit: text("unit").notNull().default("개"),
   discardQty: integer("discard_qty").notNull().default(0), // 폐기 수량
+  // 생산과 폐기는 담당자가 다르므로(Baker / Close) 각각 따로 기록한다
+  producedByName: text("produced_by_name").notNull().default(""),
+  producedAt: integer("produced_at"),
+  discardedByName: text("discarded_by_name").notNull().default(""),
+  discardedAt: integer("discarded_at"),
   expiryDate: text("expiry_date").notNull().default(""), // 소비기한
   memo: text("memo").notNull().default(""),
   createdAt: integer("created_at").notNull(),
@@ -1500,16 +1505,18 @@ export const updateDessertItemSchema = z.object({
   active: z.number().int().min(0).max(1).optional(),
 });
 
-/** 하루치 생산일지 저장 — 품목별 생산량·폐기량을 한 번에 보낸다 */
+export const DESSERT_ENTRY_KINDS = ["produce", "discard"] as const;
+export type DessertEntryKind = (typeof DESSERT_ENTRY_KINDS)[number];
+
+/** 하루치 생산일지 저장 — 생산(Baker)과 폐기(Close)를 따로 저장한다 */
 export const saveDessertLogsSchema = z.object({
   prodDate: z.string().optional(),
+  kind: z.enum(DESSERT_ENTRY_KINDS),
   rows: z
     .array(
       z.object({
         itemId: z.number().int().positive(),
-        qty: z.number().int().min(0).max(100000),
-        discardQty: z.number().int().min(0).max(100000),
-        memo: z.string().optional().default(""),
+        value: z.number().int().min(0).max(100000),
       }),
     )
     .max(200),
@@ -1565,6 +1572,10 @@ export type StaffHome = {
   today: string; // YYYY-MM-DD
   attendance: Attendance | null;
   shift: Shift | null;
+  tomorrow: string; // YYYY-MM-DD
+  tomorrowShift: Shift | null;
+  weekFrom: string; // 이번 주 월요일
+  weekShifts: Shift[]; // 이번 주 내 근무 (월~일)
   unreadAnnouncements: number;
   latestAnnouncement: Announcement | null;
   weekMinutes: number; // 이번 주 근무 분

@@ -86,6 +86,10 @@ sqlite.exec(`
     qty INTEGER NOT NULL DEFAULT 0,
     unit TEXT NOT NULL DEFAULT '개',
     discard_qty INTEGER NOT NULL DEFAULT 0,
+    produced_by_name TEXT NOT NULL DEFAULT '',
+    produced_at INTEGER,
+    discarded_by_name TEXT NOT NULL DEFAULT '',
+    discarded_at INTEGER,
     expiry_date TEXT NOT NULL DEFAULT '',
     memo TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL
@@ -131,7 +135,13 @@ sqlite.exec(`
 `);
 
 // 기존 DB에 컬럼 추가 (멱등)
-for (const [table, col] of [["dessert_logs", "item_id INTEGER NOT NULL DEFAULT 0"]]) {
+for (const [table, col] of [
+  ["dessert_logs", "item_id INTEGER NOT NULL DEFAULT 0"],
+  ["dessert_logs", "produced_by_name TEXT NOT NULL DEFAULT ''"],
+  ["dessert_logs", "produced_at INTEGER"],
+  ["dessert_logs", "discarded_by_name TEXT NOT NULL DEFAULT ''"],
+  ["dessert_logs", "discarded_at INTEGER"],
+]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
   } catch (e: any) {
@@ -162,6 +172,13 @@ const KST = 9 * 60 * 60 * 1000;
 
 export function kstToday(): string {
   return new Date(Date.now() + KST).toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD 에 일수를 더한 날짜 */
+export function addDays(day: string, n: number): string {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 export function kstMonthStart(day = kstToday()): string {
@@ -457,15 +474,21 @@ export class StaffStorage {
     return staffId ? rows.filter((r) => r.staffId === staffId) : rows;
   }
 
-  /** 하루치 생산일지 저장 — (생산일, 품목) 기준으로 덮어쓴다. 0/0이면 삭제. */
+  /**
+   * 하루치 생산일지 저장.
+   * 생산은 Baker, 폐기는 Close 담당자가 각각 입력하므로 kind에 해당하는 쪽만 건드린다.
+   */
   async saveDessertLogs(
     staffId: number,
     staffName: string,
     prodDate: string,
-    rows: { itemId: number; qty: number; discardQty: number; memo?: string }[],
+    kind: "produce" | "discard",
+    rows: { itemId: number; value: number }[],
   ): Promise<DessertLog[]> {
     const items = await this.listDessertItems(true);
     const byId = new Map(items.map((i) => [i.id, i]));
+    const now = Date.now();
+
     for (const r of rows) {
       const item = byId.get(r.itemId);
       if (!item) continue;
@@ -475,21 +498,30 @@ export class StaffStorage {
         .where(and(eq(dessertLogs.prodDate, prodDate), eq(dessertLogs.itemId, r.itemId)))
         .get();
 
-      if (r.qty === 0 && r.discardQty === 0) {
+      const nextQty = kind === "produce" ? r.value : (cur?.qty ?? 0);
+      const nextDiscard = kind === "discard" ? r.value : (cur?.discardQty ?? 0);
+
+      // 양쪽 다 0이 되면 줄 자체를 지운다
+      if (nextQty === 0 && nextDiscard === 0) {
         if (cur) db.delete(dessertLogs).where(eq(dessertLogs.id, cur.id)).run();
         continue;
       }
 
+      const sideFields =
+        kind === "produce"
+          ? { producedByName: staffName, producedAt: now }
+          : { discardedByName: staffName, discardedAt: now };
+
       if (cur) {
         db.update(dessertLogs)
           .set({
-            qty: r.qty,
-            discardQty: r.discardQty,
-            memo: r.memo ?? cur.memo,
-            staffId,
-            staffName,
+            qty: nextQty,
+            discardQty: nextDiscard,
             itemName: item.name,
             unit: item.unit,
+            staffId,
+            staffName,
+            ...sideFields,
           })
           .where(eq(dessertLogs.id, cur.id))
           .run();
@@ -501,12 +533,17 @@ export class StaffStorage {
             staffName,
             prodDate,
             itemName: item.name,
-            qty: r.qty,
+            qty: nextQty,
             unit: item.unit,
-            discardQty: r.discardQty,
+            discardQty: nextDiscard,
+            producedByName: "",
+            producedAt: null,
+            discardedByName: "",
+            discardedAt: null,
             expiryDate: "",
-            memo: r.memo ?? "",
-            createdAt: Date.now(),
+            memo: "",
+            createdAt: now,
+            ...sideFields,
           })
           .run();
       }
@@ -703,11 +740,19 @@ export class StaffStorage {
     const weekRows = await this.listAttendance(weekFrom, today, staffId);
     const monthRows = await this.listAttendance(monthFrom, today, staffId);
 
+    const tomorrow = addDays(today, 1);
+    const tomorrowShifts = await this.listShifts(tomorrow, tomorrow, staffId);
+    const weekShifts = await this.listShifts(weekFrom, addDays(weekFrom, 6), staffId);
+
     return {
       staff: toPublicStaff(s),
       today,
       attendance: att,
       shift: todayShifts[0] ?? null,
+      tomorrow,
+      tomorrowShift: tomorrowShifts[0] ?? null,
+      weekFrom,
+      weekShifts,
       unreadAnnouncements: unread,
       latestAnnouncement: anns[0] ?? null,
       weekMinutes: weekRows.reduce((sum, r) => sum + workedMinutes(r), 0),

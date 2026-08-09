@@ -128,7 +128,9 @@ export default function AdminStaffLogs() {
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-foreground">{l.itemName}</div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      {l.prodDate} · {l.staffName}{l.expiryDate ? ` · 소비기한 ${l.expiryDate}` : ""}
+                      {l.prodDate}
+                      {l.producedByName ? ` · 생산 ${l.producedByName}` : ""}
+                      {l.discardedByName ? ` · 폐기 ${l.discardedByName}` : ""}
                     </div>
                     {l.memo && <p className="mt-1.5 text-xs text-muted-foreground">{l.memo}</p>}
                   </div>

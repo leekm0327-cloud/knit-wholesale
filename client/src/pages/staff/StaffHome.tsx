@@ -13,6 +13,17 @@ import type { StaffHome as StaffHomeData } from "@shared/schema";
 import { useState } from "react";
 import { Coffee, CakeSlice, CalendarDays, Megaphone, LogIn, LogOut, Loader2 } from "lucide-react";
 
+const WEEK_LABEL = ["월", "화", "수", "목", "금", "토", "일"];
+
+/** 월요일 날짜(YYYY-MM-DD)로부터 7일치 날짜 배열 */
+function weekDays(from: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(from + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
 function hhmm(ts: number | null | undefined): string {
   if (!ts) return "--:--";
   const d = new Date(ts);
@@ -77,6 +88,65 @@ export default function StaffHome() {
         <div className="mb-4 rounded-md border border-dashed px-4 py-4 text-center text-xs text-muted-foreground">
           오늘 등록된 근무가 없습니다
         </div>
+      )}
+
+      {/* 내일 · 이번 주 */}
+      {!isLoading && data && (
+        <Card className="mb-4 overflow-hidden">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <span className="text-sm font-semibold text-foreground">내일</span>
+            {data.tomorrowShift ? (
+              <span
+                className="rounded-sm px-2.5 py-1 font-ui text-xs font-bold uppercase tracking-wide"
+                style={{
+                  backgroundColor: staffColor(data.staff.id).bg,
+                  color: staffColor(data.staff.id).fg,
+                }}
+                data-testid="badge-tomorrow-shift"
+              >
+                {data.tomorrowShift.position || "근무"}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">근무 없음</span>
+            )}
+          </div>
+
+          <div className="px-3 py-3">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className="font-ui text-[11px] font-medium text-muted-foreground">이번 주</span>
+              <span className="font-ui text-[11px] text-muted-foreground">
+                근무 {data.weekShifts.length}일
+              </span>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays(data.weekFrom).map((d, i) => {
+                const sh = data.weekShifts.find((w) => w.workDate === d);
+                const isToday = d === data.today;
+                const color = staffColor(data.staff.id);
+                return (
+                  <div key={d} className="text-center">
+                    <div
+                      className={`font-ui text-[10px] ${
+                        i === 5 ? "text-blue-600" : i === 6 ? "text-red-600" : "text-muted-foreground"
+                      }`}
+                    >
+                      {WEEK_LABEL[i]}
+                    </div>
+                    <div
+                      className={`mt-1 flex h-12 flex-col items-center justify-center rounded-sm border text-[10px] leading-tight ${
+                        isToday ? "border-foreground" : "border-transparent"
+                      } ${sh ? "font-bold" : "text-muted-foreground/50"}`}
+                      style={sh ? { backgroundColor: color.bg, color: color.fg } : { backgroundColor: "hsl(var(--muted))" }}
+                    >
+                      <span className="font-display text-[13px] font-semibold">{Number(d.slice(8))}</span>
+                      <span className="font-ui">{sh ? sh.position || "근무" : "휴무"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* 출퇴근 */}

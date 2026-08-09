@@ -220,8 +220,8 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
           unit: it.unit,
           qty: l?.qty ?? 0,
           discardQty: l?.discardQty ?? 0,
-          memo: l?.memo ?? "",
-          staffName: l?.staffName ?? "",
+          producedByName: l?.producedByName ?? "",
+          discardedByName: l?.discardedByName ?? "",
         };
       }),
     });
@@ -232,7 +232,13 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     if (!parsed.success) return badRequest(res, parsed.error);
     const s = await staffStorage.getStaff(req.session.staffId!);
     const date = parsed.data.prodDate && parsed.data.prodDate.length > 0 ? parsed.data.prodDate : kstToday();
-    await staffStorage.saveDessertLogs(req.session.staffId!, s?.name ?? "", date, parsed.data.rows);
+    await staffStorage.saveDessertLogs(
+      req.session.staffId!,
+      s?.name ?? "",
+      date,
+      parsed.data.kind,
+      parsed.data.rows,
+    );
     res.json({ ok: true });
   });
 
