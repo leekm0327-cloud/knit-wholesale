@@ -144,9 +144,18 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// 현재 경로가 해당 메뉴에 속하는지 (하위 경로 포함). '/admin'(대시보드)만 정확히 일치할 때 활성.
+// 다른 메뉴의 상위 경로가 되는 href(예: '/admin', '/admin/staff')는 정확히 일치할 때만 활성으로 본다.
+// 그렇지 않으면 '/admin/staff/schedule'에 있을 때 '직원 계정'까지 같이 활성으로 표시된다.
+const EXACT_MATCH_ONLY: Set<string> = (() => {
+  const all = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+  const s = new Set(all.filter((href) => all.some((o) => o !== href && o.startsWith(href + "/"))));
+  s.add("/admin");
+  return s;
+})();
+
+// 현재 경로가 해당 메뉴에 속하는지 (하위 경로 포함).
 function matchActive(location: string, href: string): boolean {
-  if (href === "/admin") return location === "/admin";
+  if (EXACT_MATCH_ONLY.has(href)) return location === href;
   return location === href || location.startsWith(href + "/");
 }
 
