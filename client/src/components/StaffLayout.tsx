@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PublicStaff } from "@shared/schema";
-import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, LogOut } from "lucide-react";
+import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, LogOut, ChevronRight } from "lucide-react";
 
 export function useStaff() {
   return useQuery<PublicStaff | null>({
@@ -66,13 +66,18 @@ export function StaffLayout({
     <div className="min-h-screen bg-background pb-20">
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <div className="min-w-0">
+          <button
+            onClick={() => navigate("/staff/me")}
+            className="min-w-0 rounded-md px-1 py-0.5 text-left hover-elevate"
+            data-testid="button-open-profile"
+          >
             <div className="eyebrow">Knit Staff</div>
-            <div className="truncate text-sm font-semibold text-foreground">
+            <div className="flex items-center gap-1 truncate text-sm font-semibold text-foreground">
               {staff.name}
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{staff.position}</span>
+              <span className="text-xs font-normal text-muted-foreground">{staff.position}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
-          </div>
+          </button>
           <button
             onClick={logout}
             className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover-elevate"

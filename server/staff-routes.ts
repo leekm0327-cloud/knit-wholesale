@@ -118,6 +118,16 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json(toPublicStaff(s));
   });
 
+  /** 본인이 바꿀 수 있는 항목 — 연락처만 */
+  app.patch("/api/staff/me", requireStaff, async (req, res) => {
+    const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : undefined;
+    if (phone === undefined) return res.status(400).json({ message: "변경할 내용이 없습니다." });
+    if (phone.length > 30) return res.status(400).json({ message: "연락처가 너무 깁니다." });
+    const row = await staffStorage.updateStaff(req.session.staffId!, { phone });
+    if (!row) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    res.json(row);
+  });
+
   app.patch("/api/staff/me/password", requireStaff, async (req, res) => {
     const cur = String(req.body?.currentPassword ?? "");
     const next = String(req.body?.newPassword ?? "");

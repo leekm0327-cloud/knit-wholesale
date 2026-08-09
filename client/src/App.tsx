@@ -79,6 +79,7 @@ import StaffEspresso from "@/pages/staff/StaffEspresso";
 import StaffDessert from "@/pages/staff/StaffDessert";
 import StaffSchedule from "@/pages/staff/StaffSchedule";
 import StaffNotices from "@/pages/staff/StaffNotices";
+import StaffProfile from "@/pages/staff/StaffProfile";
 import AdminWebAnalytics from "@/pages/admin/AdminWebAnalytics";
 import NotFound from "@/pages/not-found";
 
@@ -219,6 +220,7 @@ function AppRouter() {
       <Route path="/staff/dessert" component={StaffDessert} />
       <Route path="/staff/schedule" component={StaffSchedule} />
       <Route path="/staff/notices" component={StaffNotices} />
+      <Route path="/staff/me" component={StaffProfile} />
       <Route path="/admin/web-analytics" component={AdminWebAnalytics} />
 
       <Route component={NotFound} />
