@@ -457,3 +457,119 @@
   gap: 2px;
 }
 .staff-ui .s-nav button.on { color: #fff; font-weight: 600; }
+
+/* 날짜·시간 입력 — 모바일 사파리에서 네이티브 컨트롤이 칸을 넘어가는 문제 방지.
+   iOS는 기본 appearance일 때 내용 너비를 우선해서 width:100%를 무시한다. */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="week"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+  min-width: 0;
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  margin-left: 0;
+  padding-left: 2px;
+}
+
+/* =========================================================
+   .staff-ui 추가 요소
+   ========================================================= */
+
+/* 두 갈래 전환 (생산/폐기 등) */
+.staff-ui .s-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 3px;
+  background: var(--s-accent-soft);
+  border-radius: 999px;
+  padding: 3px;
+}
+.staff-ui .s-seg button {
+  border: 0;
+  background: none;
+  border-radius: 999px;
+  padding: 8px 4px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #6d6c67;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.staff-ui .s-seg button.on {
+  background: var(--s-surface);
+  color: var(--s-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+}
+
+/* 고르는 태그 */
+.staff-ui .s-chip {
+  border: 0;
+  background: var(--s-bg);
+  color: #6d6c67;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.staff-ui .s-chip.on { background: var(--s-ink); color: #fff; font-weight: 500; }
+.staff-ui .s-chip.tag { padding: 4px 9px; font-size: 11px; cursor: default; }
+
+/* 입력 라벨 */
+.staff-ui .s-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--s-muted);
+  margin-bottom: 5px;
+}
+.staff-ui textarea.s-input { resize: none; line-height: 1.55; }
+.staff-ui .s-input.center { text-align: center; }
+
+/* 알약 버튼 변형 */
+.staff-ui .s-pill.line {
+  background: none;
+  color: #54534e;
+  box-shadow: inset 0 0 0 1px #dedcd6;
+}
+.staff-ui .s-pill.danger { background: none; color: #a2483f; box-shadow: inset 0 0 0 1px #e6d2cf; }
+.staff-ui .s-pill.wide { width: 100%; }
+
+/* 아이콘 전용 작은 버튼 */
+.staff-ui .s-icon {
+  border: 0;
+  background: var(--s-bg);
+  color: var(--s-muted);
+  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 비어 있음 안내 */
+.staff-ui .s-empty {
+  text-align: center;
+  color: var(--s-muted);
+  font-size: 13px;
+  padding: 44px 20px;
+  line-height: 1.7;
+}

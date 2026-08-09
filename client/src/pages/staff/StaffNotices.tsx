@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout } from "@/components/StaffLayout";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { fmtDate } from "@/lib/format";
 import type { Announcement } from "@shared/schema";
@@ -28,50 +25,80 @@ export default function StaffNotices() {
     }
   }
 
+  const unread = (data ?? []).filter((a) => !a.read).length;
+
   return (
-    <StaffLayout title="공지사항">
+    <StaffLayout title="공지사항" subtitle="알림">
+      {unread > 0 && (
+        <div className="s-dark flex items-center justify-between">
+          <div>
+            <div className="s-k">읽지 않은 공지</div>
+            <div className="mt-0.5 text-[19px] font-semibold tracking-tight">{unread}건</div>
+          </div>
+        </div>
+      )}
+
+      <div className="s-sect" style={{ marginTop: unread > 0 ? 18 : 4 }}>
+        전체
+      </div>
+
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
+            <div
+              key={i}
+              className="h-16 w-full animate-pulse"
+              style={{ background: "var(--s-surface)", borderRadius: "var(--s-radius)" }}
+            />
           ))}
         </div>
       ) : (data?.length ?? 0) === 0 ? (
-        <p className="py-14 text-center text-sm text-muted-foreground">등록된 공지가 없습니다.</p>
+        <div className="s-card">
+          <div className="s-empty">등록된 공지가 없습니다.</div>
+        </div>
       ) : (
-        <div className="space-y-2">
-          {data!.map((a) => (
-            <Card key={a.id} className="overflow-hidden">
+        data!.map((a) => {
+          const isOpen = openId === a.id;
+          return (
+            <div key={a.id} className="s-card" style={{ padding: "13px 16px" }}>
               <button
                 onClick={() => open(a)}
-                className="flex w-full items-start justify-between gap-3 p-4 text-left hover-elevate"
+                className="flex w-full items-start justify-between gap-2.5 text-left"
                 data-testid={`notice-${a.id}`}
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    {a.pinned === 1 && <Pin className="h-3.5 w-3.5 text-muted-foreground" />}
-                    {a.important === 1 && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
-                    <span className="truncate text-sm font-semibold text-foreground">{a.title}</span>
-                    {!a.read && <Badge className="shrink-0 text-[10px]">NEW</Badge>}
+                    {a.pinned === 1 && <Pin className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--s-muted)" }} />}
+                    {a.important === 1 && <AlertCircle className="h-3.5 w-3.5 shrink-0" style={{ color: "#a2483f" }} />}
+                    <span className={`truncate text-[14px] ${a.read ? "font-medium" : "font-semibold"}`}>{a.title}</span>
+                    {!a.read && (
+                      <span
+                        className="h-[6px] w-[6px] shrink-0 rounded-full"
+                        style={{ background: "var(--s-accent)" }}
+                        aria-label="읽지 않음"
+                      />
+                    )}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  <div className="s-k mt-1">
                     {fmtDate(a.createdAt)} · {a.authorName}
                   </div>
                 </div>
                 <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
-                    openId === a.id ? "rotate-180" : ""
-                  }`}
+                  className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                  style={{ color: "var(--s-faint)" }}
                 />
               </button>
-              {openId === a.id && (
-                <div className="border-t px-4 py-4">
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{a.body || "내용 없음"}</p>
-                </div>
+              {isOpen && (
+                <p
+                  className="mt-3 whitespace-pre-wrap pt-3 text-[13.5px] leading-relaxed"
+                  style={{ borderTop: "1px solid var(--s-hair)" }}
+                >
+                  {a.body || "내용 없음"}
+                </p>
               )}
-            </Card>
-          ))}
-        </div>
+            </div>
+          );
+        })
       )}
     </StaffLayout>
   );

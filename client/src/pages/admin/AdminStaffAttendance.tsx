@@ -11,7 +11,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import type { Attendance, PublicStaff, AttendanceSummaryRow } from "@shared/schema";
-import { Clock, Loader2, Save } from "lucide-react";
+import { Clock, Loader2, Save, Trash2 } from "lucide-react";
 
 type Row = Attendance & { minutes: number; staffName: string };
 type Res = { rows: Row[]; summary: AttendanceSummaryRow[]; staff: PublicStaff[]; from: string; to: string };
@@ -76,6 +76,25 @@ export default function AdminStaffAttendance() {
       invalidate();
     } catch (err) {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeRow(r: Row) {
+    if (!confirm(`${r.staffName} · ${r.workDate} 기록을 지울까요?\n지운 기록은 되돌릴 수 없습니다.`)) return;
+    setBusy(true);
+    try {
+      await apiRequest("DELETE", `/api/admin/staff/attendance/${r.id}`);
+      toast({ title: "기록을 삭제했습니다." });
+      setEdit((prev) => {
+        const n = { ...prev };
+        delete n[r.id];
+        return n;
+      });
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "삭제 실패", description: errMsg(err) });
     } finally {
       setBusy(false);
     }
@@ -244,6 +263,17 @@ export default function AdminStaffAttendance() {
                         저장
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeRow(r)}
+                      disabled={busy}
+                      className="text-muted-foreground hover:text-destructive"
+                      aria-label="기록 삭제"
+                      data-testid={`button-delete-attendance-${r.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 );
               })}

@@ -1,9 +1,5 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
@@ -33,31 +29,40 @@ export default function StaffLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <div className="eyebrow">Knit Staff</div>
-          <h1 className="font-display mt-1 text-xl font-semibold text-foreground">직원 로그인</h1>
-          <p className="mt-1 text-xs text-muted-foreground">니트커피 내부 관리 시스템</p>
+    <div className="staff-ui flex min-h-screen flex-col justify-center px-5">
+      <div className="mx-auto w-full max-w-sm">
+        <div className="mb-6 px-1">
+          <div className="s-k" style={{ letterSpacing: "0.08em" }}>
+            KNIT STAFF
+          </div>
+          <h1 className="mt-1 text-[22px] font-semibold tracking-tight">직원 로그인</h1>
+          <p className="mt-1 text-[12.5px]" style={{ color: "var(--s-muted)" }}>
+            니트커피 내부 관리 시스템
+          </p>
         </div>
-        <Card className="p-5">
-          <form onSubmit={submit} className="space-y-3">
-            <div>
-              <Label htmlFor="loginId" className="text-xs text-muted-foreground">아이디</Label>
-              <Input
-                id="loginId"
-                value={loginId}
-                onChange={(e) => setLoginId(e.target.value)}
-                autoCapitalize="none"
-                autoCorrect="off"
-                placeholder="지급받은 아이디"
-                data-testid="input-staff-login-id"
-              />
-            </div>
-            <div>
-              <Label htmlFor="password" className="text-xs text-muted-foreground">비밀번호</Label>
-              <Input
+
+        <form onSubmit={submit}>
+          <div className="s-card">
+            <label className="s-label" htmlFor="loginId">
+              아이디
+            </label>
+            <input
+              id="loginId"
+              className="s-input"
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              placeholder="지급받은 아이디"
+              data-testid="input-staff-login-id"
+            />
+            <div className="mt-3">
+              <label className="s-label" htmlFor="password">
+                비밀번호
+              </label>
+              <input
                 id="password"
+                className="s-input"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -65,12 +70,14 @@ export default function StaffLogin() {
                 data-testid="input-staff-password"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={busy} data-testid="button-staff-login">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "로그인"}
-            </Button>
-          </form>
-        </Card>
-        <p className="mt-4 text-center text-[11px] text-muted-foreground">
+          </div>
+
+          <button type="submit" className="s-pill wide mt-2.5" disabled={busy} data-testid="button-staff-login">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "로그인"}
+          </button>
+        </form>
+
+        <p className="mt-4 text-center text-[11px]" style={{ color: "var(--s-muted)" }}>
           아이디는 대표님께 문의해 주세요.
         </p>
       </div>
