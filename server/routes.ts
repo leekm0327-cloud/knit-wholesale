@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, db, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
+import { registerStaffRoutes } from "./staff-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
@@ -3195,6 +3196,7 @@ export async function registerRoutes(
 
   // ===== Board (게시판) =====
   registerBoardRoutes(app, storage);
+  registerStaffRoutes(app, storage);
 
   return httpServer;
 }

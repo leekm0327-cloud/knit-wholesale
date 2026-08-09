@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1303,4 +1303,233 @@ export type LogActivityInput = {
   targetId?: string;
   summary?: string;
   metadata?: Record<string, any>;
+};
+
+// ============================================================
+// 직원 내부 관리 시스템 (출퇴근 · 레시피 · 생산일지 · 스케줄 · 공지)
+// ============================================================
+
+/** 직원 계정 — 거래처(customers)와 완전히 분리된 테이블 */
+export const staff = sqliteTable("staff", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  loginId: text("login_id").notNull(), // 로그인 아이디 (유니크 인덱스)
+  password: text("password").notNull(),
+  name: text("name").notNull(), // 이름
+  phone: text("phone").notNull().default(""),
+  position: text("position").notNull().default("바리스타"), // 직책/포지션
+  staffRole: text("staff_role").notNull().default("staff"), // "staff" | "lead"
+  hourlyWage: integer("hourly_wage").notNull().default(0), // 시급(원) — 0이면 미설정
+  active: integer("active").notNull().default(1),
+  memo: text("memo").notNull().default(""),
+  lastLoginAt: integer("last_login_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 출퇴근 기록 — 직원 1명 / 하루 1행 */
+export const attendance = sqliteTable("attendance", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffId: integer("staff_id").notNull(),
+  workDate: text("work_date").notNull(), // YYYY-MM-DD (KST 기준)
+  clockInAt: integer("clock_in_at"), // epoch ms
+  clockOutAt: integer("clock_out_at"), // epoch ms
+  breakMinutes: integer("break_minutes").notNull().default(0),
+  memo: text("memo").notNull().default(""),
+  editedByAdmin: integer("edited_by_admin").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 에스프레소 추출 레시피 기록 */
+export const espressoLogs = sqliteTable("espresso_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffId: integer("staff_id").notNull(),
+  staffName: text("staff_name").notNull().default(""), // 기록 시점 이름 스냅샷
+  logDate: text("log_date").notNull(), // YYYY-MM-DD
+  beanName: text("bean_name").notNull().default(""),
+  machine: text("machine").notNull().default(""),
+  grindSetting: text("grind_setting").notNull().default(""),
+  doseG: real("dose_g").notNull().default(0),
+  yieldG: real("yield_g").notNull().default(0),
+  timeSec: real("time_sec").notNull().default(0),
+  waterTemp: real("water_temp").notNull().default(0),
+  tds: text("tds").notNull().default(""),
+  rating: integer("rating").notNull().default(0), // 1~5, 0이면 미평가
+  flavorTags: text("flavor_tags").notNull().default("[]"), // JSON string[]
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 디저트 생산일지 */
+export const dessertLogs = sqliteTable("dessert_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffId: integer("staff_id").notNull(),
+  staffName: text("staff_name").notNull().default(""),
+  prodDate: text("prod_date").notNull(), // YYYY-MM-DD 생산일
+  itemName: text("item_name").notNull(),
+  qty: integer("qty").notNull().default(0),
+  unit: text("unit").notNull().default("개"),
+  discardQty: integer("discard_qty").notNull().default(0), // 폐기 수량
+  expiryDate: text("expiry_date").notNull().default(""), // 소비기한
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 근무 스케줄 */
+export const shifts = sqliteTable("shifts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffId: integer("staff_id").notNull(),
+  workDate: text("work_date").notNull(), // YYYY-MM-DD
+  startTime: text("start_time").notNull().default("09:00"), // HH:MM
+  endTime: text("end_time").notNull().default("18:00"),
+  position: text("position").notNull().default(""), // 바 / 홀 / 베이킹 등
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 공지사항 (직원 대상) */
+export const announcements = sqliteTable("announcements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  pinned: integer("pinned").notNull().default(0),
+  important: integer("important").notNull().default(0),
+  authorName: text("author_name").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** 공지 읽음 표시 */
+export const announcementReads = sqliteTable("announcement_reads", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  announcementId: integer("announcement_id").notNull(),
+  staffId: integer("staff_id").notNull(),
+  readAt: integer("read_at").notNull(),
+});
+
+// ===== 상수 =====
+export const STAFF_ROLES = ["staff", "lead"] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
+  staff: "직원",
+  lead: "매니저",
+};
+
+export const SHIFT_POSITIONS = ["바", "홀", "베이킹", "로스팅", "기타"] as const;
+
+// ===== zod 스키마 =====
+export const staffLoginSchema = z.object({
+  loginId: z.string().min(1, "아이디를 입력해 주세요."),
+  password: z.string().min(1, "비밀번호를 입력해 주세요."),
+});
+
+export const insertStaffSchema = z.object({
+  loginId: z
+    .string()
+    .min(3, "아이디는 3자 이상이어야 합니다.")
+    .max(30, "아이디는 30자 이하여야 합니다.")
+    .regex(/^[a-zA-Z0-9._-]+$/, "아이디는 영문·숫자·. _ - 만 사용할 수 있습니다."),
+  password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다."),
+  name: z.string().min(1, "이름을 입력해 주세요."),
+  phone: z.string().optional().default(""),
+  position: z.string().optional().default("바리스타"),
+  staffRole: z.enum(STAFF_ROLES).optional().default("staff"),
+  hourlyWage: z.number().int().min(0).optional().default(0),
+  memo: z.string().optional().default(""),
+});
+
+export const updateStaffSchema = z.object({
+  name: z.string().min(1).optional(),
+  phone: z.string().optional(),
+  position: z.string().optional(),
+  staffRole: z.enum(STAFF_ROLES).optional(),
+  hourlyWage: z.number().int().min(0).optional(),
+  active: z.number().int().min(0).max(1).optional(),
+  memo: z.string().optional(),
+  password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다.").optional(),
+});
+
+export const upsertAttendanceSchema = z.object({
+  staffId: z.number().int().positive(),
+  workDate: z.string().min(1, "날짜를 선택해 주세요."),
+  clockInAt: z.number().int().nullable().optional(),
+  clockOutAt: z.number().int().nullable().optional(),
+  breakMinutes: z.number().int().min(0).optional().default(0),
+  memo: z.string().optional().default(""),
+});
+
+export const insertEspressoLogSchema = z.object({
+  logDate: z.string().optional(),
+  beanName: z.string().min(1, "원두를 입력해 주세요."),
+  machine: z.string().optional().default(""),
+  grindSetting: z.string().optional().default(""),
+  doseG: z.number().min(0).optional().default(0),
+  yieldG: z.number().min(0).optional().default(0),
+  timeSec: z.number().min(0).optional().default(0),
+  waterTemp: z.number().min(0).optional().default(0),
+  tds: z.string().optional().default(""),
+  rating: z.number().int().min(0).max(5).optional().default(0),
+  flavorTags: z.array(z.string()).optional().default([]),
+  memo: z.string().optional().default(""),
+});
+
+export const insertDessertLogSchema = z.object({
+  prodDate: z.string().optional(),
+  itemName: z.string().min(1, "품목을 입력해 주세요."),
+  qty: z.number().int().min(0).optional().default(0),
+  unit: z.string().optional().default("개"),
+  discardQty: z.number().int().min(0).optional().default(0),
+  expiryDate: z.string().optional().default(""),
+  memo: z.string().optional().default(""),
+});
+
+export const insertShiftSchema = z.object({
+  staffId: z.number().int().positive(),
+  workDate: z.string().min(1, "날짜를 선택해 주세요."),
+  startTime: z.string().min(1, "시작 시간을 입력해 주세요."),
+  endTime: z.string().min(1, "종료 시간을 입력해 주세요."),
+  position: z.string().optional().default(""),
+  memo: z.string().optional().default(""),
+});
+
+export const insertAnnouncementSchema = z.object({
+  title: z.string().min(1, "제목을 입력해 주세요."),
+  body: z.string().optional().default(""),
+  pinned: z.number().int().min(0).max(1).optional().default(0),
+  important: z.number().int().min(0).max(1).optional().default(0),
+});
+
+// ===== 타입 =====
+export type Staff = typeof staff.$inferSelect;
+export type PublicStaff = Omit<Staff, "password">;
+export type InsertStaff = z.infer<typeof insertStaffSchema>;
+export type Attendance = typeof attendance.$inferSelect;
+export type EspressoLog = typeof espressoLogs.$inferSelect;
+export type InsertEspressoLog = z.infer<typeof insertEspressoLogSchema>;
+export type DessertLog = typeof dessertLogs.$inferSelect;
+export type InsertDessertLog = z.infer<typeof insertDessertLogSchema>;
+export type Shift = typeof shifts.$inferSelect;
+export type InsertShift = z.infer<typeof insertShiftSchema>;
+export type Announcement = typeof announcements.$inferSelect;
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+
+/** 직원 홈 화면 요약 */
+export type StaffHome = {
+  staff: PublicStaff;
+  today: string; // YYYY-MM-DD
+  attendance: Attendance | null;
+  shift: Shift | null;
+  unreadAnnouncements: number;
+  latestAnnouncement: Announcement | null;
+  weekMinutes: number; // 이번 주 근무 분
+  monthMinutes: number; // 이번 달 근무 분
+};
+
+/** 근태 집계 (관리자) */
+export type AttendanceSummaryRow = {
+  staffId: number;
+  name: string;
+  position: string;
+  days: number;
+  minutes: number;
+  hourlyWage: number;
+  estimatedPay: number;
 };

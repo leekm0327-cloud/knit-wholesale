@@ -68,6 +68,17 @@ import AdminEspresso from "@/pages/admin/AdminEspresso";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
 import AdminVisitSetups from "@/pages/admin/AdminVisitSetups";
+import AdminStaff from "@/pages/admin/AdminStaff";
+import AdminStaffAttendance from "@/pages/admin/AdminStaffAttendance";
+import AdminStaffSchedule from "@/pages/admin/AdminStaffSchedule";
+import AdminStaffNotices from "@/pages/admin/AdminStaffNotices";
+import AdminStaffLogs from "@/pages/admin/AdminStaffLogs";
+import StaffLogin from "@/pages/staff/StaffLogin";
+import StaffHome from "@/pages/staff/StaffHome";
+import StaffEspresso from "@/pages/staff/StaffEspresso";
+import StaffDessert from "@/pages/staff/StaffDessert";
+import StaffSchedule from "@/pages/staff/StaffSchedule";
+import StaffNotices from "@/pages/staff/StaffNotices";
 import AdminWebAnalytics from "@/pages/admin/AdminWebAnalytics";
 import NotFound from "@/pages/not-found";
 
@@ -193,6 +204,21 @@ function AppRouter() {
       <Route path="/admin/kakao" component={AdminKakao} />
       <Route path="/admin/inquiries" component={AdminInquiries} />
       <Route path="/admin/visit-setups" component={AdminVisitSetups} />
+
+      {/* 직원 내부 관리 — 관리자 화면 */}
+      <Route path="/admin/staff" component={AdminStaff} />
+      <Route path="/admin/staff/attendance" component={AdminStaffAttendance} />
+      <Route path="/admin/staff/schedule" component={AdminStaffSchedule} />
+      <Route path="/admin/staff/notices" component={AdminStaffNotices} />
+      <Route path="/admin/staff/logs" component={AdminStaffLogs} />
+
+      {/* 직원 내부 관리 — 직원 화면 (자체 인증) */}
+      <Route path="/staff/login" component={StaffLogin} />
+      <Route path="/staff" component={StaffHome} />
+      <Route path="/staff/espresso" component={StaffEspresso} />
+      <Route path="/staff/dessert" component={StaffDessert} />
+      <Route path="/staff/schedule" component={StaffSchedule} />
+      <Route path="/staff/notices" component={StaffNotices} />
       <Route path="/admin/web-analytics" component={AdminWebAnalytics} />
 
       <Route component={NotFound} />

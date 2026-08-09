@@ -718,6 +718,8 @@ for (const col of ["ecount_code TEXT NOT NULL DEFAULT ''"]) {
 }
 
 export const db = drizzle(sqlite);
+// 직원 관리 모듈(staff-storage.ts)에서 테이블 생성을 위해 raw 핸들이 필요합니다.
+export { sqlite };
 
 export interface IStorage {
   // customers

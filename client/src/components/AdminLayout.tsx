@@ -45,6 +45,11 @@ import {
   FileText,
   BarChart3,
   Wand2,
+  UserCog,
+  Clock,
+  CalendarDays,
+  Megaphone,
+  ClipboardList,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -114,6 +119,16 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/board", label: "게시판", icon: MessageSquare },
       { href: "/admin/inquiries", label: "납품 문의", icon: Inbox },
       { href: "/admin/visit-setups", label: "방문 세팅", icon: CalendarCheck },
+    ],
+  },
+  {
+    label: "직원 관리",
+    items: [
+      { href: "/admin/staff", label: "직원 계정", icon: UserCog },
+      { href: "/admin/staff/attendance", label: "근태 현황", icon: Clock },
+      { href: "/admin/staff/schedule", label: "근무 스케줄", icon: CalendarDays },
+      { href: "/admin/staff/notices", label: "직원 공지", icon: Megaphone },
+      { href: "/admin/staff/logs", label: "직원 기록", icon: ClipboardList },
     ],
   },
   {
