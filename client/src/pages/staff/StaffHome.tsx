@@ -9,7 +9,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { staffColor } from "@/lib/staffColors";
-import type { StaffHome as StaffHomeData } from "@shared/schema";
+import { slotLabel, type StaffHome as StaffHomeData } from "@shared/schema";
 import { useState } from "react";
 import { Coffee, CakeSlice, CalendarDays, Megaphone, LogIn, LogOut, Loader2 } from "lucide-react";
 
@@ -81,7 +81,7 @@ export default function StaffHome() {
         >
           <div className="font-ui text-[10px] font-bold tracking-[0.18em] opacity-70">TODAY</div>
           <div className="font-display mt-0.5 text-2xl font-semibold uppercase tracking-wide">
-            {data.shift.position || "근무"}
+            {data.shift.position ? slotLabel(data.shift.position) : "근무"}
           </div>
         </div>
       ) : (
@@ -104,7 +104,7 @@ export default function StaffHome() {
                 }}
                 data-testid="badge-tomorrow-shift"
               >
-                {data.tomorrowShift.position || "근무"}
+                {data.tomorrowShift.position ? slotLabel(data.tomorrowShift.position) : "근무"}
               </span>
             ) : (
               <span className="text-xs text-muted-foreground">근무 없음</span>
@@ -139,7 +139,7 @@ export default function StaffHome() {
                       style={sh ? { backgroundColor: color.bg, color: color.fg } : { backgroundColor: "hsl(var(--muted))" }}
                     >
                       <span className="font-display text-[13px] font-semibold">{Number(d.slice(8))}</span>
-                      <span className="font-ui">{sh ? sh.position || "근무" : "휴무"}</span>
+                      <span className="font-ui">{sh ? (sh.position ? slotLabel(sh.position) : "근무") : "휴무"}</span>
                     </div>
                   </div>
                 );

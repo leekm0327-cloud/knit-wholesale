@@ -8,7 +8,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { staffColor } from "@/lib/staffColors";
-import { SHIFT_SLOTS, WEEKLY_TARGET_DAYS, type Shift, type PublicStaff } from "@shared/schema";
+import { SHIFT_SLOTS, WEEKLY_TARGET_DAYS, slotLabel, type Shift, type PublicStaff } from "@shared/schema";
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -140,15 +140,21 @@ export default function AdminStaffSchedule() {
         ) : (
           <div className="space-y-4">
             {weeks.map((week) => {
-              // 이 주의 직원별 근무일 수
-              const counts = new Map<number, number>();
+              // 이 주의 직원별 근무일 수 — 하루에 두 칸에 들어가도 1일로 센다
+              const daysByStaff = new Map<number, Set<string>>();
               for (const d of week) {
                 const ds = ymd(d);
                 for (const slot of SHIFT_SLOTS) {
                   const cell = cellMap.get(`${ds}|${slot}`);
-                  if (cell) counts.set(cell.staffId, (counts.get(cell.staffId) ?? 0) + 1);
+                  if (!cell) continue;
+                  const set = daysByStaff.get(cell.staffId) ?? new Set<string>();
+                  set.add(ds);
+                  daysByStaff.set(cell.staffId, set);
                 }
               }
+              const counts = new Map<number, number>(
+                Array.from(daysByStaff.entries()).map(([id, set]) => [id, set.size]),
+              );
               // 아직 아무도 배정하지 않은 주는 경고를 띄우지 않는다 (앞으로 짤 주)
               const weekEmpty = counts.size === 0;
               const short = weekEmpty
@@ -198,7 +204,7 @@ export default function AdminStaffSchedule() {
                             {SHIFT_SLOTS.map((slot) => (
                               <tr key={slot}>
                                 <td className="border-b border-r bg-muted/20 px-2 py-1 font-ui text-[11px] font-medium text-muted-foreground">
-                                  {slot}
+                                  {slotLabel(slot)}
                                 </td>
                                 {week.map((d) => {
                                   const ds = ymd(d);

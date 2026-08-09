@@ -1428,9 +1428,20 @@ export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   lead: "매니저",
 };
 
-/** 근무표의 고정 슬롯 (표의 Open / Baker / Close / Part 줄) */
-export const SHIFT_SLOTS = ["Open", "Baker", "Close", "Part"] as const;
+/** 근무표의 고정 슬롯. Close 는 두 명이 들어가므로 줄이 두 개다. */
+export const SHIFT_SLOTS = ["Open", "Baker", "Close", "Close2", "Part"] as const;
 export type ShiftSlot = (typeof SHIFT_SLOTS)[number];
+/** 화면에 보이는 이름 (Close2 도 'Close' 로 표시) */
+export const SHIFT_SLOT_LABEL: Record<string, string> = {
+  Open: "Open",
+  Baker: "Baker",
+  Close: "Close",
+  Close2: "Close",
+  Part: "Part",
+};
+export function slotLabel(slot: string): string {
+  return SHIFT_SLOT_LABEL[slot] ?? slot;
+}
 /** 주간 최소 근무일 — 이보다 적으면 스케줄 화면에서 경고 표시 */
 export const WEEKLY_TARGET_DAYS = 5;
 

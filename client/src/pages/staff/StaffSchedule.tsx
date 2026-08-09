@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { staffColor } from "@/lib/staffColors";
-import { SHIFT_SLOTS, type Shift } from "@shared/schema";
+import { SHIFT_SLOTS, slotLabel, type Shift } from "@shared/schema";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -164,7 +164,7 @@ export default function StaffSchedule() {
                       {SHIFT_SLOTS.map((slot) => (
                         <tr key={slot}>
                           <td className="border-b border-r bg-muted/20 px-1 py-1 font-ui text-[10px] font-medium text-muted-foreground">
-                            {slot}
+                            {slotLabel(slot)}
                           </td>
                           {week.map((d) => {
                             const cell = cellMap.get(`${ymd(d)}|${slot}`);
