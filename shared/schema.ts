@@ -1318,7 +1318,6 @@ export const staff = sqliteTable("staff", {
   phone: text("phone").notNull().default(""),
   position: text("position").notNull().default("바리스타"), // 직책/포지션
   staffRole: text("staff_role").notNull().default("staff"), // "staff" | "lead"
-  hourlyWage: integer("hourly_wage").notNull().default(0), // 시급(원) — 0이면 미설정
   active: integer("active").notNull().default(1),
   memo: text("memo").notNull().default(""),
   lastLoginAt: integer("last_login_at"),
@@ -1441,7 +1440,6 @@ export const insertStaffSchema = z.object({
   phone: z.string().optional().default(""),
   position: z.string().optional().default("바리스타"),
   staffRole: z.enum(STAFF_ROLES).optional().default("staff"),
-  hourlyWage: z.number().int().min(0).optional().default(0),
   memo: z.string().optional().default(""),
 });
 
@@ -1450,7 +1448,6 @@ export const updateStaffSchema = z.object({
   phone: z.string().optional(),
   position: z.string().optional(),
   staffRole: z.enum(STAFF_ROLES).optional(),
-  hourlyWage: z.number().int().min(0).optional(),
   active: z.number().int().min(0).max(1).optional(),
   memo: z.string().optional(),
   password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다.").optional(),
@@ -1551,6 +1548,4 @@ export type AttendanceSummaryRow = {
   position: string;
   days: number;
   minutes: number;
-  hourlyWage: number;
-  estimatedPay: number;
 };

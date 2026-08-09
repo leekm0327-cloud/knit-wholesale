@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { errMsg, won } from "@/lib/format";
+import { errMsg } from "@/lib/format";
 import type { Attendance, PublicStaff, AttendanceSummaryRow } from "@shared/schema";
 import { Clock, Loader2, Save } from "lucide-react";
 
@@ -106,7 +106,6 @@ export default function AdminStaffAttendance() {
   }
 
   const totalMinutes = (data?.summary ?? []).reduce((s, r) => s + r.minutes, 0);
-  const totalPay = (data?.summary ?? []).reduce((s, r) => s + r.estimatedPay, 0);
 
   return (
     <AdminLayout>
@@ -134,10 +133,7 @@ export default function AdminStaffAttendance() {
         <Card className="mb-5 overflow-hidden">
           <div className="flex items-center justify-between border-b p-5">
             <h2 className="text-sm font-semibold text-foreground">직원별 합계</h2>
-            <div className="text-xs text-muted-foreground">
-              총 {fmtMinutes(totalMinutes)}
-              {totalPay > 0 ? ` · 예상 인건비 ${won(totalPay)}` : ""}
-            </div>
+            <div className="text-xs text-muted-foreground">총 {fmtMinutes(totalMinutes)}</div>
           </div>
           {isLoading ? (
             <div className="space-y-2 p-5">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
@@ -153,9 +149,6 @@ export default function AdminStaffAttendance() {
                   </div>
                   <div className="text-right">
                     <div className="font-display tabular text-sm font-semibold text-foreground">{fmtMinutes(s.minutes)}</div>
-                    {s.hourlyWage > 0 && (
-                      <div className="text-[11px] text-muted-foreground">{won(s.estimatedPay)}</div>
-                    )}
                   </div>
                 </div>
               ))}

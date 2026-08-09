@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { errMsg, won, fmtDate } from "@/lib/format";
+import { errMsg, fmtDate } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import { STAFF_ROLE_LABEL, type PublicStaff, type StaffRole } from "@shared/schema";
 import { Loader2, Plus, Users, KeyRound, Check, X } from "lucide-react";
@@ -21,7 +21,6 @@ type NewStaff = {
   phone: string;
   position: string;
   staffRole: StaffRole;
-  hourlyWage: string;
 };
 
 const EMPTY: NewStaff = {
@@ -31,7 +30,6 @@ const EMPTY: NewStaff = {
   phone: "",
   position: "바리스타",
   staffRole: "staff",
-  hourlyWage: "",
 };
 
 export default function AdminStaff() {
@@ -59,7 +57,6 @@ export default function AdminStaff() {
         phone: d.phone.trim(),
         position: d.position.trim() || "바리스타",
         staffRole: d.staffRole,
-        hourlyWage: Number(d.hourlyWage) || 0,
       });
       toast({ title: "직원 계정이 생성되었습니다." });
       setD(EMPTY);
@@ -144,10 +141,6 @@ export default function AdminStaff() {
                 <Input value={d.position} onChange={(e) => set({ position: e.target.value })} placeholder="바리스타" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">시급 (원, 선택)</Label>
-                <Input value={d.hourlyWage} onChange={(e) => set({ hourlyWage: e.target.value })} inputMode="numeric" placeholder="10030" />
-              </div>
-              <div>
                 <Label className="text-xs text-muted-foreground">권한</Label>
                 <select
                   value={d.staffRole}
@@ -196,8 +189,7 @@ export default function AdminStaff() {
                         {s.loginId} · {s.position} · {s.phone || "연락처 없음"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
-                        {s.hourlyWage > 0 ? `시급 ${won(s.hourlyWage)}` : "시급 미설정"}
-                        {s.lastLoginAt ? ` · 최근 로그인 ${fmtDate(s.lastLoginAt)}` : " · 로그인 이력 없음"}
+                        {s.lastLoginAt ? `최근 로그인 ${fmtDate(s.lastLoginAt)}` : "로그인 이력 없음"}
                       </div>
                     </div>
                     {isOwner && (

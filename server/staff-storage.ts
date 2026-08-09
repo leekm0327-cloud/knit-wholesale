@@ -37,7 +37,7 @@ sqlite.exec(`
     phone TEXT NOT NULL DEFAULT '',
     position TEXT NOT NULL DEFAULT '바리스타',
     staff_role TEXT NOT NULL DEFAULT 'staff',
-    hourly_wage INTEGER NOT NULL DEFAULT 0,
+    hourly_wage INTEGER NOT NULL DEFAULT 0, -- (미사용) 이전 버전 잔여 컬럼
     active INTEGER NOT NULL DEFAULT 1,
     memo TEXT NOT NULL DEFAULT '',
     last_login_at INTEGER,
@@ -200,7 +200,6 @@ export class StaffStorage {
         phone: s.phone ?? "",
         position: s.position ?? "바리스타",
         staffRole: s.staffRole ?? "staff",
-        hourlyWage: s.hourlyWage ?? 0,
         active: 1,
         memo: s.memo ?? "",
         createdAt: Date.now(),
@@ -362,8 +361,6 @@ export class StaffStorage {
           position: p.position,
           days: agg.days,
           minutes: agg.minutes,
-          hourlyWage: p.hourlyWage,
-          estimatedPay: Math.round((agg.minutes / 60) * p.hourlyWage),
         };
       })
       .filter((r) => r.days > 0 || people.find((p) => p.id === r.staffId)?.active === 1)

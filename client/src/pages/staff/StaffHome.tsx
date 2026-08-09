@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
+import { staffColor } from "@/lib/staffColors";
 import type { StaffHome as StaffHomeData } from "@shared/schema";
 import { useState } from "react";
 import { Coffee, CakeSlice, CalendarDays, Megaphone, LogIn, LogOut, Loader2 } from "lucide-react";
@@ -54,18 +55,33 @@ export default function StaffHome() {
 
   return (
     <StaffLayout title="오늘" subtitle={data?.today ?? ""}>
+      {/* 오늘 근무 */}
+      {isLoading ? (
+        <Skeleton className="mb-4 h-20 w-full" />
+      ) : data?.shift ? (
+        <div
+          className="mb-4 rounded-md px-4 py-4 text-center"
+          style={{
+            backgroundColor: staffColor(data.staff.id).bg,
+            color: staffColor(data.staff.id).fg,
+            boxShadow: "inset 0 0 0 2px currentColor",
+          }}
+          data-testid="banner-today-shift"
+        >
+          <div className="font-ui text-[10px] font-bold tracking-[0.18em] opacity-70">TODAY</div>
+          <div className="font-display mt-0.5 text-2xl font-semibold uppercase tracking-wide">
+            {data.shift.position || "근무"}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4 rounded-md border border-dashed px-4 py-4 text-center text-xs text-muted-foreground">
+          오늘 등록된 근무가 없습니다
+        </div>
+      )}
+
       {/* 출퇴근 */}
       <Card className="p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="text-sm font-semibold text-foreground">출퇴근</div>
-          {data?.shift ? (
-            <Badge variant="outline" className="text-[11px]">
-              오늘 근무{data.shift.position ? ` · ${data.shift.position}` : ""}
-            </Badge>
-          ) : (
-            <span className="text-[11px] text-muted-foreground">등록된 스케줄 없음</span>
-          )}
-        </div>
+        <div className="mb-4 text-sm font-semibold text-foreground">출퇴근</div>
 
         {isLoading ? (
           <Skeleton className="h-24 w-full" />
