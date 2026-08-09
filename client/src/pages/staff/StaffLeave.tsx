@@ -18,7 +18,7 @@ import {
   type LeaveRequest,
   type LeaveStatus,
 } from "@shared/schema";
-import { Loader2, Plus, Trash2, CalendarOff, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Trash2, CalendarOff, AlertTriangle, HelpCircle, ChevronDown } from "lucide-react";
 
 type Res =
   | { enabled: false }
@@ -36,6 +36,7 @@ function d(n: number): string {
 export default function StaffLeave() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [guide, setGuide] = useState(false);
   const [start, setStart] = useState(today());
   const [end, setEnd] = useState(today());
   const [half, setHalf] = useState(false);
@@ -122,6 +123,60 @@ export default function StaffLeave() {
           <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-destructive">
             <AlertTriangle className="h-3.5 w-3.5" />
             {bal!.expiringDate}에 {d(bal!.expiringSoon)}일 소멸 예정
+          </div>
+        )}
+      </Card>
+
+      {/* 제도 안내 */}
+      <Card className="mt-4 overflow-hidden">
+        <button
+          onClick={() => setGuide((v) => !v)}
+          className="flex w-full items-center justify-between p-4 text-left hover-elevate"
+          data-testid="button-toggle-leave-guide"
+        >
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            <HelpCircle className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+            연차 제도 안내
+          </span>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${guide ? "rotate-180" : ""}`} />
+        </button>
+        {guide && (
+          <div className="space-y-4 border-t px-4 py-4 text-[13px] leading-relaxed text-muted-foreground">
+            <div>
+              <div className="mb-1 font-semibold text-foreground">연차가 무엇인가요</div>
+              쉬어도 급여가 나오는 휴가입니다. 정해진 일수만큼 쓸 수 있고, 쓰는 만큼 잔여에서 빠집니다.
+            </div>
+            <div>
+              <div className="mb-1 font-semibold text-foreground">며칠이 생기나요</div>
+              입사일을 기준으로 자동으로 쌓입니다.
+              <br />· 입사 1년 전까지는 <span className="text-foreground">매달 1일</span>씩 생깁니다. 입사한 날과 같은
+              날짜에 하나씩 늘어납니다.
+              <br />· 입사 1년이 되는 날 <span className="text-foreground">15일</span>이 한 번에 생기고, 그 뒤로는 매년
+              같은 날 다시 생깁니다.
+              <br />· 3년째부터는 2년마다 하루씩 늘어납니다.
+            </div>
+            <div>
+              <div className="mb-1 font-semibold text-foreground">언제까지 써야 하나요</div>
+              생긴 날로부터 <span className="text-foreground">1년</span>입니다. 그 안에 쓰지 않으면 없어집니다. 아래
+              부여 내역에서 각각의 소멸일을 볼 수 있고, 소멸이 가까워지면 위쪽에 빨간 글씨로 알려드립니다.
+            </div>
+            <div>
+              <div className="mb-1 font-semibold text-foreground">어떻게 신청하나요</div>
+              아래 <span className="text-foreground">연차 신청</span>을 눌러 날짜를 고르면 됩니다. 하루만 쉬려면
+              시작일과 종료일을 같은 날로 두시고, 여러 날 이어서 쉬려면 기간으로 고르시면 됩니다. 반나절만 쉴 때는
+              반차를 체크하면 <span className="text-foreground">0.5일</span>만 차감됩니다.
+            </div>
+            <div>
+              <div className="mb-1 font-semibold text-foreground">신청하면 바로 되나요</div>
+              대표님 승인이 있어야 확정됩니다. 승인 전까지는 신청 내역에 '대기'로 뜨고, 이때는 직접 취소할 수
+              있습니다. 승인된 뒤에 사정이 바뀌면 대표님께 말씀해 주세요.
+            </div>
+            <div>
+              <div className="mb-1 font-semibold text-foreground">알아두실 것</div>
+              잔여보다 많이 신청할 수는 없습니다. 대기 중인 신청도 미리 빼고 계산하기 때문에, 승인을 기다리는 동안
+              같은 날짜를 두 번 신청하는 일이 생기지 않습니다. 근무표에 이미 들어가 있는 날이라면 미리 말씀해 주시는
+              편이 좋습니다.
+            </div>
           </div>
         )}
       </Card>

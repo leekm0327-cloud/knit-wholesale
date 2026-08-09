@@ -126,30 +126,30 @@ export default function StaffSchedule() {
                   </span>
                   <span className="font-ui text-[11px] font-semibold text-foreground">내 근무 {myCount}일</span>
                 </div>
-                <div className="table-scroll overflow-x-auto">
-                  <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: 520 }}>
+                <div>
+                  <table className="w-full table-fixed border-collapse">
                     <thead>
                       <tr>
-                        <th className="w-11 border-b border-r bg-muted/40 px-1 py-1.5"></th>
+                        <th className="w-5 border-b border-r bg-muted/40 p-0"></th>
                         {week.map((d, i) => {
                           const inMonth = d.getMonth() === cursor.m;
                           const isToday = ymd(d) === todayStr;
                           return (
                             <th
                               key={ymd(d)}
-                              className={`border-b border-r px-1 py-1.5 text-center ${
+                              className={`border-b border-r px-0 py-1 text-center ${
                                 isToday ? "bg-foreground/10" : "bg-muted/40"
                               }`}
                             >
                               <div
-                                className={`font-ui text-[9px] font-medium ${
+                                className={`font-ui text-[8px] font-medium ${
                                   i === 5 ? "text-blue-600" : i === 6 ? "text-red-600" : "text-muted-foreground"
                                 }`}
                               >
                                 {DOW[i]}
                               </div>
                               <div
-                                className={`font-display text-[13px] font-semibold ${
+                                className={`font-display text-[12px] font-semibold leading-tight ${
                                   inMonth ? "text-foreground" : "text-muted-foreground/40"
                                 }`}
                               >
@@ -163,8 +163,8 @@ export default function StaffSchedule() {
                     <tbody>
                       {SHIFT_SLOTS.map((slot) => (
                         <tr key={slot}>
-                          <td className="border-b border-r bg-muted/20 px-1 py-1 font-ui text-[10px] font-medium text-muted-foreground">
-                            {slotLabel(slot)}
+                          <td className="border-b border-r bg-muted/20 p-0 text-center font-ui text-[9px] font-semibold text-muted-foreground">
+                            {slotLabel(slot).charAt(0)}
                           </td>
                           {week.map((d) => {
                             const cell = cellMap.get(`${ymd(d)}|${slot}`);
@@ -173,7 +173,7 @@ export default function StaffSchedule() {
                             return (
                               <td key={ymd(d)} className="border-b border-r p-0">
                                 <div
-                                  className={`flex h-8 items-center justify-center text-[11px] ${
+                                  className={`flex h-7 items-center justify-center truncate px-0.5 text-[10px] ${
                                     mine ? "font-bold" : cell ? "opacity-40" : ""
                                   }`}
                                   style={
@@ -202,8 +202,11 @@ export default function StaffSchedule() {
         </div>
       )}
 
-      <p className="mt-4 text-center text-[11px] text-muted-foreground">
-        내 근무는 진하게 · 테두리로 표시됩니다. 옆으로 밀면 한 주 전체가 보입니다.
+      <p className="mt-4 text-center text-[11px] leading-relaxed text-muted-foreground">
+        내 근무는 진하게 · 테두리로 표시됩니다.
+        <br />
+        <span className="font-ui">O</span> 오픈 · <span className="font-ui">B</span> 베이커 ·{" "}
+        <span className="font-ui">C</span> 마감 · <span className="font-ui">P</span> 파트
       </p>
     </StaffLayout>
   );
