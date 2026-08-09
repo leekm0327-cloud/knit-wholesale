@@ -490,6 +490,31 @@ export class StaffStorage {
       .get();
   }
 
+  /** 근무표 칸 지정 — (날짜, 슬롯) 하나에 직원 한 명. 기존 배정은 교체된다. */
+  async assignShift(p: { staffId: number; workDate: string; slot: string }): Promise<Shift> {
+    db.delete(shifts)
+      .where(and(eq(shifts.workDate, p.workDate), eq(shifts.position, p.slot)))
+      .run();
+    return db
+      .insert(shifts)
+      .values({
+        staffId: p.staffId,
+        workDate: p.workDate,
+        startTime: "",
+        endTime: "",
+        position: p.slot,
+        memo: "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+
+  /** 근무표 칸 비우기 */
+  async clearShift(workDate: string, slot: string): Promise<void> {
+    db.delete(shifts).where(and(eq(shifts.workDate, workDate), eq(shifts.position, slot))).run();
+  }
+
   async updateShift(id: number, patch: Partial<Shift>): Promise<Shift | undefined> {
     return db.update(shifts).set(patch).where(eq(shifts.id, id)).returning().get();
   }

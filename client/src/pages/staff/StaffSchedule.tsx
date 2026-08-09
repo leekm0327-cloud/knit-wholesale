@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import type { Shift } from "@shared/schema";
+import { staffColor } from "@/lib/staffColors";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -96,13 +97,18 @@ export default function StaffSchedule() {
                           s.staffId === me?.id ? "border-foreground/40 bg-muted/40" : ""
                         }`}
                       >
-                        <span className="text-foreground">
-                          {nameOf.get(s.staffId) ?? "-"}
-                          {s.position ? <span className="ml-1.5 text-xs text-muted-foreground">{s.position}</span> : null}
-                        </span>
-                        <span className="font-display tabular text-xs text-muted-foreground">
-                          {s.startTime} – {s.endTime}
-                        </span>
+                        <span className="text-foreground">{nameOf.get(s.staffId) ?? "-"}</span>
+                        {s.position ? (
+                          <span
+                            className="rounded-sm px-2 py-0.5 font-ui text-[11px] font-semibold"
+                            style={{
+                              backgroundColor: staffColor(s.staffId).bg,
+                              color: staffColor(s.staffId).fg,
+                            }}
+                          >
+                            {s.position}
+                          </span>
+                        ) : null}
                       </div>
                     ))}
                   </div>

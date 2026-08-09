@@ -12,6 +12,8 @@ import {
   insertEspressoLogSchema,
   insertDessertLogSchema,
   insertShiftSchema,
+  assignShiftSchema,
+  clearShiftSchema,
   insertAnnouncementSchema,
 } from "@shared/schema";
 
@@ -338,6 +340,19 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const parsed = insertShiftSchema.safeParse(req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
     res.json(await staffStorage.createShift(parsed.data));
+  });
+
+  app.post("/api/admin/staff/shifts/assign", requireAdmin, async (req, res) => {
+    const parsed = assignShiftSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    res.json(await staffStorage.assignShift(parsed.data));
+  });
+
+  app.post("/api/admin/staff/shifts/clear", requireAdmin, async (req, res) => {
+    const parsed = clearShiftSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    await staffStorage.clearShift(parsed.data.workDate, parsed.data.slot);
+    res.json({ ok: true });
   });
 
   app.patch("/api/admin/staff/shifts/:id", requireAdmin, async (req, res) => {

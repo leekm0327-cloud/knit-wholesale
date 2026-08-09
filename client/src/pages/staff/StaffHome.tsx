@@ -60,8 +60,7 @@ export default function StaffHome() {
           <div className="text-sm font-semibold text-foreground">출퇴근</div>
           {data?.shift ? (
             <Badge variant="outline" className="text-[11px]">
-              오늘 근무 {data.shift.startTime}–{data.shift.endTime}
-              {data.shift.position ? ` · ${data.shift.position}` : ""}
+              오늘 근무{data.shift.position ? ` · ${data.shift.position}` : ""}
             </Badge>
           ) : (
             <span className="text-[11px] text-muted-foreground">등록된 스케줄 없음</span>

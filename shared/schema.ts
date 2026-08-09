@@ -1413,7 +1413,11 @@ export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   lead: "매니저",
 };
 
-export const SHIFT_POSITIONS = ["바", "홀", "베이킹", "로스팅", "기타"] as const;
+/** 근무표의 고정 슬롯 (표의 Open / Baker / Close / Part 줄) */
+export const SHIFT_SLOTS = ["Open", "Baker", "Close", "Part"] as const;
+export type ShiftSlot = (typeof SHIFT_SLOTS)[number];
+/** 주간 최소 근무일 — 이보다 적으면 스케줄 화면에서 경고 표시 */
+export const WEEKLY_TARGET_DAYS = 5;
 
 // ===== zod 스키마 =====
 export const staffLoginSchema = z.object({
@@ -1484,10 +1488,22 @@ export const insertDessertLogSchema = z.object({
 export const insertShiftSchema = z.object({
   staffId: z.number().int().positive(),
   workDate: z.string().min(1, "날짜를 선택해 주세요."),
-  startTime: z.string().min(1, "시작 시간을 입력해 주세요."),
-  endTime: z.string().min(1, "종료 시간을 입력해 주세요."),
+  startTime: z.string().optional().default(""),
+  endTime: z.string().optional().default(""),
   position: z.string().optional().default(""),
   memo: z.string().optional().default(""),
+});
+
+/** 근무표 칸 지정 — (날짜, 슬롯) 하나에 직원 한 명 */
+export const assignShiftSchema = z.object({
+  staffId: z.number().int().positive(),
+  workDate: z.string().min(1, "날짜를 선택해 주세요."),
+  slot: z.enum(SHIFT_SLOTS),
+});
+
+export const clearShiftSchema = z.object({
+  workDate: z.string().min(1, "날짜를 선택해 주세요."),
+  slot: z.enum(SHIFT_SLOTS),
 });
 
 export const insertAnnouncementSchema = z.object({
