@@ -124,8 +124,8 @@ export default function AdminStaff() {
           <Card className="mb-5 p-5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <Label className="text-xs text-muted-foreground">아이디 (영문·숫자)</Label>
-                <Input value={d.loginId} onChange={(e) => set({ loginId: e.target.value })} placeholder="minji" data-testid="input-staff-loginid" />
+                <Label className="text-xs text-muted-foreground">아이디 (한글·영문·숫자)</Label>
+                <Input value={d.loginId} onChange={(e) => set({ loginId: e.target.value })} placeholder="소영 또는 minji" data-testid="input-staff-loginid" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">초기 비밀번호 (6자 이상)</Label>

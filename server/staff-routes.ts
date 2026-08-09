@@ -255,7 +255,7 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
   app.post("/api/admin/staff", requireOwner, async (req, res) => {
     const parsed = insertStaffSchema.safeParse(req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
-    const dup = await staffStorage.getStaffByLoginId(parsed.data.loginId.trim());
+    const dup = await staffStorage.getStaffByLoginId(parsed.data.loginId);
     if (dup) return res.status(400).json({ message: "이미 사용 중인 아이디입니다." });
     const row = await staffStorage.createStaff(parsed.data);
     await logIfPossible(req, storage, "staff.create", "staff", row.id, `직원 '${row.name}' 계정 생성`);

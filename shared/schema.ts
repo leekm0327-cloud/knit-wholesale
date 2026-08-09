@@ -1421,16 +1421,21 @@ export const WEEKLY_TARGET_DAYS = 5;
 
 // ===== zod 스키마 =====
 export const staffLoginSchema = z.object({
-  loginId: z.string().min(1, "아이디를 입력해 주세요."),
+  loginId: z.string().trim().min(1, "아이디를 입력해 주세요."),
   password: z.string().min(1, "비밀번호를 입력해 주세요."),
 });
 
 export const insertStaffSchema = z.object({
   loginId: z
     .string()
-    .min(3, "아이디는 3자 이상이어야 합니다.")
+    .trim()
+    .min(2, "아이디는 2자 이상이어야 합니다.")
     .max(30, "아이디는 30자 이하여야 합니다.")
-    .regex(/^[a-zA-Z0-9._-]+$/, "아이디는 영문·숫자·. _ - 만 사용할 수 있습니다."),
+    // 한글 이름을 그대로 아이디로 쓸 수 있게 허용. 공백과 특수문자만 막는다.
+    .regex(
+      /^[a-zA-Z0-9가-힣ㄱ-ㅎㅏ-ㅣ._-]+$/,
+      "아이디는 한글·영문·숫자와 . _ - 만 사용할 수 있습니다. (띄어쓰기 불가)",
+    ),
   password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다."),
   name: z.string().min(1, "이름을 입력해 주세요."),
   phone: z.string().optional().default(""),

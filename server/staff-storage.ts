@@ -154,6 +154,14 @@ export function kstWeekStart(day = kstToday()): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * 아이디 정규화. 한글 아이디를 허용하므로 유니코드 정규화(NFC)가 필요하다.
+ * macOS에서 입력한 한글은 자모가 분리된 형태(NFD)로 들어올 수 있어, 같은 글자인데 다른 문자열이 된다.
+ */
+export function normalizeLoginId(v: string): string {
+  return v.normalize("NFC").trim();
+}
+
 export function toPublicStaff(s: Staff): PublicStaff {
   const { password, ...rest } = s;
   return rest;
@@ -179,14 +187,14 @@ export class StaffStorage {
   }
 
   async getStaffByLoginId(loginId: string): Promise<Staff | undefined> {
-    return db.select().from(staff).where(eq(staff.loginId, loginId)).get();
+    return db.select().from(staff).where(eq(staff.loginId, normalizeLoginId(loginId))).get();
   }
 
   async createStaff(s: InsertStaff): Promise<PublicStaff> {
     const row = db
       .insert(staff)
       .values({
-        loginId: s.loginId.trim(),
+        loginId: normalizeLoginId(s.loginId),
         password: bcrypt.hashSync(s.password, 10),
         name: s.name.trim(),
         phone: s.phone ?? "",
@@ -223,7 +231,7 @@ export class StaffStorage {
   }
 
   async verifyStaffLogin(loginId: string, password: string): Promise<Staff | null> {
-    const s = await this.getStaffByLoginId(loginId.trim());
+    const s = await this.getStaffByLoginId(loginId);
     if (!s) return null;
     if (s.active !== 1) return null;
     if (!bcrypt.compareSync(password, s.password)) return null;
