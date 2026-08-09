@@ -331,3 +331,129 @@
     background: hsl(var(--muted));
   }
 }
+
+/* =========================================================
+   직원 앱 · 관리자 모바일 UI (.staff-ui)
+   본 사이트(각진 흑백 브랜드 톤)와 분리된 스코프.
+   테두리 대신 배경색으로 구역을 나누고, 카드는 흰색으로 띄운다.
+   ========================================================= */
+.staff-ui {
+  --s-bg: #f1f0ee;
+  --s-surface: #ffffff;
+  --s-ink: #1b1c19;
+  --s-muted: #8e8d88;
+  --s-faint: #c6c5bf;
+  --s-hair: #f0efec;
+  --s-accent: #5c7357;
+  --s-accent-soft: #eceeea;
+  --s-radius: 18px;
+
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Malgun Gothic", sans-serif;
+  background: var(--s-bg);
+  color: var(--s-ink);
+  letter-spacing: -0.01em;
+}
+
+.staff-ui .s-card {
+  background: var(--s-surface);
+  border-radius: var(--s-radius);
+  padding: 15px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.045);
+}
+.staff-ui .s-card + .s-card { margin-top: 9px; }
+.staff-ui .s-card.tight { padding: 6px 16px; }
+
+/* 구역 소제목 — 카드 밖에 놓는다 */
+.staff-ui .s-sect {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 18px 4px 9px;
+}
+
+/* 가장 중요한 정보 하나만 검정 블록으로 */
+.staff-ui .s-dark {
+  background: var(--s-ink);
+  color: #fff;
+  border-radius: var(--s-radius);
+  padding: 15px 16px;
+}
+.staff-ui .s-dark .s-k { color: #a9aaa4; }
+
+.staff-ui .s-k { font-size: 11.5px; color: var(--s-muted); }
+.staff-ui .s-big { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; margin-top: 3px; }
+.staff-ui .s-big.off { color: var(--s-faint); }
+
+/* 목록 — 카드 안에서 얇은 선으로만 나눈다 */
+.staff-ui .s-li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 0;
+}
+.staff-ui .s-li + .s-li { border-top: 1px solid var(--s-hair); }
+.staff-ui .s-li .s-a { font-size: 13.5px; }
+.staff-ui .s-li .s-b { font-size: 12px; color: var(--s-muted); }
+.staff-ui .s-li .s-b b { color: var(--s-ink); font-weight: 600; }
+
+/* 버튼 — 이 화면에서는 알약형 */
+.staff-ui .s-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--s-ink);
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px;
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.staff-ui .s-pill:disabled { opacity: 0.45; }
+.staff-ui .s-pill.ghost { background: var(--s-bg); color: #54534e; }
+.staff-ui .s-pill:active { opacity: 0.8; }
+
+/* 입력 */
+.staff-ui .s-input {
+  width: 100%;
+  background: var(--s-bg);
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 13px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--s-ink);
+}
+.staff-ui .s-input:focus { outline: 2px solid var(--s-ink); outline-offset: -2px; }
+
+/* 하단 알약 내비 */
+.staff-ui .s-navwrap { position: fixed; bottom: 0; left: 0; right: 0; padding: 6px 14px 14px; z-index: 20; }
+.staff-ui .s-nav {
+  margin: 0 auto;
+  max-width: 560px;
+  background: var(--s-ink);
+  border-radius: 999px;
+  display: grid;
+  padding: 7px 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.staff-ui .s-nav button {
+  background: none;
+  border: 0;
+  color: #8b8c86;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 2px 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.staff-ui .s-nav button.on { color: #fff; font-weight: 600; }

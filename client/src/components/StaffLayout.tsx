@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import type { PublicStaff } from "@shared/schema";
-import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, LogOut, ChevronRight, CalendarOff } from "lucide-react";
+import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, CalendarOff, User } from "lucide-react";
 
 export function useStaff() {
   return useQuery<PublicStaff | null>({
@@ -32,10 +32,13 @@ export function StaffLayout({
   children,
   title,
   subtitle,
+  greeting,
 }: {
   children: React.ReactNode;
   title: string;
   subtitle?: string;
+  /** 홈처럼 헤더에 인사말을 쓸 때 */
+  greeting?: boolean;
 }) {
   const { data: staff, isLoading } = useStaff();
   const [location, navigate] = useLocation();
@@ -44,60 +47,42 @@ export function StaffLayout({
     if (!isLoading && !staff) navigate("/staff/login");
   }, [isLoading, staff, navigate]);
 
-  async function logout() {
-    try {
-      await apiRequest("POST", "/api/staff/logout");
-    } catch {
-      /* 무시 */
-    }
-    queryClient.setQueryData(["/api/staff/me"], null);
-    queryClient.clear();
-    navigate("/staff/login");
-  }
-
   if (isLoading || !staff) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      <div className="staff-ui flex min-h-screen items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin" style={{ color: "var(--s-muted)" }} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
+    <div className="staff-ui min-h-screen pb-24">
+      <div className="mx-auto max-w-xl">
+        {/* 헤더 — 선 없이 여백으로만 구분 */}
+        <header className="flex items-start justify-between px-4 pb-1 pt-5">
+          <div className="min-w-0">
+            <div className="s-k">{greeting ? "안녕하세요" : subtitle || title}</div>
+            <h1 className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">
+              {greeting ? `${staff.name} 님` : title}
+            </h1>
+          </div>
           <button
             onClick={() => navigate("/staff/me")}
-            className="min-w-0 rounded-md px-1 py-0.5 text-left hover-elevate"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+            style={{ background: "var(--s-surface)", boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}
             data-testid="button-open-profile"
+            aria-label="내 정보"
           >
-            <div className="eyebrow">Knit Staff</div>
-            <div className="flex items-center gap-1 truncate text-sm font-semibold text-foreground">
-              {staff.name}
-              <span className="text-xs font-normal text-muted-foreground">{staff.position}</span>
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
+            <User className="h-4 w-4" strokeWidth={1.6} />
           </button>
-          <button
-            onClick={logout}
-            className="flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover-elevate"
-            data-testid="button-staff-logout"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            로그아웃
-          </button>
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto max-w-2xl px-4 py-5">
-        <h1 className="font-display text-lg font-semibold text-foreground">{title}</h1>
-        {subtitle ? <p className="mb-4 mt-0.5 text-xs text-muted-foreground">{subtitle}</p> : <div className="mb-4" />}
-        {children}
-      </main>
+        <main className="px-3.5 pb-4">{children}</main>
+      </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background">
-        <div className="mx-auto grid max-w-2xl grid-cols-6">
+      {/* 하단 알약 내비 */}
+      <nav className="s-navwrap">
+        <div className="s-nav" style={{ gridTemplateColumns: `repeat(${TABS.length}, 1fr)` }}>
           {TABS.map((t) => {
             const active = location === t.href;
             const Icon = t.icon;
@@ -105,12 +90,10 @@ export function StaffLayout({
               <button
                 key={t.href}
                 onClick={() => navigate(t.href)}
-                className={`flex flex-col items-center gap-0.5 py-2.5 text-[11px] ${
-                  active ? "text-foreground" : "text-muted-foreground"
-                }`}
+                className={active ? "on" : ""}
                 data-testid={`tab-staff-${t.label}`}
               >
-                <Icon className={`h-4.5 w-4.5 ${active ? "" : "opacity-70"}`} strokeWidth={active ? 2 : 1.5} />
+                <Icon className="h-[17px] w-[17px]" strokeWidth={active ? 2 : 1.6} />
                 {t.label}
               </button>
             );
