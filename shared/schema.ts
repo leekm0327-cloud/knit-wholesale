@@ -1320,6 +1320,8 @@ export const staff = sqliteTable("staff", {
   staffRole: text("staff_role").notNull().default("staff"), // "staff" | "lead"
   active: integer("active").notNull().default(1),
   memo: text("memo").notNull().default(""),
+  hireDate: text("hire_date").notNull().default(""), // 입사일 YYYY-MM-DD (연차 계산 기준)
+  leaveEnabled: integer("leave_enabled").notNull().default(0), // 연차 제도 적용 여부
   lastLoginAt: integer("last_login_at"),
   createdAt: integer("created_at").notNull(),
 });
@@ -1472,6 +1474,8 @@ export const insertStaffSchema = z.object({
   position: z.string().optional().default("바리스타"),
   staffRole: z.enum(STAFF_ROLES).optional().default("staff"),
   memo: z.string().optional().default(""),
+  hireDate: z.string().optional().default(""),
+  leaveEnabled: z.number().int().min(0).max(1).optional().default(0),
 });
 
 export const updateStaffSchema = z.object({
@@ -1481,6 +1485,8 @@ export const updateStaffSchema = z.object({
   staffRole: z.enum(STAFF_ROLES).optional(),
   active: z.number().int().min(0).max(1).optional(),
   memo: z.string().optional(),
+  hireDate: z.string().optional(),
+  leaveEnabled: z.number().int().min(0).max(1).optional(),
   password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다.").optional(),
 });
 
@@ -1591,6 +1597,9 @@ export type StaffHome = {
   tomorrowShift: Shift | null;
   weekFrom: string; // 이번 주 월요일
   weekShifts: Shift[]; // 이번 주 내 근무 (월~일)
+  leaveEnabled: boolean;
+  leaveRemaining: number;
+  leavePending: number;
   unreadAnnouncements: number;
   latestAnnouncement: Announcement | null;
   weekMinutes: number; // 이번 주 근무 분
@@ -1604,4 +1613,102 @@ export type AttendanceSummaryRow = {
   position: string;
   days: number;
   minutes: number;
+};
+
+// ============================================================
+// 연차(유급휴가)
+// ============================================================
+
+/** 연차 제도 시행일 — 이 날짜 이전 발생분은 부여하지 않는다 */
+export const LEAVE_START_DATE = "2026-07-01";
+/** 근속 n년차에 발생하는 연차 일수 (법 기준: 15일 + 최초 1년 초과 매 2년 1일 가산, 최대 25일) */
+export function annualLeaveDays(years: number): number {
+  if (years < 1) return 0;
+  return Math.min(25, 15 + Math.floor((years - 1) / 2));
+}
+
+/** 연차 부여 이력 */
+export const leaveGrants = sqliteTable("leave_grants", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffId: integer("staff_id").notNull(),
+  kind: text("kind").notNull().default("manual"), // monthly | annual | manual
+  days: real("days").notNull().default(0),
+  grantDate: text("grant_date").notNull(), // 발생일 YYYY-MM-DD
+  expiresAt: text("expires_at").notNull(), // 소멸일 YYYY-MM-DD (발생일 + 1년)
+  memo: text("memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+/** 연차 신청 */
+export const leaveRequests = sqliteTable("leave_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  staffId: integer("staff_id").notNull(),
+  staffName: text("staff_name").notNull().default(""),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  days: real("days").notNull().default(0), // 0.5 단위
+  halfDay: integer("half_day").notNull().default(0), // 1이면 반차
+  reason: text("reason").notNull().default(""),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected
+  decidedByName: text("decided_by_name").notNull().default(""),
+  decidedAt: integer("decided_at"),
+  adminMemo: text("admin_memo").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const LEAVE_STATUSES = ["pending", "approved", "rejected"] as const;
+export type LeaveStatus = (typeof LEAVE_STATUSES)[number];
+export const LEAVE_STATUS_LABEL: Record<LeaveStatus, string> = {
+  pending: "대기",
+  approved: "승인",
+  rejected: "반려",
+};
+
+export const LEAVE_GRANT_KIND_LABEL: Record<string, string> = {
+  monthly: "월 발생",
+  annual: "연차 발생",
+  manual: "수동 부여",
+};
+
+// ===== zod =====
+export const createLeaveRequestSchema = z
+  .object({
+    startDate: z.string().min(1, "시작일을 선택해 주세요."),
+    endDate: z.string().min(1, "종료일을 선택해 주세요."),
+    halfDay: z.boolean().optional().default(false),
+    reason: z.string().max(200).optional().default(""),
+  })
+  .refine((v) => v.endDate >= v.startDate, { message: "종료일이 시작일보다 빠릅니다." })
+  .refine((v) => !v.halfDay || v.startDate === v.endDate, {
+    message: "반차는 하루만 선택할 수 있습니다.",
+  });
+
+export const decideLeaveRequestSchema = z.object({
+  status: z.enum(["approved", "rejected"]),
+  adminMemo: z.string().max(200).optional().default(""),
+});
+
+export const createLeaveGrantSchema = z.object({
+  staffId: z.number().int().positive(),
+  days: z.number().min(-100).max(100),
+  grantDate: z.string().min(1, "발생일을 선택해 주세요."),
+  memo: z.string().max(100).optional().default(""),
+});
+
+// ===== 타입 =====
+export type LeaveGrant = typeof leaveGrants.$inferSelect;
+export type LeaveRequest = typeof leaveRequests.$inferSelect;
+export type CreateLeaveRequest = z.infer<typeof createLeaveRequestSchema>;
+
+/** 직원 한 명의 연차 현황 */
+export type LeaveBalance = {
+  staffId: number;
+  name: string;
+  hireDate: string;
+  granted: number; // 살아있는 부여 합계
+  used: number; // 승인된 사용 합계
+  pending: number; // 대기 중 신청 일수
+  remaining: number; // 잔여
+  expiringSoon: number; // 60일 내 소멸 예정 잔여
+  expiringDate: string; // 가장 가까운 소멸일
 };

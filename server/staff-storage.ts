@@ -13,6 +13,8 @@ import {
   shifts,
   announcements,
   announcementReads,
+  leaveGrants,
+  leaveRequests,
   type Staff,
   type PublicStaff,
   type InsertStaff,
@@ -28,6 +30,11 @@ import {
   type InsertAnnouncement,
   type StaffHome,
   type AttendanceSummaryRow,
+  type LeaveGrant,
+  type LeaveRequest,
+  type LeaveBalance,
+  LEAVE_START_DATE,
+  annualLeaveDays,
   OWNER_STAFF_LOGIN_ID,
   OWNER_STAFF_NAME,
 } from "@shared/schema";
@@ -118,6 +125,33 @@ sqlite.exec(`
     created_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS leave_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id INTEGER NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'manual',
+    days REAL NOT NULL DEFAULT 0,
+    grant_date TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    memo TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS leave_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    staff_id INTEGER NOT NULL,
+    staff_name TEXT NOT NULL DEFAULT '',
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    days REAL NOT NULL DEFAULT 0,
+    half_day INTEGER NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    decided_by_name TEXT NOT NULL DEFAULT '',
+    decided_at INTEGER,
+    admin_memo TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS announcements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -144,6 +178,8 @@ for (const [table, col] of [
   ["dessert_logs", "produced_at INTEGER"],
   ["dessert_logs", "discarded_by_name TEXT NOT NULL DEFAULT ''"],
   ["dessert_logs", "discarded_at INTEGER"],
+  ["staff", "hire_date TEXT NOT NULL DEFAULT ''"],
+  ["staff", "leave_enabled INTEGER NOT NULL DEFAULT 0"],
 ]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
@@ -162,6 +198,8 @@ for (const stmt of [
   "CREATE INDEX IF NOT EXISTS idx_dessert_logs_date ON dessert_logs(prod_date);",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_dessert_logs_day_item ON dessert_logs(prod_date, item_id);",
   "CREATE INDEX IF NOT EXISTS idx_shifts_date ON shifts(work_date);",
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_leave_grant_auto ON leave_grants(staff_id, kind, grant_date);",
+  "CREATE INDEX IF NOT EXISTS idx_leave_req_staff ON leave_requests(staff_id, start_date);",
 ]) {
   try {
     sqlite.exec(stmt);
@@ -182,6 +220,29 @@ export function addDays(day: string, n: number): string {
   const d = new Date(day + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD 에 개월 수를 더한다. 말일 보정(1/31 + 1개월 = 2/28) 포함 */
+export function addMonths(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const total = (y * 12 + (m - 1)) + n;
+  const ny = Math.floor(total / 12);
+  const nm = total % 12;
+  const last = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  const nd = Math.min(d, last);
+  return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
+}
+
+export function addYears(day: string, n: number): string {
+  return addMonths(day, n * 12);
+}
+
+/** 두 날짜 사이의 일수 (양끝 포함) */
+export function dateSpanDays(from: string, to: string): number {
+  const a = Date.parse(from + "T00:00:00Z");
+  const b = Date.parse(to + "T00:00:00Z");
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0;
+  return Math.round((b - a) / 86400000) + 1;
 }
 
 export function kstMonthStart(day = kstToday()): string {
@@ -245,6 +306,8 @@ export class StaffStorage {
         staffRole: s.staffRole ?? "staff",
         active: 1,
         memo: s.memo ?? "",
+        hireDate: s.hireDate ?? "",
+        leaveEnabled: s.leaveEnabled ?? 0,
         createdAt: Date.now(),
       })
       .returning()
@@ -727,6 +790,234 @@ export class StaffStorage {
     return out;
   }
 
+
+  // ============================================================
+  // 연차(유급휴가)
+  // ============================================================
+
+  /**
+   * 입사일 기준 자동 부여를 현재 시점까지 채워 넣는다. (멱등 — 같은 발생일은 한 번만)
+   * - 1년 미만: 입사 응당일마다 1일 (최대 11회)
+   * - 1년 이상: 입사 응당일마다 15일 + 가산
+   * - LEAVE_START_DATE 이전 발생분은 건너뛴다
+   */
+  async syncLeaveGrants(): Promise<void> {
+    const today = kstToday();
+    const people = db.select().from(staff).all().filter((s) => s.leaveEnabled === 1 && s.hireDate);
+
+    for (const p of people) {
+      const hire = p.hireDate;
+      const rows: { kind: string; days: number; grantDate: string }[] = [];
+
+      // 월 단위 (입사 1개월 후부터 11회)
+      for (let m = 1; m <= 11; m++) {
+        const d = addMonths(hire, m);
+        if (d > today) break;
+        if (d < LEAVE_START_DATE) continue;
+        rows.push({ kind: "monthly", days: 1, grantDate: d });
+      }
+      // 연 단위 (입사 1년 후부터)
+      for (let y = 1; y <= 30; y++) {
+        const d = addYears(hire, y);
+        if (d > today) break;
+        if (d < LEAVE_START_DATE) continue;
+        rows.push({ kind: "annual", days: annualLeaveDays(y), grantDate: d });
+      }
+
+      for (const r of rows) {
+        const dup = db
+          .select()
+          .from(leaveGrants)
+          .where(
+            and(
+              eq(leaveGrants.staffId, p.id),
+              eq(leaveGrants.kind, r.kind),
+              eq(leaveGrants.grantDate, r.grantDate),
+            ),
+          )
+          .get();
+        if (dup) continue;
+        db.insert(leaveGrants)
+          .values({
+            staffId: p.id,
+            kind: r.kind,
+            days: r.days,
+            grantDate: r.grantDate,
+            expiresAt: addYears(r.grantDate, 1),
+            memo: "",
+            createdAt: Date.now(),
+          })
+          .run();
+      }
+    }
+  }
+
+  async listLeaveGrants(staffId?: number): Promise<LeaveGrant[]> {
+    const rows = db.select().from(leaveGrants).orderBy(desc(leaveGrants.grantDate)).all();
+    return staffId ? rows.filter((r) => r.staffId === staffId) : rows;
+  }
+
+  async createLeaveGrant(p: { staffId: number; days: number; grantDate: string; memo?: string }): Promise<LeaveGrant> {
+    return db
+      .insert(leaveGrants)
+      .values({
+        staffId: p.staffId,
+        kind: "manual",
+        days: p.days,
+        grantDate: p.grantDate,
+        expiresAt: addYears(p.grantDate, 1),
+        memo: p.memo ?? "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+
+  async deleteLeaveGrant(id: number): Promise<void> {
+    db.delete(leaveGrants).where(eq(leaveGrants.id, id)).run();
+  }
+
+  async listLeaveRequests(staffId?: number, status?: string): Promise<LeaveRequest[]> {
+    let rows = db.select().from(leaveRequests).orderBy(desc(leaveRequests.startDate)).all();
+    if (staffId) rows = rows.filter((r) => r.staffId === staffId);
+    if (status) rows = rows.filter((r) => r.status === status);
+    return rows;
+  }
+
+  async getLeaveRequest(id: number): Promise<LeaveRequest | undefined> {
+    return db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).get();
+  }
+
+  async createLeaveRequest(p: {
+    staffId: number;
+    staffName: string;
+    startDate: string;
+    endDate: string;
+    halfDay: boolean;
+    reason: string;
+  }): Promise<LeaveRequest> {
+    const days = p.halfDay ? 0.5 : dateSpanDays(p.startDate, p.endDate);
+    return db
+      .insert(leaveRequests)
+      .values({
+        staffId: p.staffId,
+        staffName: p.staffName,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        days,
+        halfDay: p.halfDay ? 1 : 0,
+        reason: p.reason,
+        status: "pending",
+        decidedByName: "",
+        decidedAt: null,
+        adminMemo: "",
+        createdAt: Date.now(),
+      })
+      .returning()
+      .get();
+  }
+
+  async decideLeaveRequest(
+    id: number,
+    status: "approved" | "rejected",
+    decidedByName: string,
+    adminMemo: string,
+  ): Promise<LeaveRequest | undefined> {
+    return db
+      .update(leaveRequests)
+      .set({ status, decidedByName, decidedAt: Date.now(), adminMemo })
+      .where(eq(leaveRequests.id, id))
+      .returning()
+      .get();
+  }
+
+  async deleteLeaveRequest(id: number): Promise<void> {
+    db.delete(leaveRequests).where(eq(leaveRequests.id, id)).run();
+  }
+
+  /**
+   * 잔여 연차 계산 — 오래된 부여분부터 차감(FIFO)하고, 소멸일이 지난 부여분은 제외한다.
+   */
+  async leaveBalance(staffId: number): Promise<LeaveBalance | null> {
+    const p = await this.getStaff(staffId);
+    if (!p) return null;
+    const today = kstToday();
+
+    const grants = (await this.listLeaveGrants(staffId))
+      .slice()
+      .sort((a, b) => a.grantDate.localeCompare(b.grantDate))
+      .map((g) => ({ ...g, left: g.days }));
+
+    const approved = (await this.listLeaveRequests(staffId, "approved"))
+      .slice()
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    let used = 0;
+    for (const r of approved) {
+      used += r.days;
+      let need = r.days;
+      for (const g of grants) {
+        if (need <= 0) break;
+        if (g.left <= 0) continue;
+        // 사용 시점에 살아있던 부여분에서만 차감
+        if (g.grantDate > r.startDate || g.expiresAt < r.startDate) continue;
+        const take = Math.min(need, g.left);
+        g.left -= take;
+        need -= take;
+      }
+    }
+
+    const alive = grants.filter((g) => g.grantDate <= today && g.expiresAt >= today && g.left > 0);
+    const remaining = alive.reduce((sum, g) => sum + g.left, 0);
+
+    const soonLimit = addDays(today, 60);
+    const soon = alive.filter((g) => g.expiresAt <= soonLimit);
+    const expiringSoon = soon.reduce((sum, g) => sum + g.left, 0);
+    const expiringDate = soon.length > 0 ? soon[0].expiresAt : "";
+
+    const pending = (await this.listLeaveRequests(staffId, "pending")).reduce((sum, r) => sum + r.days, 0);
+    const granted = grants
+      .filter((g) => g.grantDate <= today && g.expiresAt >= today)
+      .reduce((sum, g) => sum + g.days, 0);
+
+    return {
+      staffId,
+      name: p.name,
+      hireDate: p.hireDate,
+      granted,
+      used,
+      pending,
+      remaining,
+      expiringSoon,
+      expiringDate,
+    };
+  }
+
+  async allLeaveBalances(): Promise<LeaveBalance[]> {
+    const people = db.select().from(staff).all().filter((s) => s.leaveEnabled === 1);
+    const out: LeaveBalance[] = [];
+    for (const p of people) {
+      const b = await this.leaveBalance(p.id);
+      if (b) out.push(b);
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** 기간 안에 승인된 연차가 걸쳐 있는 직원 id 목록 (근무표 표시용) */
+  async approvedLeaveDays(from: string, to: string): Promise<{ staffId: number; date: string; halfDay: boolean }[]> {
+    const rows = await this.listLeaveRequests(undefined, "approved");
+    const out: { staffId: number; date: string; halfDay: boolean }[] = [];
+    for (const r of rows) {
+      let d = r.startDate;
+      let guard = 0;
+      while (d <= r.endDate && guard++ < 400) {
+        if (d >= from && d <= to) out.push({ staffId: r.staffId, date: d, halfDay: r.halfDay === 1 });
+        d = addDays(d, 1);
+      }
+    }
+    return out;
+  }
+
   // ===== 직원 홈 요약 =====
   async staffHome(staffId: number): Promise<StaffHome | null> {
     const s = await this.getStaff(staffId);
@@ -743,6 +1034,7 @@ export class StaffStorage {
     const weekRows = await this.listAttendance(weekFrom, today, staffId);
     const monthRows = await this.listAttendance(monthFrom, today, staffId);
 
+    const bal = s.leaveEnabled === 1 ? await this.leaveBalance(staffId) : null;
     const tomorrow = addDays(today, 1);
     const tomorrowShifts = await this.listShifts(tomorrow, tomorrow, staffId);
     const weekShifts = await this.listShifts(weekFrom, addDays(weekFrom, 6), staffId);
@@ -760,6 +1052,9 @@ export class StaffStorage {
       latestAnnouncement: anns[0] ?? null,
       weekMinutes: weekRows.reduce((sum, r) => sum + workedMinutes(r), 0),
       monthMinutes: monthRows.reduce((sum, r) => sum + workedMinutes(r), 0),
+      leaveEnabled: s.leaveEnabled === 1,
+      leaveRemaining: bal?.remaining ?? 0,
+      leavePending: bal?.pending ?? 0,
     };
   }
 }

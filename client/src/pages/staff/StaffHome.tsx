@@ -222,6 +222,22 @@ export default function StaffHome() {
         )}
       </Card>
 
+      {/* 연차 */}
+      {data?.leaveEnabled && (
+        <button
+          onClick={() => navigate("/staff/leave")}
+          className="mt-4 flex w-full items-center justify-between rounded-md border px-4 py-3 text-left hover-elevate"
+          data-testid="link-leave"
+        >
+          <span className="text-sm font-semibold text-foreground">연차</span>
+          <span className="text-sm text-muted-foreground">
+            잔여{" "}
+            <span className="font-display font-semibold text-foreground">{data.leaveRemaining}일</span>
+            {data.leavePending > 0 ? ` · 대기 ${data.leavePending}일` : ""}
+          </span>
+        </button>
+      )}
+
       {/* 바로가기 */}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <Tile icon={Coffee} label="에스프레소 기록" onClick={() => navigate("/staff/espresso")} />

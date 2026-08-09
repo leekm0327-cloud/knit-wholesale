@@ -50,6 +50,7 @@ import {
   CalendarDays,
   Megaphone,
   ClipboardList,
+  CalendarOff,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -128,6 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/staff/attendance", label: "근태 현황", icon: Clock },
       { href: "/admin/staff/schedule", label: "근무 스케줄", icon: CalendarDays },
       { href: "/admin/staff/notices", label: "직원 공지", icon: Megaphone },
+      { href: "/admin/staff/leave", label: "연차 관리", icon: CalendarOff },
       { href: "/admin/staff/logs", label: "직원 기록", icon: ClipboardList },
     ],
   },
@@ -218,6 +220,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   });
   const chatUnreadCount = chatUnread?.unread ?? 0;
 
+  // 연차 승인 대기 건수 (배지)
+  const { data: leavePending } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/staff/leave/pending-count"],
+    enabled: !!user && user.role === "admin",
+    refetchInterval: 60000,
+  });
+  const leavePendingCount = leavePending?.count ?? 0;
+
   // 거래처가 보낸 새 메시지 도착 시 관리자에게 알림
   useChatAlert(chatUnread?.unread, {
     title: "거래처 새 메시지",
@@ -240,7 +250,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       ? pendingCount
       : href === "/admin/chat"
         ? chatUnreadCount
-        : 0;
+        : href === "/admin/staff/leave"
+          ? leavePendingCount
+          : 0;
 
   // 단일 메뉴 링크 렌더
   const renderLink = (item: NavItem, indent: boolean, onNavigate?: () => void) => {

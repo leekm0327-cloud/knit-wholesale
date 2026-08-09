@@ -80,6 +80,8 @@ import StaffDessert from "@/pages/staff/StaffDessert";
 import StaffSchedule from "@/pages/staff/StaffSchedule";
 import StaffNotices from "@/pages/staff/StaffNotices";
 import StaffProfile from "@/pages/staff/StaffProfile";
+import StaffLeave from "@/pages/staff/StaffLeave";
+import AdminStaffLeave from "@/pages/admin/AdminStaffLeave";
 import AdminWebAnalytics from "@/pages/admin/AdminWebAnalytics";
 import NotFound from "@/pages/not-found";
 
@@ -212,6 +214,7 @@ function AppRouter() {
       <Route path="/admin/staff/schedule" component={AdminStaffSchedule} />
       <Route path="/admin/staff/notices" component={AdminStaffNotices} />
       <Route path="/admin/staff/logs" component={AdminStaffLogs} />
+      <Route path="/admin/staff/leave" component={AdminStaffLeave} />
 
       {/* 직원 내부 관리 — 직원 화면 (자체 인증) */}
       <Route path="/staff/login" component={StaffLogin} />
@@ -221,6 +224,7 @@ function AppRouter() {
       <Route path="/staff/schedule" component={StaffSchedule} />
       <Route path="/staff/notices" component={StaffNotices} />
       <Route path="/staff/me" component={StaffProfile} />
+      <Route path="/staff/leave" component={StaffLeave} />
       <Route path="/admin/web-analytics" component={AdminWebAnalytics} />
 
       <Route component={NotFound} />

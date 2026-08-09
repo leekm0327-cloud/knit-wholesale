@@ -21,6 +21,8 @@ type NewStaff = {
   phone: string;
   position: string;
   staffRole: StaffRole;
+  hireDate: string;
+  leaveEnabled: boolean;
 };
 
 const EMPTY: NewStaff = {
@@ -30,6 +32,8 @@ const EMPTY: NewStaff = {
   phone: "",
   position: "바리스타",
   staffRole: "staff",
+  hireDate: "",
+  leaveEnabled: false,
 };
 
 export default function AdminStaff() {
@@ -57,6 +61,8 @@ export default function AdminStaff() {
         phone: d.phone.trim(),
         position: d.position.trim() || "바리스타",
         staffRole: d.staffRole,
+        hireDate: d.hireDate,
+        leaveEnabled: d.leaveEnabled ? 1 : 0,
       });
       toast({ title: "직원 계정이 생성되었습니다." });
       setD(EMPTY);
@@ -141,6 +147,21 @@ export default function AdminStaff() {
                 <Input value={d.position} onChange={(e) => set({ position: e.target.value })} placeholder="바리스타" />
               </div>
               <div>
+                <Label className="text-xs text-muted-foreground">입사일 (연차 계산 기준)</Label>
+                <Input type="date" value={d.hireDate} onChange={(e) => set({ hireDate: e.target.value })} data-testid="input-hire-date" />
+              </div>
+              <div className="flex items-end pb-2">
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={d.leaveEnabled}
+                    onChange={(e) => set({ leaveEnabled: e.target.checked })}
+                    data-testid="checkbox-leave-enabled"
+                  />
+                  연차 적용
+                </label>
+              </div>
+              <div>
                 <Label className="text-xs text-muted-foreground">권한</Label>
                 <select
                   value={d.staffRole}
@@ -189,7 +210,9 @@ export default function AdminStaff() {
                         {s.loginId} · {s.position} · {s.phone || "연락처 없음"}
                       </div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
-                        {s.lastLoginAt ? `최근 로그인 ${fmtDate(s.lastLoginAt)}` : "로그인 이력 없음"}
+                        {s.hireDate ? `입사 ${s.hireDate}` : "입사일 미입력"}
+                        {s.leaveEnabled === 1 ? " · 연차 적용" : ""}
+                        {s.lastLoginAt ? ` · 최근 로그인 ${fmtDate(s.lastLoginAt)}` : " · 로그인 이력 없음"}
                       </div>
                     </div>
                     {isOwner && (
@@ -197,6 +220,20 @@ export default function AdminStaff() {
                         <Button variant="outline" size="sm" onClick={() => { setPwFor(pwFor === s.id ? null : s.id); setPw(""); }}>
                           <KeyRound className="h-3.5 w-3.5" />
                           비밀번호
+                        </Button>
+                        <Input
+                          type="date"
+                          value={s.hireDate}
+                          onChange={(e) => patch(s.id, { hireDate: e.target.value }, "입사일이 저장되었습니다.")}
+                          className="h-9 w-36"
+                          data-testid={`input-hire-${s.id}`}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => patch(s.id, { leaveEnabled: s.leaveEnabled === 1 ? 0 : 1 })}
+                        >
+                          연차 {s.leaveEnabled === 1 ? "해제" : "적용"}
                         </Button>
                         <Button
                           variant="outline"

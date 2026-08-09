@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PublicStaff } from "@shared/schema";
-import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, LogOut, ChevronRight } from "lucide-react";
+import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, LogOut, ChevronRight, CalendarOff } from "lucide-react";
 
 export function useStaff() {
   return useQuery<PublicStaff | null>({
@@ -25,6 +25,7 @@ const TABS = [
   { href: "/staff/dessert", label: "생산", icon: CakeSlice },
   { href: "/staff/schedule", label: "스케줄", icon: CalendarDays },
   { href: "/staff/notices", label: "공지", icon: Megaphone },
+  { href: "/staff/leave", label: "연차", icon: CalendarOff },
 ];
 
 export function StaffLayout({
@@ -96,7 +97,7 @@ export function StaffLayout({
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background">
-        <div className="mx-auto grid max-w-2xl grid-cols-5">
+        <div className="mx-auto grid max-w-2xl grid-cols-6">
           {TABS.map((t) => {
             const active = location === t.href;
             const Icon = t.icon;

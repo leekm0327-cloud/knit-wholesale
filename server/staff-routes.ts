@@ -2,7 +2,7 @@
 // 직원용 엔드포인트: /api/staff/*        (직원 세션 필요)
 // 관리자용 엔드포인트: /api/admin/staff/* (관리자 세션 필요)
 import type { Express, Request, Response, NextFunction } from "express";
-import { staffStorage, seedOwnerStaff, kstToday, kstMonthStart, toPublicStaff, workedMinutes } from "./staff-storage";
+import { staffStorage, seedOwnerStaff, kstToday, kstMonthStart, toPublicStaff, workedMinutes, dateSpanDays } from "./staff-storage";
 import type { IStorage } from "./storage";
 import {
   staffLoginSchema,
@@ -17,6 +17,9 @@ import {
   assignShiftSchema,
   clearShiftSchema,
   insertAnnouncementSchema,
+  createLeaveRequestSchema,
+  decideLeaveRequestSchema,
+  createLeaveGrantSchema,
 } from "@shared/schema";
 
 declare module "express-session" {
@@ -275,6 +278,137 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.markAnnouncementRead(id, req.session.staffId!);
     res.json({ ok: true });
+  });
+
+
+  // ============================================================
+  // 연차 — 직원
+  // ============================================================
+  app.get("/api/staff/leave", requireStaff, async (req, res) => {
+    await staffStorage.syncLeaveGrants();
+    const id = req.session.staffId!;
+    const s = await staffStorage.getStaff(id);
+    if (!s) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    if (s.leaveEnabled !== 1) return res.json({ enabled: false });
+    res.json({
+      enabled: true,
+      balance: await staffStorage.leaveBalance(id),
+      grants: await staffStorage.listLeaveGrants(id),
+      requests: await staffStorage.listLeaveRequests(id),
+    });
+  });
+
+  app.post("/api/staff/leave/requests", requireStaff, async (req, res) => {
+    const parsed = createLeaveRequestSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    const s = await staffStorage.getStaff(req.session.staffId!);
+    if (!s) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    if (s.leaveEnabled !== 1) return res.status(403).json({ message: "연차 대상이 아닙니다." });
+
+    await staffStorage.syncLeaveGrants();
+    const bal = await staffStorage.leaveBalance(s.id);
+    const want = parsed.data.halfDay ? 0.5 : dateSpanDays(parsed.data.startDate, parsed.data.endDate);
+    if (bal && want > bal.remaining - bal.pending) {
+      return res.status(400).json({
+        message: `잔여 연차가 부족합니다. (신청 ${want}일 / 남은 ${Math.max(0, bal.remaining - bal.pending)}일)`,
+      });
+    }
+    const row = await staffStorage.createLeaveRequest({
+      staffId: s.id,
+      staffName: s.name,
+      startDate: parsed.data.startDate,
+      endDate: parsed.data.endDate,
+      halfDay: !!parsed.data.halfDay,
+      reason: parsed.data.reason ?? "",
+    });
+    res.json(row);
+  });
+
+  /** 승인 전에는 본인이 취소할 수 있다 */
+  app.delete("/api/staff/leave/requests/:id", requireStaff, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getLeaveRequest(id);
+    if (!row) return res.status(404).json({ message: "신청을 찾을 수 없습니다." });
+    if (row.staffId !== req.session.staffId)
+      return res.status(403).json({ message: "본인 신청만 취소할 수 있습니다." });
+    if (row.status !== "pending")
+      return res.status(400).json({ message: "이미 처리된 신청은 취소할 수 없습니다. 대표님께 말씀해 주세요." });
+    await staffStorage.deleteLeaveRequest(id);
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // 연차 — 관리자
+  // ============================================================
+  app.get("/api/admin/staff/leave", requireAdmin, async (_req, res) => {
+    await staffStorage.syncLeaveGrants();
+    res.json({
+      balances: await staffStorage.allLeaveBalances(),
+      requests: await staffStorage.listLeaveRequests(),
+      grants: await staffStorage.listLeaveGrants(),
+      staff: await staffStorage.listStaff(),
+    });
+  });
+
+  app.get("/api/admin/staff/leave/pending-count", requireAdmin, async (_req, res) => {
+    const rows = await staffStorage.listLeaveRequests(undefined, "pending");
+    res.json({ count: rows.length });
+  });
+
+  app.patch("/api/admin/staff/leave/requests/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = decideLeaveRequestSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    const user = req.session.userId ? await storage.getCustomer(req.session.userId) : null;
+    const row = await staffStorage.decideLeaveRequest(
+      id,
+      parsed.data.status,
+      user?.managerName || "관리자",
+      parsed.data.adminMemo ?? "",
+    );
+    if (!row) return res.status(404).json({ message: "신청을 찾을 수 없습니다." });
+    await logIfPossible(
+      req,
+      storage,
+      `staff.leave.${parsed.data.status}`,
+      "leaveRequest",
+      id,
+      `${row.staffName} 연차 ${row.startDate}~${row.endDate} ${parsed.data.status === "approved" ? "승인" : "반려"}`,
+    );
+    res.json(row);
+  });
+
+  app.delete("/api/admin/staff/leave/requests/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteLeaveRequest(id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/admin/staff/leave/grants", requireOwner, async (req, res) => {
+    const parsed = createLeaveGrantSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    res.json(await staffStorage.createLeaveGrant(parsed.data));
+  });
+
+  app.delete("/api/admin/staff/leave/grants/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteLeaveGrant(id);
+    res.json({ ok: true });
+  });
+
+  /** 근무표에 표시할 승인된 연차 */
+  app.get("/api/admin/staff/leave/days", requireAdmin, async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json(await staffStorage.approvedLeaveDays(from, to));
+  });
+
+  app.get("/api/staff/leave/days", requireStaff, async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json(await staffStorage.approvedLeaveDays(from, to));
   });
 
   // ============================================================
