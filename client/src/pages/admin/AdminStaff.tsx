@@ -206,9 +206,11 @@ export default function AdminStaff() {
                           {s.active === 1 ? <X className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
                           {s.active === 1 ? "비활성화" : "활성화"}
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => remove(s.id, s.name)}>
-                          삭제
-                        </Button>
+                        {s.staffRole !== "owner" && (
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => remove(s.id, s.name)}>
+                            삭제
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>

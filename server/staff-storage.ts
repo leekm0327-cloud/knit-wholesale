@@ -3,6 +3,7 @@
 import { db, sqlite } from "./storage";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
 import {
   staff,
   attendance,
@@ -27,6 +28,8 @@ import {
   type InsertAnnouncement,
   type StaffHome,
   type AttendanceSummaryRow,
+  OWNER_STAFF_LOGIN_ID,
+  OWNER_STAFF_NAME,
 } from "@shared/schema";
 
 // ===== 테이블 자동 생성 (마이그레이션 대용) =====
@@ -762,3 +765,31 @@ export class StaffStorage {
 }
 
 export const staffStorage = new StaffStorage();
+
+/**
+ * 대표(이강민) 계정을 근무표에 항상 넣어두기 위한 시드.
+ * 직원 계정을 따로 만들지 않아도 스케줄에 배정할 수 있게 한다.
+ * 비밀번호는 임의값이라 그대로는 로그인할 수 없고, 필요하면 직원 계정 화면에서 새로 지정하면 된다.
+ */
+export function seedOwnerStaff(): void {
+  try {
+    const exists = db.select().from(staff).all().some((s) => s.staffRole === "owner");
+    if (exists) return;
+    db.insert(staff)
+      .values({
+        loginId: OWNER_STAFF_LOGIN_ID,
+        password: bcrypt.hashSync(randomUUID(), 10),
+        name: OWNER_STAFF_NAME,
+        phone: "",
+        position: "대표",
+        staffRole: "owner",
+        active: 1,
+        memo: "근무표 배정용 계정 (자동 생성)",
+        createdAt: Date.now(),
+      })
+      .run();
+    console.log("[seed] 근무표용 대표 계정 생성 완료");
+  } catch (e: any) {
+    console.warn("[seed owner staff]", e?.message);
+  }
+}

@@ -157,9 +157,12 @@ export default function AdminStaffSchedule() {
               );
               // 아직 아무도 배정하지 않은 주는 경고를 띄우지 않는다 (앞으로 짤 주)
               const weekEmpty = counts.size === 0;
+              // 대표는 주 5일 기준 대상이 아니다
               const short = weekEmpty
                 ? []
-                : activeStaff.filter((s) => (counts.get(s.id) ?? 0) < WEEKLY_TARGET_DAYS);
+                : activeStaff.filter(
+                    (s) => s.staffRole !== "owner" && (counts.get(s.id) ?? 0) < WEEKLY_TARGET_DAYS,
+                  );
 
               return (
                 <Card key={ymd(week[0])} className="overflow-hidden">
@@ -266,7 +269,7 @@ export default function AdminStaffSchedule() {
                               <span className="flex-1 truncate text-foreground">{s.name}</span>
                               <span
                                 className={`font-display tabular w-12 text-right font-semibold ${
-                                  weekEmpty
+                                  weekEmpty || s.staffRole === "owner"
                                     ? "text-muted-foreground/50"
                                     : n < WEEKLY_TARGET_DAYS
                                       ? "text-destructive"

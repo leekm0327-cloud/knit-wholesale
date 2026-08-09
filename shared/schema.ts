@@ -1421,12 +1421,16 @@ export const announcementReads = sqliteTable("announcement_reads", {
 });
 
 // ===== 상수 =====
-export const STAFF_ROLES = ["staff", "lead"] as const;
+export const STAFF_ROLES = ["staff", "lead", "owner"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
   staff: "직원",
   lead: "매니저",
+  owner: "대표",
 };
+/** 근무표에 자동으로 들어가는 대표 계정 */
+export const OWNER_STAFF_LOGIN_ID = "owner";
+export const OWNER_STAFF_NAME = "이강민";
 
 /** 근무표의 고정 슬롯. Close 는 두 명이 들어가므로 줄이 두 개다. */
 export const SHIFT_SLOTS = ["Open", "Baker", "Close", "Close2", "Part"] as const;
