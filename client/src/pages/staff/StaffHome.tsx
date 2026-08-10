@@ -6,7 +6,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { slotLabel, type StaffHome as StaffHomeData } from "@shared/schema";
-import { LogIn, LogOut, Loader2, ChevronRight } from "lucide-react";
+import { LogIn, LogOut, Loader2, ChevronRight, AlertCircle, Check } from "lucide-react";
 
 const WEEK_LABEL = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -66,8 +66,58 @@ export default function StaffHome() {
     }
   }
 
+  async function readHandover(id: number) {
+    try {
+      await apiRequest("POST", `/api/staff/handover/${id}/read`);
+      queryClient.invalidateQueries({ queryKey: ["/api/staff/home"] });
+    } catch (err) {
+      toast({ variant: "destructive", title: "실패", description: errMsg(err) });
+    }
+  }
+
+  const newHandovers = data?.handoverNew ?? [];
+
   return (
     <StaffLayout title="오늘" greeting>
+      {/* 새 인수인계 — 확인하기 전까지 맨 위에 붙어 있는다 */}
+      {newHandovers.length > 0 && (
+        <div className="s-card mb-2.5" style={{ padding: "13px 15px", boxShadow: "0 2px 10px rgba(92,115,87,.16)" }}>
+          <div className="flex items-center gap-1.5">
+            <span className="h-[7px] w-[7px] rounded-full" style={{ background: "var(--s-accent)" }} />
+            <span className="text-[12.5px] font-semibold" style={{ color: "var(--s-accent)" }}>
+              새 인수인계 {newHandovers.length}건
+            </span>
+          </div>
+          {newHandovers.map((h) => (
+            <div key={h.id} className="mt-2.5" data-testid={`home-handover-${h.id}`}>
+              <div className="flex items-center gap-1.5">
+                {h.important === 1 && (
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" style={{ color: "#a2483f" }} strokeWidth={1.8} />
+                )}
+                <span className="text-[12.5px] font-semibold">{h.staffName}</span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed">{h.body}</p>
+              <button
+                className="mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-medium"
+                style={{ background: "var(--s-ink)", color: "#fff" }}
+                onClick={() => readHandover(h.id)}
+                data-testid={`home-read-handover-${h.id}`}
+              >
+                <Check className="h-3 w-3" strokeWidth={2.6} />
+                확인
+              </button>
+            </div>
+          ))}
+          <button
+            className="mt-3 text-[11.5px]"
+            style={{ color: "var(--s-muted)" }}
+            onClick={() => navigate("/staff/handover")}
+          >
+            인수인계 전체 보기 ›
+          </button>
+        </div>
+      )}
+
       {/* 오늘 근무 — 화면에서 가장 중요한 하나 */}
       <button
         onClick={() => navigate("/staff/schedule")}

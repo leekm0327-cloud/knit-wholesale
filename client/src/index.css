@@ -573,3 +573,31 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   padding: 44px 20px;
   line-height: 1.7;
 }
+
+/* 저장해 둔 항목 고르기 — 목록이 길어져도 화면을 밀지 않도록 이 안에서만 스크롤 */
+.staff-ui .s-picker {
+  max-height: 216px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--s-bg);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 10px;
+}
+.staff-ui .s-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: var(--s-surface);
+  border-radius: 9px;
+  padding: 9px 11px;
+  font-family: inherit;
+  color: var(--s-ink);
+  cursor: pointer;
+}
+.staff-ui .s-picker-item + .s-picker-item { margin-top: 4px; }
+.staff-ui .s-picker-item:disabled { opacity: 0.5; cursor: default; }

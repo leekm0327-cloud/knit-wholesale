@@ -22,6 +22,8 @@ import {
   createLeaveGrantSchema,
   createHandoverSchema,
   createPrepTaskSchema,
+  insertPrepPresetSchema,
+  updatePrepPresetSchema,
 } from "@shared/schema";
 
 declare module "express-session" {
@@ -343,6 +345,10 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
   // ============================================================
   // 준비 작업 — 직원 (추가·체크 모두 가능)
   // ============================================================
+  app.get("/api/staff/prep-presets", requireStaff, async (_req, res) => {
+    res.json(await staffStorage.listPrepPresets());
+  });
+
   app.get("/api/staff/prep-tasks", requireStaff, async (req, res) => {
     const date = String(req.query.date ?? "") || kstToday();
     res.json({ date, rows: await staffStorage.prepTasksOn(date) });
@@ -708,6 +714,41 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.deleteHandover(id);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/staff/prep-presets", requireAdmin, async (_req, res) => {
+    res.json(await staffStorage.listPrepPresets(true));
+  });
+
+  app.post("/api/admin/staff/prep-presets", requireAdmin, async (req, res) => {
+    const parsed = insertPrepPresetSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    res.json(await staffStorage.createPrepPreset(parsed.data));
+  });
+
+  app.patch("/api/admin/staff/prep-presets/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = updatePrepPresetSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const row = await staffStorage.updatePrepPreset(id, parsed.data as any);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    res.json(row);
+  });
+
+  app.post("/api/admin/staff/prep-presets/:id/move", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const dir = Number(req.body?.dir) < 0 ? -1 : 1;
+    await staffStorage.movePrepPreset(id, dir);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/admin/staff/prep-presets/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deletePrepPreset(id);
     res.json({ ok: true });
   });
 

@@ -1606,6 +1606,8 @@ export type StaffHome = {
   monthMinutes: number; // 이번 달 근무 분
   handoverCount: number; // 오늘 인수인계 건수
   handoverUnread: number; // 그중 내가 아직 확인하지 않은 건수
+  /** 아직 확인하지 않은 인수인계 — 홈 맨 위에 그대로 보여준다 */
+  handoverNew: { id: number; staffName: string; body: string; important: number; createdAt: number }[];
   prepTodo: number; // 오늘 남은 준비 작업
   prepTotal: number; // 오늘 준비 작업 전체
 };
@@ -1800,3 +1802,31 @@ export type PrepTaskDay = {
   date: string;
   rows: PrepTask[];
 };
+
+/**
+ * 자주 하는 준비 작업 목록.
+ * 매번 이름을 타이핑하지 않고 골라서 그날 할 일로 넣을 수 있게 미리 저장해 둔다.
+ */
+export const prepTaskPresets = sqliteTable("prep_task_presets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  memo: text("memo").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const insertPrepPresetSchema = z.object({
+  title: z.string().trim().min(1, "이름을 입력해 주세요.").max(100),
+  memo: z.string().max(300).optional().default(""),
+});
+
+export const updatePrepPresetSchema = z.object({
+  title: z.string().trim().min(1).max(100).optional(),
+  memo: z.string().max(300).optional(),
+  active: z.number().int().min(0).max(1).optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+export type PrepTaskPreset = typeof prepTaskPresets.$inferSelect;
+export type InsertPrepPreset = z.infer<typeof insertPrepPresetSchema>;

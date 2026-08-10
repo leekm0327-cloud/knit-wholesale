@@ -18,10 +18,12 @@ import {
   handovers,
   handoverReads,
   prepTasks,
+  prepTaskPresets,
   type Handover,
   type HandoverRow,
   type HandoverDay,
   type PrepTask,
+  type PrepTaskPreset,
   type Staff,
   type PublicStaff,
   type InsertStaff,
@@ -194,6 +196,15 @@ sqlite.exec(`
     staff_id INTEGER NOT NULL,
     staff_name TEXT NOT NULL,
     read_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS prep_task_presets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    memo TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS prep_tasks (
@@ -1100,6 +1111,7 @@ export class StaffStorage {
       leavePending: bal?.pending ?? 0,
       handoverCount: this.countHandovers(today),
       handoverUnread: this.countUnreadHandovers(today, staffId),
+      handoverNew: this.unreadHandovers(today, staffId),
       prepTodo: this.countPrepTodo(today),
       prepTotal: this.countPrepTotal(today),
     };
@@ -1121,6 +1133,30 @@ export class StaffStorage {
       db.select().from(handoverReads).where(eq(handoverReads.staffId, staffId)).all().map((r) => r.handoverId),
     );
     return rows.filter((r) => r.staffId !== staffId && !mine.has(r.id)).length;
+  }
+
+  /** 확인하지 않은 인수인계 본문 (홈 상단 강조용) */
+  private unreadHandovers(date: string, staffId: number) {
+    const rows = db
+      .select()
+      .from(handovers)
+      .where(eq(handovers.workDate, date))
+      .orderBy(desc(handovers.important), asc(handovers.createdAt))
+      .all();
+    if (rows.length === 0) return [];
+    const mine = new Set(
+      db.select().from(handoverReads).where(eq(handoverReads.staffId, staffId)).all().map((r) => r.handoverId),
+    );
+    return rows
+      .filter((r) => r.staffId !== staffId && !mine.has(r.id))
+      .slice(0, 3)
+      .map((r) => ({
+        id: r.id,
+        staffName: r.staffName,
+        body: r.body,
+        important: r.important,
+        createdAt: r.createdAt,
+      }));
   }
 
   async handoverDay(date: string, staffId: number): Promise<HandoverDay> {
@@ -1306,6 +1342,66 @@ export class StaffStorage {
 
   async deletePrepTask(id: number): Promise<void> {
     db.delete(prepTasks).where(eq(prepTasks.id, id)).run();
+  }
+
+  // ===== 준비 작업 프리셋 (자주 하는 일) =====
+
+  async listPrepPresets(includeInactive = false): Promise<PrepTaskPreset[]> {
+    const rows = db
+      .select()
+      .from(prepTaskPresets)
+      .orderBy(asc(prepTaskPresets.sortOrder), asc(prepTaskPresets.id))
+      .all();
+    return includeInactive ? rows : rows.filter((r) => r.active === 1);
+  }
+
+  async createPrepPreset(input: { title: string; memo: string }): Promise<PrepTaskPreset> {
+    const max = db
+      .select()
+      .from(prepTaskPresets)
+      .all()
+      .reduce((m, r) => Math.max(m, r.sortOrder), 0);
+    const [row] = db
+      .insert(prepTaskPresets)
+      .values({
+        title: input.title,
+        memo: input.memo,
+        sortOrder: max + 1,
+        active: 1,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .all();
+    return row;
+  }
+
+  async updatePrepPreset(
+    id: number,
+    patch: Partial<{ title: string; memo: string; active: number; sortOrder: number }>,
+  ): Promise<PrepTaskPreset | null> {
+    if (Object.keys(patch).length === 0) return this.getPrepPreset(id);
+    db.update(prepTaskPresets).set(patch).where(eq(prepTaskPresets.id, id)).run();
+    return this.getPrepPreset(id);
+  }
+
+  async getPrepPreset(id: number): Promise<PrepTaskPreset | null> {
+    return db.select().from(prepTaskPresets).where(eq(prepTaskPresets.id, id)).all()[0] ?? null;
+  }
+
+  async deletePrepPreset(id: number): Promise<void> {
+    db.delete(prepTaskPresets).where(eq(prepTaskPresets.id, id)).run();
+  }
+
+  /** 위아래로 한 칸 이동 */
+  async movePrepPreset(id: number, dir: -1 | 1): Promise<void> {
+    const rows = await this.listPrepPresets(true);
+    const i = rows.findIndex((r) => r.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= rows.length) return;
+    const a = rows[i];
+    const b = rows[j];
+    db.update(prepTaskPresets).set({ sortOrder: b.sortOrder }).where(eq(prepTaskPresets.id, a.id)).run();
+    db.update(prepTaskPresets).set({ sortOrder: a.sortOrder }).where(eq(prepTaskPresets.id, b.id)).run();
   }
 }
 

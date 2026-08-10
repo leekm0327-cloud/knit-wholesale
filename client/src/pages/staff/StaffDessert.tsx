@@ -4,7 +4,7 @@ import { StaffLayout } from "@/components/StaffLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
-import type { PrepTask } from "@shared/schema";
+import type { PrepTask, PrepTaskPreset } from "@shared/schema";
 import { Loader2, ChefHat, Trash2, Check, Plus, X } from "lucide-react";
 
 type Row = {
@@ -207,12 +207,15 @@ export default function StaffDessert() {
 function PrepTasks({ date }: { date: string }) {
   const { toast } = useToast();
   const [adding, setAdding] = useState(false);
+  const [manual, setManual] = useState(false);
   const [title, setTitle] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
 
   const key = `/api/staff/prep-tasks?date=${date}`;
   const { data } = useQuery<{ date: string; rows: PrepTask[] }>({ queryKey: [key] });
+  const { data: presetData } = useQuery<PrepTaskPreset[]>({ queryKey: ["/api/staff/prep-presets"] });
+  const presets = presetData ?? [];
   const rows = data?.rows ?? [];
   const left = rows.filter((r) => r.done !== 1).length;
 
@@ -236,6 +239,24 @@ function PrepTasks({ date }: { date: string }) {
       setTitle("");
       setMemo("");
       setAdding(false);
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "추가 실패", description: errMsg(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 저장해 둔 일을 그대로 그날 할 일로 넣는다 */
+  async function addFromPreset(p: PrepTaskPreset) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await apiRequest("POST", "/api/staff/prep-tasks", {
+        workDate: date,
+        title: p.title,
+        memo: p.memo,
+      });
       invalidate();
     } catch (err) {
       toast({ variant: "destructive", title: "추가 실패", description: errMsg(err) });
@@ -321,31 +342,82 @@ function PrepTasks({ date }: { date: string }) {
 
         {adding ? (
           <div className="mt-3">
-            <input
-              className="s-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="예: 휘낭시에 반죽"
-              data-testid="input-prep-title"
-            />
-            <input
-              className="s-input mt-2"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="메모 (선택)"
-            />
-            <div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2">
-              <button className="s-pill" onClick={add} disabled={busy} data-testid="button-add-prep">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "추가"}
-              </button>
-              <button
-                className="s-pill line"
-                style={{ paddingLeft: 18, paddingRight: 18 }}
-                onClick={() => setAdding(false)}
-              >
-                <X className="h-4 w-4" strokeWidth={1.8} />
-              </button>
-            </div>
+            {/* 저장해 둔 일 고르기 — 목록이 길면 이 안에서만 스크롤된다 */}
+            {presets.length > 0 && !manual && (
+              <>
+                <div className="s-label">자주 하는 일에서 고르기</div>
+                <div className="s-picker" data-testid="prep-preset-list">
+                  {presets.map((p) => {
+                    const already = rows.some((r) => r.title === p.title);
+                    return (
+                      <button
+                        key={p.id}
+                        className="s-picker-item"
+                        onClick={() => addFromPreset(p)}
+                        disabled={already || busy}
+                        data-testid={`preset-${p.id}`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-[13.5px]">{p.title}</span>
+                          {p.memo && (
+                            <span className="s-k block truncate" style={{ fontSize: 10.5 }}>
+                              {p.memo}
+                            </span>
+                          )}
+                        </span>
+                        {already ? (
+                          <Check className="h-4 w-4 shrink-0" style={{ color: "var(--s-accent)" }} strokeWidth={2.4} />
+                        ) : (
+                          <Plus className="h-4 w-4 shrink-0" style={{ color: "var(--s-faint)" }} strokeWidth={2} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {manual || presets.length === 0 ? (
+              <>
+                <input
+                  className="s-input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="예: 휘낭시에 반죽"
+                  data-testid="input-prep-title"
+                />
+                <input
+                  className="s-input mt-2"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
+                  placeholder="메모 (선택)"
+                />
+                <div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2">
+                  <button className="s-pill" onClick={add} disabled={busy} data-testid="button-add-prep">
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "추가"}
+                  </button>
+                  <button
+                    className="s-pill line"
+                    style={{ paddingLeft: 18, paddingRight: 18 }}
+                    onClick={() => {
+                      setManual(false);
+                      setAdding(false);
+                    }}
+                  >
+                    <X className="h-4 w-4" strokeWidth={1.8} />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button className="s-pill line" onClick={() => setManual(true)} data-testid="button-prep-manual">
+                  직접 입력
+                </button>
+                <button className="s-pill line" onClick={() => setAdding(false)}>
+                  닫기
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <button
