@@ -1425,7 +1425,8 @@ export const staffStorage = new StaffStorage();
  */
 export function importEspressoHistory(): void {
   try {
-    const already = db.select().from(espressoLogs).all().some((r) => r.source === "import");
+    // 전체 행을 읽지 않고 개수만 센다 (시작이 느려지지 않도록)
+    const already = (sqlite.prepare("SELECT COUNT(*) AS c FROM espresso_logs WHERE source = 'import'").get() as { c: number }).c > 0;
     if (already) return;
     if (ESPRESSO_IMPORT_ROWS.length === 0) return;
 

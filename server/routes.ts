@@ -1934,9 +1934,14 @@ export async function registerRoutes(
     res.json(await storage.getPosCompare(a, b, category, groupOrigin, range));
   });
 
-  // 에스프레소 추출 로그 집계 (공개) — 직원 앱에 쌓인 기록으로 집계한다
+  // 에스프레소 추출 로그 집계 (공개) — 직원 앱에 쌓인 기록으로 집계한다.
+  // 공개 페이지라 조회가 잦아, 30초 동안은 계산 결과를 재사용한다.
+  let espressoStatsCache: { at: number; value: any } | null = null;
   app.get("/api/espresso-log-stats", async (_req, res) => {
     try {
+      if (espressoStatsCache && Date.now() - espressoStatsCache.at < 30_000) {
+        return res.json(espressoStatsCache.value);
+      }
       const logs = await staffStorage.listEspressoLogs("0000-01-01", "9999-12-31");
       const rows: EspressoLogRow[] = logs.map((l) => {
         let tags: string[] = [];
@@ -1954,7 +1959,9 @@ export async function registerRoutes(
           staff: l.staffName,
         };
       });
-      res.json(aggregateLogs(rows));
+      const value = aggregateLogs(rows);
+      espressoStatsCache = { at: Date.now(), value };
+      res.json(value);
     } catch (e: any) {
       res.json({
         totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [],

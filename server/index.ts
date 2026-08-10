@@ -12,6 +12,17 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 
+// 요청 처리 중 잡히지 않은 오류 하나 때문에 서버 전체가 죽지 않도록 한다.
+// Node 22는 처리되지 않은 Promise 거부가 나면 기본적으로 프로세스를 종료시키는데,
+// 그러면 배포된 앱이 몇 초마다 죽었다 살아나기를 반복하게 된다.
+// 여기서 스택을 로그로 남기고 살려두면, 배포 로그만 보고도 원인을 찾을 수 있다.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 const app = express();
 const httpServer = createServer(app);
 

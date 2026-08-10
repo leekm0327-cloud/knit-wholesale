@@ -75,6 +75,19 @@ function noteLoginFail(key: string) {
   loginFails.set(key, rec);
 }
 
+/**
+ * 비동기 핸들러에서 난 오류가 프로세스를 죽이지 않도록 감싼다.
+ * express 4는 async 함수가 던진 오류를 잡아주지 않아서, 그대로 두면
+ * 처리되지 않은 Promise 거부가 되어 서버가 통째로 내려간다.
+ */
+function safe(fn: (req: Request, res: Response) => Promise<unknown> | unknown) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve()
+      .then(() => fn(req, res))
+      .catch(next);
+  };
+}
+
 function badRequest(res: Response, err: any) {
   return res.status(400).json({ message: err?.errors?.[0]?.message ?? "입력값 오류" });
 }
@@ -288,12 +301,12 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
   // ============================================================
   // 인수인계 — 직원
   // ============================================================
-  app.get("/api/staff/handover", requireStaff, async (req, res) => {
+  app.get("/api/staff/handover", requireStaff, safe(async (req, res) => {
     const date = String(req.query.date ?? "") || kstToday();
     res.json(await staffStorage.handoverDay(date, req.session.staffId!));
-  });
+  }));
 
-  app.post("/api/staff/handover", requireStaff, async (req, res) => {
+  app.post("/api/staff/handover", requireStaff, safe(async (req, res) => {
     const parsed = createHandoverSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
     const me = await staffStorage.getStaff(req.session.staffId!);
@@ -306,9 +319,9 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       important: parsed.data.important,
     });
     res.json(row);
-  });
+  }));
 
-  app.patch("/api/staff/handover/:id", requireStaff, async (req, res) => {
+  app.patch("/api/staff/handover/:id", requireStaff, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const row = await staffStorage.getHandover(id);
@@ -319,9 +332,9 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     if (!body) return res.status(400).json({ message: "내용을 입력해 주세요." });
     await staffStorage.updateHandover(id, body.slice(0, 2000), !!req.body?.important);
     res.json({ ok: true });
-  });
+  }));
 
-  app.delete("/api/staff/handover/:id", requireStaff, async (req, res) => {
+  app.delete("/api/staff/handover/:id", requireStaff, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const row = await staffStorage.getHandover(id);
@@ -332,30 +345,32 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       return res.status(403).json({ message: "직접 쓴 인수인계만 지울 수 있습니다." });
     await staffStorage.deleteHandover(id);
     res.json({ ok: true });
-  });
+  }));
 
-  app.post("/api/staff/handover/:id/read", requireStaff, async (req, res) => {
+  app.post("/api/staff/handover/:id/read", requireStaff, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getHandover(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
     const me = await staffStorage.getStaff(req.session.staffId!);
     if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
     await staffStorage.readHandover(id, me.id, me.name);
     res.json({ ok: true });
-  });
+  }));
 
   // ============================================================
   // 준비 작업 — 직원 (추가·체크 모두 가능)
   // ============================================================
-  app.get("/api/staff/prep-presets", requireStaff, async (_req, res) => {
+  app.get("/api/staff/prep-presets", requireStaff, safe(async (_req, res) => {
     res.json(await staffStorage.listPrepPresets());
-  });
+  }));
 
-  app.get("/api/staff/prep-tasks", requireStaff, async (req, res) => {
+  app.get("/api/staff/prep-tasks", requireStaff, safe(async (req, res) => {
     const date = String(req.query.date ?? "") || kstToday();
     res.json({ date, rows: await staffStorage.prepTasksOn(date) });
-  });
+  }));
 
-  app.post("/api/staff/prep-tasks", requireStaff, async (req, res) => {
+  app.post("/api/staff/prep-tasks", requireStaff, safe(async (req, res) => {
     const parsed = createPrepTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
     const me = await staffStorage.getStaff(req.session.staffId!);
@@ -368,9 +383,9 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       staffName: me.name,
     });
     res.json(row);
-  });
+  }));
 
-  app.post("/api/staff/prep-tasks/:id/toggle", requireStaff, async (req, res) => {
+  app.post("/api/staff/prep-tasks/:id/toggle", requireStaff, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const row = await staffStorage.getPrepTask(id);
@@ -379,9 +394,9 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
     await staffStorage.togglePrepTask(id, row.done !== 1, me.id, me.name);
     res.json({ ok: true });
-  });
+  }));
 
-  app.delete("/api/staff/prep-tasks/:id", requireStaff, async (req, res) => {
+  app.delete("/api/staff/prep-tasks/:id", requireStaff, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const row = await staffStorage.getPrepTask(id);
@@ -392,7 +407,7 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       return res.status(403).json({ message: "직접 추가한 작업만 지울 수 있습니다." });
     await staffStorage.deletePrepTask(id);
     res.json({ ok: true });
-  });
+  }));
 
 
   // ============================================================
@@ -706,29 +721,29 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
   // ============================================================
   // 인수인계 · 준비 작업 — 관리자
   // ============================================================
-  app.get("/api/admin/staff/handover", requireAdmin, async (req, res) => {
+  app.get("/api/admin/staff/handover", requireAdmin, safe(async (req, res) => {
     const { from, to } = rangeOf(req);
     res.json({ rows: await staffStorage.listHandovers(from, to), from, to });
-  });
+  }));
 
-  app.delete("/api/admin/staff/handover/:id", requireOwner, async (req, res) => {
+  app.delete("/api/admin/staff/handover/:id", requireOwner, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.deleteHandover(id);
     res.json({ ok: true });
-  });
+  }));
 
-  app.get("/api/admin/staff/prep-presets", requireAdmin, async (_req, res) => {
+  app.get("/api/admin/staff/prep-presets", requireAdmin, safe(async (_req, res) => {
     res.json(await staffStorage.listPrepPresets(true));
-  });
+  }));
 
-  app.post("/api/admin/staff/prep-presets", requireAdmin, async (req, res) => {
+  app.post("/api/admin/staff/prep-presets", requireAdmin, safe(async (req, res) => {
     const parsed = insertPrepPresetSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
     res.json(await staffStorage.createPrepPreset(parsed.data));
-  });
+  }));
 
-  app.patch("/api/admin/staff/prep-presets/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/staff/prep-presets/:id", requireAdmin, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const parsed = updatePrepPresetSchema.safeParse(req.body);
@@ -736,29 +751,29 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const row = await staffStorage.updatePrepPreset(id, parsed.data as any);
     if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
     res.json(row);
-  });
+  }));
 
-  app.post("/api/admin/staff/prep-presets/:id/move", requireAdmin, async (req, res) => {
+  app.post("/api/admin/staff/prep-presets/:id/move", requireAdmin, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const dir = Number(req.body?.dir) < 0 ? -1 : 1;
     await staffStorage.movePrepPreset(id, dir);
     res.json({ ok: true });
-  });
+  }));
 
-  app.delete("/api/admin/staff/prep-presets/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/staff/prep-presets/:id", requireAdmin, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.deletePrepPreset(id);
     res.json({ ok: true });
-  });
+  }));
 
-  app.get("/api/admin/staff/prep-tasks", requireAdmin, async (req, res) => {
+  app.get("/api/admin/staff/prep-tasks", requireAdmin, safe(async (req, res) => {
     const { from, to } = rangeOf(req);
     res.json({ rows: await staffStorage.listPrepTasks(from, to), from, to });
-  });
+  }));
 
-  app.post("/api/admin/staff/prep-tasks", requireAdmin, async (req, res) => {
+  app.post("/api/admin/staff/prep-tasks", requireAdmin, safe(async (req, res) => {
     const parsed = createPrepTaskSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
     const row = await staffStorage.createPrepTask({
@@ -769,14 +784,14 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       staffName: req.session.adminRole === "owner" ? "대표" : "관리자",
     });
     res.json(row);
-  });
+  }));
 
-  app.delete("/api/admin/staff/prep-tasks/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/staff/prep-tasks/:id", requireAdmin, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.deletePrepTask(id);
     res.json({ ok: true });
-  });
+  }));
 
   app.post("/api/admin/staff/dessert-items", requireOwner, async (req, res) => {
     const parsed = insertDessertItemSchema.safeParse(req.body);
