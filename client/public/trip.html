@@ -1329,7 +1329,14 @@ function setSyncBadge(txt, cls){
   var el=document.getElementById('syncInfo'); if(!el) return;
   el.textContent=txt; el.className='syncinfo '+(cls||'');
 }
-function snapshot(){ return {v:3, places:places, plan:plan, uid:uid}; }
+function snapshot(){
+  /* 서버로 보낼 때는 '일정에 쓰인 장소 + 직접 추가한 장소'만 담습니다.
+     전체 목록(200곳 넘음)을 매번 올리면 용량이 커지고, 버전이 올라가도 병합이 깔끔합니다. */
+  var need={};
+  plan.forEach(function(l){ l.forEach(function(it){ need[it.pid]=1; }); });
+  var keep=places.filter(function(p){ return need[p.id]||p.custom; });
+  return {v:3, places:keep, plan:plan, uid:uid};
+}
 
 function pushNow(force){
   if(!SYNC_ON) return;

@@ -2,7 +2,7 @@
 // knit-wholesale 프로젝트 규격에 맞춤: ESM + TypeScript
 // 기존 코드는 건드리지 않고, 이 파일 추가 + routes.ts 에 2줄 등록만 하면 됩니다.
 
-import { Router, type RequestHandler } from "express";
+import { Router, json, type RequestHandler } from "express";
 
 export type TripRow = {
   rev: number;
@@ -22,6 +22,9 @@ const ID = "au2026";
 export function createTripSyncRouter(opts: { store: TripStore; auth?: RequestHandler }) {
   const { store, auth } = opts;
   const router = Router();
+
+  // 이 라우터 전용 JSON 파서. 앱 전역 파서가 기본값(100kb)이어도 여기서는 넉넉하게 받습니다.
+  router.use(json({ limit: "2mb" }));
 
   // 접근 제어 — 기존 로그인 미들웨어를 넘기는 걸 권장.
   // 없으면 환경변수 TRIP_TOKEN 을 X-Trip-Token 헤더 또는 ?t= 로 검사합니다.
