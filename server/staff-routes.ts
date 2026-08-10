@@ -24,6 +24,10 @@ import {
   createPrepTaskSchema,
   insertPrepPresetSchema,
   updatePrepPresetSchema,
+  insertSupplyOrderSchema,
+  updateSupplyOrderSchema,
+  insertSupplyVendorSchema,
+  updateSupplyVendorSchema,
 } from "@shared/schema";
 
 declare module "express-session" {
@@ -411,6 +415,68 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
 
 
   // ============================================================
+  // 발주 기록 — 직원
+  // 결제·주문은 각자 하고, 여기엔 기록만 남긴다.
+  // ============================================================
+  app.get("/api/staff/supply-vendors", requireStaff, safe(async (_req, res) => {
+    res.json(await staffStorage.listSupplyVendors());
+  }));
+
+  app.get("/api/staff/supply-orders", requireStaff, safe(async (req, res) => {
+    const { from, to } = rangeOf(req);
+    const mine = req.query.mine === "1";
+    res.json(await staffStorage.listSupplyOrders(from, to, mine ? req.session.staffId! : undefined));
+  }));
+
+  /** 같은 구입처의 직전 기록 — '지난번과 같이' 불러오기 */
+  app.get("/api/staff/supply-orders/last", requireStaff, safe(async (req, res) => {
+    const vendor = String(req.query.vendor ?? "").trim();
+    if (!vendor) return res.json(null);
+    res.json(await staffStorage.lastSupplyOrder(vendor));
+  }));
+
+  app.post("/api/staff/supply-orders", requireStaff, safe(async (req, res) => {
+    const parsed = insertSupplyOrderSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    res.json(
+      await staffStorage.createSupplyOrder({
+        orderDate: parsed.data.orderDate,
+        vendor: parsed.data.vendor.trim(),
+        body: parsed.data.body,
+        amount: parsed.data.amount,
+        staffId: me.id,
+        staffName: me.name,
+      }),
+    );
+  }));
+
+  app.patch("/api/staff/supply-orders/:id", requireStaff, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getSupplyOrder(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    if (row.staffId !== req.session.staffId)
+      return res.status(403).json({ message: "직접 남긴 기록만 고칠 수 있습니다." });
+    const parsed = updateSupplyOrderSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    res.json(await staffStorage.updateSupplyOrder(id, parsed.data as any));
+  }));
+
+  app.delete("/api/staff/supply-orders/:id", requireStaff, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getSupplyOrder(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (row.staffId !== req.session.staffId && me?.staffRole !== "owner")
+      return res.status(403).json({ message: "직접 남긴 기록만 지울 수 있습니다." });
+    await staffStorage.deleteSupplyOrder(id);
+    res.json({ ok: true });
+  }));
+
+  // ============================================================
   // 연차 — 직원
   // ============================================================
   app.get("/api/staff/leave", requireStaff, async (req, res) => {
@@ -765,6 +831,57 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.deletePrepPreset(id);
+    res.json({ ok: true });
+  }));
+
+  app.get("/api/admin/staff/supply-orders", requireAdmin, safe(async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json({
+      rows: await staffStorage.listSupplyOrders(from, to),
+      summary: await staffStorage.supplyOrderSummary(from, to),
+      from,
+      to,
+    });
+  }));
+
+  app.delete("/api/admin/staff/supply-orders/:id", requireOwner, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteSupplyOrder(id);
+    res.json({ ok: true });
+  }));
+
+  app.get("/api/admin/staff/supply-vendors", requireAdmin, safe(async (_req, res) => {
+    res.json(await staffStorage.listSupplyVendors(true));
+  }));
+
+  app.post("/api/admin/staff/supply-vendors", requireAdmin, safe(async (req, res) => {
+    const parsed = insertSupplyVendorSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    res.json(await staffStorage.createSupplyVendor(parsed.data));
+  }));
+
+  app.patch("/api/admin/staff/supply-vendors/:id", requireAdmin, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = updateSupplyVendorSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const row = await staffStorage.updateSupplyVendor(id, parsed.data as any);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    res.json(row);
+  }));
+
+  app.post("/api/admin/staff/supply-vendors/:id/move", requireAdmin, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.moveSupplyVendor(id, Number(req.body?.dir) < 0 ? -1 : 1);
+    res.json({ ok: true });
+  }));
+
+  app.delete("/api/admin/staff/supply-vendors/:id", requireAdmin, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteSupplyVendor(id);
     res.json({ ok: true });
   }));
 

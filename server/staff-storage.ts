@@ -20,11 +20,16 @@ import {
   handoverReads,
   prepTasks,
   prepTaskPresets,
+  supplyVendors,
+  supplyOrders,
   type Handover,
   type HandoverRow,
   type HandoverDay,
   type PrepTask,
   type PrepTaskPreset,
+  type SupplyVendor,
+  type SupplyOrder,
+  type SupplyOrderSummary,
   type Staff,
   type PublicStaff,
   type InsertStaff,
@@ -199,6 +204,27 @@ sqlite.exec(`
     read_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS supply_vendors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    memo TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS supply_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_date TEXT NOT NULL,
+    vendor TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    amount INTEGER NOT NULL DEFAULT 0,
+    staff_id INTEGER NOT NULL,
+    staff_name TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS prep_task_presets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -260,6 +286,7 @@ for (const stmt of [
   "CREATE INDEX IF NOT EXISTS idx_handover_date ON handovers(work_date);",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_handover_read ON handover_reads(handover_id, staff_id);",
   "CREATE INDEX IF NOT EXISTS idx_prep_task_date ON prep_tasks(work_date);",
+  "CREATE INDEX IF NOT EXISTS idx_supply_order_date ON supply_orders(order_date);",
 ]) {
   try {
     sqlite.exec(stmt);
@@ -1401,6 +1428,152 @@ export class StaffStorage {
 
   async deletePrepPreset(id: number): Promise<void> {
     db.delete(prepTaskPresets).where(eq(prepTaskPresets.id, id)).run();
+  }
+
+  // ============================================================
+  // 발주 기록 (매장 소모품·식자재)
+  // ============================================================
+
+  async listSupplyVendors(includeInactive = false): Promise<SupplyVendor[]> {
+    const rows = db
+      .select()
+      .from(supplyVendors)
+      .orderBy(asc(supplyVendors.sortOrder), asc(supplyVendors.id))
+      .all();
+    return includeInactive ? rows : rows.filter((r) => r.active === 1);
+  }
+
+  async createSupplyVendor(input: { name: string; memo: string }): Promise<SupplyVendor> {
+    const max = db
+      .select()
+      .from(supplyVendors)
+      .all()
+      .reduce((m, r) => Math.max(m, r.sortOrder), 0);
+    const [row] = db
+      .insert(supplyVendors)
+      .values({ name: input.name, memo: input.memo, sortOrder: max + 1, active: 1, createdAt: Date.now() })
+      .returning()
+      .all();
+    return row;
+  }
+
+  async getSupplyVendor(id: number): Promise<SupplyVendor | null> {
+    return db.select().from(supplyVendors).where(eq(supplyVendors.id, id)).all()[0] ?? null;
+  }
+
+  async updateSupplyVendor(
+    id: number,
+    patch: Partial<{ name: string; memo: string; active: number; sortOrder: number }>,
+  ): Promise<SupplyVendor | null> {
+    if (Object.keys(patch).length > 0) {
+      db.update(supplyVendors).set(patch).where(eq(supplyVendors.id, id)).run();
+    }
+    return this.getSupplyVendor(id);
+  }
+
+  async deleteSupplyVendor(id: number): Promise<void> {
+    db.delete(supplyVendors).where(eq(supplyVendors.id, id)).run();
+  }
+
+  async moveSupplyVendor(id: number, dir: -1 | 1): Promise<void> {
+    const rows = await this.listSupplyVendors(true);
+    const i = rows.findIndex((r) => r.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= rows.length) return;
+    const a = rows[i];
+    const b = rows[j];
+    db.update(supplyVendors).set({ sortOrder: b.sortOrder }).where(eq(supplyVendors.id, a.id)).run();
+    db.update(supplyVendors).set({ sortOrder: a.sortOrder }).where(eq(supplyVendors.id, b.id)).run();
+  }
+
+  async listSupplyOrders(from: string, to: string, staffId?: number): Promise<SupplyOrder[]> {
+    const rows = db
+      .select()
+      .from(supplyOrders)
+      .where(and(gte(supplyOrders.orderDate, from), lte(supplyOrders.orderDate, to)))
+      .orderBy(desc(supplyOrders.orderDate), desc(supplyOrders.createdAt))
+      .all();
+    return staffId ? rows.filter((r) => r.staffId === staffId) : rows;
+  }
+
+  async getSupplyOrder(id: number): Promise<SupplyOrder | null> {
+    return db.select().from(supplyOrders).where(eq(supplyOrders.id, id)).all()[0] ?? null;
+  }
+
+  /** 같은 구입처의 가장 최근 기록 — '지난번과 같이' 불러오기에 쓴다 */
+  async lastSupplyOrder(vendor: string): Promise<SupplyOrder | null> {
+    return (
+      db
+        .select()
+        .from(supplyOrders)
+        .where(eq(supplyOrders.vendor, vendor))
+        .orderBy(desc(supplyOrders.orderDate), desc(supplyOrders.createdAt))
+        .all()[0] ?? null
+    );
+  }
+
+  async createSupplyOrder(input: {
+    orderDate: string;
+    vendor: string;
+    body: string;
+    amount: number;
+    staffId: number;
+    staffName: string;
+  }): Promise<SupplyOrder> {
+    const now = Date.now();
+    const [row] = db
+      .insert(supplyOrders)
+      .values({ ...input, createdAt: now, updatedAt: now })
+      .returning()
+      .all();
+    return row;
+  }
+
+  async updateSupplyOrder(
+    id: number,
+    patch: Partial<{ orderDate: string; vendor: string; body: string; amount: number }>,
+  ): Promise<SupplyOrder | null> {
+    if (Object.keys(patch).length > 0) {
+      db.update(supplyOrders)
+        .set({ ...patch, updatedAt: Date.now() })
+        .where(eq(supplyOrders.id, id))
+        .run();
+    }
+    return this.getSupplyOrder(id);
+  }
+
+  async deleteSupplyOrder(id: number): Promise<void> {
+    db.delete(supplyOrders).where(eq(supplyOrders.id, id)).run();
+  }
+
+  /** 구입처별·담당자별·월별 합계 */
+  async supplyOrderSummary(from: string, to: string): Promise<SupplyOrderSummary> {
+    const rows = await this.listSupplyOrders(from, to);
+    const bump = (m: Map<string, { count: number; amount: number }>, key: string, amount: number) => {
+      const cur = m.get(key) ?? { count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += amount;
+      m.set(key, cur);
+    };
+    const v = new Map<string, { count: number; amount: number }>();
+    const s = new Map<string, { count: number; amount: number }>();
+    const mo = new Map<string, { count: number; amount: number }>();
+    let total = 0;
+    for (const r of rows) {
+      total += r.amount;
+      bump(v, r.vendor || "미지정", r.amount);
+      bump(s, r.staffName || "미상", r.amount);
+      bump(mo, r.orderDate.slice(0, 7), r.amount);
+    }
+    const toArr = <K extends string>(m: Map<string, { count: number; amount: number }>, key: K) =>
+      Array.from(m.entries()).map(([k, x]) => ({ [key]: k, count: x.count, amount: x.amount })) as any[];
+    return {
+      total,
+      count: rows.length,
+      byVendor: toArr(v, "vendor").sort((a, b) => b.amount - a.amount),
+      byStaff: toArr(s, "staffName").sort((a, b) => b.amount - a.amount),
+      byMonth: toArr(mo, "month").sort((a, b) => (a.month < b.month ? -1 : 1)),
+    };
   }
 
   /** 위아래로 한 칸 이동 */

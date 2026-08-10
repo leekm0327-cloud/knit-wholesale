@@ -132,6 +132,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/staff/attendance", label: "근태 현황", icon: Clock },
       { href: "/admin/staff/schedule", label: "근무 스케줄", icon: CalendarDays },
       { href: "/admin/staff/handover", label: "인수인계·준비", icon: ArrowLeftRight },
+      { href: "/admin/staff/supply", label: "발주 기록", icon: ShoppingCart },
       { href: "/admin/staff/notices", label: "직원 공지", icon: Megaphone },
       { href: "/admin/staff/leave", label: "연차 관리", icon: CalendarOff },
       { href: "/admin/staff/logs", label: "직원 기록", icon: ClipboardList },

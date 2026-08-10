@@ -13,6 +13,7 @@ import {
   CalendarOff,
   User,
   ArrowLeftRight,
+  ShoppingCart,
 } from "lucide-react";
 
 export function useStaff() {
@@ -34,6 +35,7 @@ const TABS = [
   { href: "/staff/handover", label: "인계", icon: ArrowLeftRight },
   { href: "/staff/espresso", label: "추출", icon: Coffee },
   { href: "/staff/dessert", label: "생산", icon: CakeSlice },
+  { href: "/staff/supply", label: "발주", icon: ShoppingCart },
   { href: "/staff/schedule", label: "스케줄", icon: CalendarDays },
   { href: "/staff/notices", label: "공지", icon: Megaphone },
   { href: "/staff/leave", label: "연차", icon: CalendarOff },

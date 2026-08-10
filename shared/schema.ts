@@ -1895,3 +1895,68 @@ export const updatePopupNoticeSchema = insertPopupNoticeSchema.partial();
 
 export type PopupNotice = typeof popupNotices.$inferSelect;
 export type InsertPopupNotice = z.infer<typeof insertPopupNoticeSchema>;
+
+// ============================================================
+// 직원 발주 기록 (2026-08)
+// 결제·주문은 지금처럼 각자 하고, 기록만 앱에 남긴다.
+// 카카오톡에 적던 속도를 그대로 두기 위해 내용은 자유 글로 받는다.
+// ============================================================
+
+/** 자주 가는 구입처 — 탭 한 번으로 고르게 하기 위한 목록 */
+export const supplyVendors = sqliteTable("supply_vendors", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  memo: text("memo").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const supplyOrders = sqliteTable("supply_orders", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderDate: text("order_date").notNull(), // YYYY-MM-DD
+  vendor: text("vendor").notNull().default(""), // 구입처 (자유 문자열)
+  body: text("body").notNull(), // 품목 등 내용 — 카톡에 쓰던 그대로
+  amount: integer("amount").notNull().default(0), // 원, 0이면 미입력
+  staffId: integer("staff_id").notNull(),
+  staffName: text("staff_name").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// ===== zod =====
+export const insertSupplyOrderSchema = z.object({
+  orderDate: z.string().min(1, "날짜를 선택해 주세요."),
+  vendor: z.string().max(40).optional().default(""),
+  body: z.string().trim().min(1, "내용을 입력해 주세요.").max(2000),
+  amount: z.number().int().min(0).max(100_000_000).optional().default(0),
+});
+
+export const updateSupplyOrderSchema = insertSupplyOrderSchema.partial();
+
+export const insertSupplyVendorSchema = z.object({
+  name: z.string().trim().min(1, "구입처 이름을 입력해 주세요.").max(40),
+  memo: z.string().max(200).optional().default(""),
+});
+
+export const updateSupplyVendorSchema = z.object({
+  name: z.string().trim().min(1).max(40).optional(),
+  memo: z.string().max(200).optional(),
+  active: z.number().int().min(0).max(1).optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+// ===== 타입 =====
+export type SupplyVendor = typeof supplyVendors.$inferSelect;
+export type SupplyOrder = typeof supplyOrders.$inferSelect;
+export type InsertSupplyOrder = z.infer<typeof insertSupplyOrderSchema>;
+export type InsertSupplyVendor = z.infer<typeof insertSupplyVendorSchema>;
+
+/** 관리자 집계 */
+export type SupplyOrderSummary = {
+  total: number; // 금액 합계
+  count: number; // 건수
+  byVendor: { vendor: string; count: number; amount: number }[];
+  byStaff: { staffName: string; count: number; amount: number }[];
+  byMonth: { month: string; count: number; amount: number }[];
+};
