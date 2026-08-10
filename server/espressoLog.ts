@@ -1,15 +1,12 @@
-// 데일리 에스프레소 추출 로그 — 게시된 구글시트(CSV)를 불러와 집계.
-// 공개 데이터이므로 개인정보(담당자·코멘트)는 집계에서 제외하고 수치만 사용한다.
+// 데일리 에스프레소 추출 로그 — 직원 앱에 쌓인 추출 기록(espresso_logs)을 집계.
+// 예전에는 구글시트(CSV)를 읽었지만, 2026-08 부터 직원 앱 기록으로 일원화했다.
+// 공개 데이터이므로 담당자 이름은 코멘트에서 지우고 수치만 사용한다.
 import type { EspressoStats } from "@shared/schema";
 
-// 구글시트 "웹에 게시" CSV 주소
-const CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOzlZaaBn2KW8ACr1ay9szUwuUYAHGbKs7DMkfb-E5OlumlGjettN2XQ4oKFeNGsb8-0zTZ40mu_DO/pub?output=csv";
 
 const RATING_ORDER = ["매우 긍정", "긍정", "보통", "부정", "매우 부정"];
 // 평균 레시피는 '긍정'/'매우 긍정' 평가 기록만으로 계산 (좋았던 세팅의 레시피)
 const POSITIVE_RATINGS = ["긍정", "매우 긍정"];
-const TTL_MS = 10 * 60 * 1000; // 10분 캐시
 
 // 맛 코멘트에서 뽑아낼 '긍정 맛 표현' 사전 (부정·중립 표현은 넣지 않는다)
 const FLAVOR_TAGS: { label: string; patterns: string[] }[] = [
@@ -106,46 +103,6 @@ function pickNotes(comments: { veryPos: boolean; note: string }[], nameSet: Set<
   return out;
 }
 
-let csvCache: string | null = null;
-let csvCacheAt = 0;
-
-// 따옴표/줄바꿈을 처리하는 최소 CSV 파서
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  let inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQ) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else inQ = false;
-      } else field += c;
-    } else {
-      if (c === '"') inQ = true;
-      else if (c === ",") { row.push(field); field = ""; }
-      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-      else if (c === "\r") { /* skip */ }
-      else field += c;
-    }
-  }
-  if (field.length || row.length) { row.push(field); rows.push(row); }
-  return rows;
-}
-
-function normDate(s: string): string {
-  const m = (s || "").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
-  if (!m) return "";
-  return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-}
-
-function num(s: string): number {
-  const v = parseFloat(String(s ?? "").replace(/[^0-9.\-]/g, ""));
-  return Number.isFinite(v) ? v : NaN;
-}
-
-// 환경 구간(습도/온도)별 누산기
 type BinAcc = { count: number; dose: number; doseN: number; yield: number; yieldN: number; time: number; timeN: number };
 const HUM_BINS: { label: string; max: number }[] = [
   { label: "~49%", max: 50 },
@@ -173,17 +130,6 @@ function addRecipe(a: BinAcc, d: number, y: number, t: number) {
   if (Number.isFinite(t)) { a.time += t; a.timeN++; }
 }
 
-/** 직원 앱에서 기록한 추출 로그 (시트와 합쳐서 집계) */
-export type EspressoExtraRow = {
-  date: string; // YYYY-MM-DD
-  bean: string;
-  dose: number;
-  yield: number;
-  time: number;
-  rating: number; // 1~5 (0이면 미평가)
-  note: string; // 맛 태그 + 메모
-  staff: string;
-};
 
 // 별점(1~5)을 시트의 평가 표기로 변환
 function ratingLabel(n: number): string {
@@ -195,37 +141,22 @@ function ratingLabel(n: number): string {
   return "";
 }
 
-function aggregate(csv: string, extra: EspressoExtraRow[] = []): EspressoStats {
-  const rows = parseCsv(csv);
-  const empty: EspressoStats = { totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [], byHumidity: [], byTemp: [] };
-  if (rows.length === 0) return empty; // 헤더만 있고 직원 기록만 있는 경우도 집계한다
-  const header = rows[0].map((h) => h.trim());
-  const col = (kw: string) => header.findIndex((h) => h.includes(kw));
-  const cDate = col("날짜");
-  const cBean = col("원두");
-  const cDose = col("도징");
-  const cYield = col("추출량");
-  const cTime = col("추출 시간") >= 0 ? col("추출 시간") : col("추출시간");
-  const cRating = col("종합 평가") >= 0 ? col("종합 평가") : col("평가");
-  const cHum = col("실내 습도") >= 0 ? col("실내 습도") : col("습도");
-  const cTemp = col("실내 온도") >= 0 ? col("실내 온도") : col("실내온도");
-  const cNote = col("코멘트") >= 0 ? col("코멘트") : col("NOTE");
-  const cStaff = col("담당자");
-  // 직원 앱 기록을 시트와 같은 열 구조로 변환해 뒤에 붙인다
-  for (const e of extra) {
-    const r: string[] = new Array(header.length).fill("");
-    const put = (idx: number, v: string) => { if (idx >= 0 && idx < r.length) r[idx] = v; };
-    put(cDate, e.date);
-    put(cBean, e.bean);
-    put(cDose, e.dose ? String(e.dose) : "");
-    put(cYield, e.yield ? String(e.yield) : "");
-    put(cTime, e.time ? String(e.time) : "");
-    put(cRating, ratingLabel(e.rating));
-    put(cNote, e.note);
-    put(cStaff, e.staff);
-    rows.push(r);
-  }
+/** 집계 입력 — DB의 추출 기록 한 줄 */
+export type EspressoLogRow = {
+  date: string;
+  bean: string;
+  dose: number;
+  yield: number;
+  time: number;
+  roomTemp: number;
+  roomHumidity: number;
+  rating: number; // 1~5, 0이면 미평가
+  note: string;
+  staff: string;
+};
 
+/** 직원 앱 기록만으로 집계한다 (구글시트 없이) */
+export function aggregateLogs(rows: EspressoLogRow[]): EspressoStats {
   const humAcc = HUM_BINS.map(newAcc);
   const tempAcc = TEMP_BINS.map(newAcc);
 
@@ -237,53 +168,46 @@ function aggregate(csv: string, extra: EspressoExtraRow[] = []): EspressoStats {
   let total = 0;
   const dates: string[] = [];
 
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r || r.every((v) => !String(v).trim())) continue; // 빈 행 스킵
-    // 타임스탬프/날짜가 전혀 없으면 유효 로그 아님
-    const dISO = cDate >= 0 ? normDate(r[cDate]) : "";
-    const bean = cBean >= 0 ? String(r[cBean] ?? "").trim() : "";
-    const rating = cRating >= 0 ? String(r[cRating] ?? "").trim() : "";
-    if (!dISO && !bean && !rating) continue;
+  for (const r of rows) {
+    const bean = (r.bean ?? "").trim();
+    const rating = ratingLabel(r.rating);
+    if (!r.date && !bean && !rating) continue;
     total++;
 
     // 담당자 이름 수집 (대표 코멘트 익명화용) — 전체 이름 + 성 뗀 이름
-    if (cStaff >= 0) {
-      const nm = String(r[cStaff] ?? "").trim();
-      if (nm.length >= 2) {
-        nameSet.add(nm);
-        if (nm.length >= 3) nameSet.add(nm.slice(1)); // '박대건' → '대건'
-      }
+    const nm = (r.staff ?? "").trim();
+    if (nm.length >= 2) {
+      nameSet.add(nm);
+      if (nm.length >= 3) nameSet.add(nm.slice(1)); // '박대건' → '대건'
     }
 
     if (rating) ratingMap.set(rating, (ratingMap.get(rating) ?? 0) + 1);
-    if (dISO) { dateMap.set(dISO, (dateMap.get(dISO) ?? 0) + 1); dates.push(dISO); }
+    if (r.date) { dateMap.set(r.date, (dateMap.get(r.date) ?? 0) + 1); dates.push(r.date); }
 
     // 평균 레시피 · 환경 구간별 집계: 긍정/매우 긍정 평가 기록만 반영
-    if (POSITIVE_RATINGS.includes(rating)) {
-      const d = cDose >= 0 ? num(r[cDose]) : NaN;
-      const y = cYield >= 0 ? num(r[cYield]) : NaN;
-      const t = cTime >= 0 ? num(r[cTime]) : NaN;
-      if (bean) {
-        const b = beanMap.get(bean) ?? { count: 0, dose: 0, yield: 0, time: 0, doseN: 0, yieldN: 0, timeN: 0 };
-        b.count++;
-        if (Number.isFinite(d)) { b.dose += d; b.doseN++; }
-        if (Number.isFinite(y)) { b.yield += y; b.yieldN++; }
-        if (Number.isFinite(t)) { b.time += t; b.timeN++; }
-        beanMap.set(bean, b);
-        // 맛 코멘트 수집
-        const note = cNote >= 0 ? String(r[cNote] ?? "").trim() : "";
-        if (note) {
-          const arr = beanComments.get(bean) ?? [];
-          arr.push({ veryPos: rating === "매우 긍정", note });
-          beanComments.set(bean, arr);
-        }
+    if (!POSITIVE_RATINGS.includes(rating)) continue;
+
+    const d = r.dose > 0 ? r.dose : NaN;
+    const y = r.yield > 0 ? r.yield : NaN;
+    const t = r.time > 0 ? r.time : NaN;
+
+    if (bean) {
+      const b = beanMap.get(bean) ?? { count: 0, dose: 0, yield: 0, time: 0, doseN: 0, yieldN: 0, timeN: 0 };
+      b.count++;
+      if (Number.isFinite(d)) { b.dose += d; b.doseN++; }
+      if (Number.isFinite(y)) { b.yield += y; b.yieldN++; }
+      if (Number.isFinite(t)) { b.time += t; b.timeN++; }
+      beanMap.set(bean, b);
+      const note = (r.note ?? "").trim();
+      if (note) {
+        const arr = beanComments.get(bean) ?? [];
+        arr.push({ veryPos: r.rating >= 5, note });
+        beanComments.set(bean, arr);
       }
-      const hum = cHum >= 0 ? num(r[cHum]) : NaN;
-      const temp = cTemp >= 0 ? num(r[cTemp]) : NaN;
-      if (Number.isFinite(hum)) addRecipe(humAcc[binIndex(HUM_BINS, hum)], d, y, t);
-      if (Number.isFinite(temp)) addRecipe(tempAcc[binIndex(TEMP_BINS, temp)], d, y, t);
     }
+
+    if (r.roomHumidity > 0) addRecipe(humAcc[binIndex(HUM_BINS, r.roomHumidity)], d, y, t);
+    if (r.roomTemp > 0) addRecipe(tempAcc[binIndex(TEMP_BINS, r.roomTemp)], d, y, t);
   }
 
   const byRating = Array.from(ratingMap.entries())
@@ -347,26 +271,4 @@ function aggregate(csv: string, extra: EspressoExtraRow[] = []): EspressoStats {
     byHumidity: binRows(HUM_BINS, humAcc),
     byTemp: binRows(TEMP_BINS, tempAcc),
   };
-}
-
-export async function fetchEspressoStats(extra: EspressoExtraRow[] = []): Promise<EspressoStats> {
-  try {
-    let text = csvCache;
-    if (!text || Date.now() - csvCacheAt >= TTL_MS) {
-      const res = await fetch(CSV_URL, { redirect: "follow" });
-      if (!res.ok) throw new Error(`시트 응답 오류 (HTTP ${res.status})`);
-      text = await res.text();
-      csvCache = text;
-      csvCacheAt = Date.now();
-    }
-    return aggregate(text, extra);
-  } catch (e: any) {
-    // 시트를 못 불러와도 직원 앱 기록만으로 집계해서 보여준다
-    if (csvCache) return aggregate(csvCache, extra);
-    if (extra.length > 0) return aggregate("날짜,원두,도징,추출량,추출 시간,종합 평가,코멘트,담당자\n", extra);
-    return {
-      totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [],
-      byHumidity: [], byTemp: [], error: e?.message ?? String(e),
-    };
-  }
 }

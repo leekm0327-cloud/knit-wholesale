@@ -2,7 +2,7 @@
 // 직원용 엔드포인트: /api/staff/*        (직원 세션 필요)
 // 관리자용 엔드포인트: /api/admin/staff/* (관리자 세션 필요)
 import type { Express, Request, Response, NextFunction } from "express";
-import { staffStorage, seedOwnerStaff, kstToday, kstMonthStart, toPublicStaff, workedMinutes, dateSpanDays } from "./staff-storage";
+import { staffStorage, seedOwnerStaff, importEspressoHistory, kstToday, kstMonthStart, toPublicStaff, workedMinutes, dateSpanDays } from "./staff-storage";
 import type { IStorage } from "./storage";
 import {
   staffLoginSchema,
@@ -88,6 +88,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
   seedOwnerStaff();
+  importEspressoHistory();
 
   // ============================================================
   // 직원 인증

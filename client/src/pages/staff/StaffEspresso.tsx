@@ -4,38 +4,53 @@ import { StaffLayout, useStaff } from "@/components/StaffLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
-import type { EspressoLog } from "@shared/schema";
-import { Loader2, Plus, Trash2, Star, X } from "lucide-react";
+import {
+  ESPRESSO_BEAN_PRESETS,
+  ESPRESSO_RATINGS,
+  espressoRatingLabel,
+  type EspressoLog,
+} from "@shared/schema";
+import { Loader2, Plus, Trash2, X } from "lucide-react";
 
 const FLAVORS = ["단맛", "산미", "쓴맛", "고소", "과일", "초콜릿", "너티", "플로럴", "묵직", "가벼움"];
 
 type Draft = {
+  logDate: string;
   beanName: string;
-  machine: string;
-  grindSetting: string;
+  roastDays: string;
   doseG: string;
   yieldG: string;
   timeSec: string;
   waterTemp: string;
-  tds: string;
+  grinderTemp: string;
+  roomTemp: string;
+  roomHumidity: string;
   rating: number;
   flavorTags: string[];
   memo: string;
 };
 
-const EMPTY: Draft = {
-  beanName: "",
-  machine: "",
-  grindSetting: "",
-  doseG: "",
-  yieldG: "",
-  timeSec: "",
-  waterTemp: "",
-  tds: "",
-  rating: 0,
-  flavorTags: [],
-  memo: "",
-};
+function today(): string {
+  return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function emptyDraft(): Draft {
+  return {
+    logDate: today(),
+    beanName: "",
+    roastDays: "",
+    doseG: "",
+    yieldG: "",
+    timeSec: "",
+    waterTemp: "",
+    grinderTemp: "",
+    roomTemp: "",
+    roomHumidity: "",
+    rating: 0,
+    flavorTags: [],
+    memo: "",
+  };
+}
 
 /** 2026-08-09 → 8.9 */
 function shortDate(iso: string): string {
@@ -43,15 +58,23 @@ function shortDate(iso: string): string {
   return `${Number(iso.slice(5, 7))}.${Number(iso.slice(8, 10))}`;
 }
 
+/** 평가에 따른 색 — 긍정은 세이지, 부정은 벽돌색 */
+function ratingTone(n: number): { bg: string; fg: string } {
+  if (n >= 4) return { bg: "var(--s-accent-soft)", fg: "var(--s-accent)" };
+  if (n === 3) return { bg: "var(--s-bg)", fg: "#6d6c67" };
+  if (n > 0) return { bg: "#efe3e1", fg: "#8d4038" };
+  return { bg: "var(--s-bg)", fg: "var(--s-faint)" };
+}
+
 export default function StaffEspresso() {
   const { toast } = useToast();
   const { data: me } = useStaff();
   const [open, setOpen] = useState(false);
-  const [d, setD] = useState<Draft>(EMPTY);
+  const [d, setD] = useState<Draft>(emptyDraft);
+  const [beanEtc, setBeanEtc] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const { data: logs, isLoading } = useQuery<EspressoLog[]>({ queryKey: ["/api/staff/espresso-logs"] });
-  const { data: beans } = useQuery<string[]>({ queryKey: ["/api/staff/espresso-logs/beans"] });
 
   function set(patch: Partial<Draft>) {
     setD((prev) => ({ ...prev, ...patch }));
@@ -64,31 +87,37 @@ export default function StaffEspresso() {
     }));
   }
 
+  function close() {
+    setOpen(false);
+    setBeanEtc(false);
+    setD(emptyDraft());
+  }
+
   async function save() {
     if (!d.beanName.trim()) {
-      toast({ variant: "destructive", title: "원두를 입력해 주세요." });
+      toast({ variant: "destructive", title: "원두를 골라 주세요." });
       return;
     }
     setBusy(true);
     try {
       await apiRequest("POST", "/api/staff/espresso-logs", {
+        logDate: d.logDate,
         beanName: d.beanName.trim(),
-        machine: d.machine.trim(),
-        grindSetting: d.grindSetting.trim(),
         doseG: Number(d.doseG) || 0,
         yieldG: Number(d.yieldG) || 0,
         timeSec: Number(d.timeSec) || 0,
         waterTemp: Number(d.waterTemp) || 0,
-        tds: d.tds.trim(),
+        grinderTemp: Number(d.grinderTemp) || 0,
+        roomTemp: Number(d.roomTemp) || 0,
+        roomHumidity: Number(d.roomHumidity) || 0,
+        roastDays: Number(d.roastDays) || 0,
         rating: d.rating,
         flavorTags: d.flavorTags,
         memo: d.memo.trim(),
       });
       toast({ title: "기록되었습니다." });
-      setD(EMPTY);
-      setOpen(false);
+      close();
       queryClient.invalidateQueries({ queryKey: ["/api/staff/espresso-logs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/staff/espresso-logs/beans"] });
     } catch (err) {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
     } finally {
@@ -117,84 +146,145 @@ export default function StaffEspresso() {
         <>
           <div className="s-sect flex items-center justify-between" style={{ margin: "2px 4px 9px" }}>
             <span>새 기록</span>
-            <button
-              className="s-icon"
-              onClick={() => {
-                setOpen(false);
-                setD(EMPTY);
-              }}
-              aria-label="닫기"
-            >
+            <button className="s-icon" onClick={close} aria-label="닫기">
               <X className="h-4 w-4" strokeWidth={1.8} />
             </button>
           </div>
 
+          {/* 날짜 · 원두 */}
           <div className="s-card">
-            <label className="s-label">원두</label>
+            <label className="s-label">날짜</label>
             <input
               className="s-input"
-              value={d.beanName}
-              onChange={(e) => set({ beanName: e.target.value })}
-              placeholder="예: 코튼 블렌드"
-              data-testid="input-bean-name"
+              type="date"
+              value={d.logDate}
+              onChange={(e) => set({ logDate: e.target.value })}
+              data-testid="input-log-date"
             />
-            {(beans?.length ?? 0) > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {beans!.slice(0, 6).map((b) => (
-                  <button key={b} className={`s-chip ${d.beanName === b ? "on" : ""}`} onClick={() => set({ beanName: b })}>
+
+            <div className="mt-3">
+              <label className="s-label">원두 종류</label>
+              <div className="flex flex-wrap gap-1.5">
+                {ESPRESSO_BEAN_PRESETS.map((b) => (
+                  <button
+                    key={b}
+                    className={`s-chip ${!beanEtc && d.beanName === b ? "on" : ""}`}
+                    onClick={() => {
+                      setBeanEtc(false);
+                      set({ beanName: b });
+                    }}
+                    data-testid={`bean-${b}`}
+                  >
                     {b}
                   </button>
                 ))}
+                <button
+                  className={`s-chip ${beanEtc ? "on" : ""}`}
+                  onClick={() => {
+                    setBeanEtc(true);
+                    set({ beanName: "" });
+                  }}
+                >
+                  기타
+                </button>
               </div>
-            )}
-          </div>
-
-          <div className="s-card">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-3">
-              <Field label="도징 (g)" value={d.doseG} onChange={(v) => set({ doseG: v })} placeholder="20" />
-              <Field label="추출량 (g)" value={d.yieldG} onChange={(v) => set({ yieldG: v })} placeholder="40" />
-              <Field label="시간 (초)" value={d.timeSec} onChange={(v) => set({ timeSec: v })} placeholder="27" />
-              <Field label="물 온도 (℃)" value={d.waterTemp} onChange={(v) => set({ waterTemp: v })} placeholder="93" />
-              <Field label="분쇄도" value={d.grindSetting} onChange={(v) => set({ grindSetting: v })} placeholder="4.2" text />
-              <Field label="TDS" value={d.tds} onChange={(v) => set({ tds: v })} placeholder="9.2%" text />
+              {beanEtc && (
+                <input
+                  className="s-input mt-2"
+                  value={d.beanName}
+                  onChange={(e) => set({ beanName: e.target.value })}
+                  placeholder="원두 이름을 적어주세요"
+                  data-testid="input-bean-name"
+                />
+              )}
             </div>
+
             <div className="mt-3">
-              <label className="s-label">머신</label>
+              <label className="s-label">로스팅 경과일 (D+)</label>
               <input
                 className="s-input"
-                value={d.machine}
-                onChange={(e) => set({ machine: e.target.value })}
-                placeholder="예: 라마르조꼬"
+                value={d.roastDays}
+                onChange={(e) => set({ roastDays: e.target.value })}
+                inputMode="decimal"
+                placeholder="9"
+                data-testid="input-roast-days"
               />
             </div>
           </div>
 
+          {/* 레시피 */}
+          <div className="s-sect">레시피</div>
           <div className="s-card">
-            <label className="s-label">평가</label>
-            <div className="flex gap-1.5">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => set({ rating: d.rating === n ? 0 : n })}
-                  data-testid={`star-${n}`}
-                  className="p-0.5"
-                  aria-label={`${n}점`}
-                >
-                  <Star
-                    className="h-6 w-6"
-                    strokeWidth={1.4}
+            <div className="grid grid-cols-3 gap-x-2.5 gap-y-3">
+              <Field label="도징 (g)" value={d.doseG} onChange={(v) => set({ doseG: v })} placeholder="19.5" test="input-dose" />
+              <Field label="추출량 (g)" value={d.yieldG} onChange={(v) => set({ yieldG: v })} placeholder="34" test="input-yield" />
+              <Field label="시간 (초)" value={d.timeSec} onChange={(v) => set({ timeSec: v })} placeholder="27" test="input-time" />
+            </div>
+          </div>
+
+          {/* 환경 */}
+          <div className="s-sect">그날의 환경</div>
+          <div className="s-card">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+              <Field label="추출 온도 (℃)" value={d.waterTemp} onChange={(v) => set({ waterTemp: v })} placeholder="93" />
+              <Field
+                label="그라인더 온도 (℃)"
+                value={d.grinderTemp}
+                onChange={(v) => set({ grinderTemp: v })}
+                placeholder="27"
+              />
+              <Field label="실내 온도 (℃)" value={d.roomTemp} onChange={(v) => set({ roomTemp: v })} placeholder="25" />
+              <Field
+                label="실내 습도 (%)"
+                value={d.roomHumidity}
+                onChange={(v) => set({ roomHumidity: v })}
+                placeholder="50"
+              />
+            </div>
+            <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
+              실내 온도와 습도는 거래처가 보는 페이지에서 환경별 권장 레시피를 뽑는 데 쓰입니다.
+            </p>
+          </div>
+
+          {/* 평가 */}
+          <div className="s-sect">종합 평가</div>
+          <div className="s-card">
+            <div className="grid grid-cols-5 gap-1.5">
+              {ESPRESSO_RATINGS.map((r) => {
+                const on = d.rating === r.value;
+                const tone = ratingTone(r.value);
+                return (
+                  <button
+                    key={r.value}
+                    onClick={() => set({ rating: on ? 0 : r.value })}
+                    className="rounded-[10px] py-2.5 text-[11px] leading-tight"
                     style={
-                      n <= d.rating
-                        ? { fill: "var(--s-ink)", color: "var(--s-ink)" }
-                        : { color: "var(--s-faint)" }
+                      on
+                        ? { background: "var(--s-ink)", color: "#fff", fontWeight: 600 }
+                        : { background: tone.bg, color: tone.fg }
                     }
-                  />
-                </button>
-              ))}
+                    data-testid={`rating-${r.value}`}
+                  >
+                    {r.label.replace(" ", "\n")}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="mt-4">
-              <label className="s-label">맛 노트</label>
+              <label className="s-label">맛 코멘트</label>
+              <textarea
+                className="s-input"
+                value={d.memo}
+                onChange={(e) => set({ memo: e.target.value })}
+                rows={3}
+                placeholder="어떤 맛이었는지, 세팅을 바꿨다면 그 이유를 적어주세요."
+                data-testid="input-memo"
+              />
+            </div>
+
+            <div className="mt-3">
+              <label className="s-label">맛 노트 (선택)</label>
               <div className="flex flex-wrap gap-1.5">
                 {FLAVORS.map((f) => (
                   <button
@@ -207,31 +297,13 @@ export default function StaffEspresso() {
                 ))}
               </div>
             </div>
-
-            <div className="mt-4">
-              <label className="s-label">메모</label>
-              <textarea
-                className="s-input"
-                value={d.memo}
-                onChange={(e) => set({ memo: e.target.value })}
-                rows={2}
-                placeholder="세팅을 바꾼 이유, 특이사항 등"
-              />
-            </div>
           </div>
 
           <div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2">
             <button className="s-pill" onClick={save} disabled={busy} data-testid="button-save-espresso">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "저장"}
             </button>
-            <button
-              className="s-pill line"
-              style={{ paddingLeft: 22, paddingRight: 22 }}
-              onClick={() => {
-                setOpen(false);
-                setD(EMPTY);
-              }}
-            >
+            <button className="s-pill line" style={{ paddingLeft: 22, paddingRight: 22 }} onClick={close}>
               취소
             </button>
           </div>
@@ -273,14 +345,26 @@ export default function StaffEspresso() {
               return [];
             }
           })();
+          const tone = ratingTone(l.rating);
           return (
             <div key={l.id} className="s-card" data-testid={`row-espresso-${l.id}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="truncate text-[14px] font-semibold">{l.beanName}</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-[14px] font-semibold">{l.beanName}</span>
+                    {l.rating > 0 && (
+                      <span
+                        className="rounded-full px-2 py-[3px] text-[10px] font-medium"
+                        style={{ background: tone.bg, color: tone.fg }}
+                      >
+                        {espressoRatingLabel(l.rating)}
+                      </span>
+                    )}
+                  </div>
                   <div className="s-k mt-0.5">
-                    {shortDate(l.logDate)} · {l.staffName}
-                    {l.rating > 0 ? ` · ${"★".repeat(l.rating)}` : ""}
+                    {shortDate(l.logDate)}
+                    {l.staffName ? ` · ${l.staffName}` : ""}
+                    {l.roastDays > 0 ? ` · D+${l.roastDays}` : ""}
                   </div>
                 </div>
                 {me?.id === l.staffId && (
@@ -303,16 +387,26 @@ export default function StaffEspresso() {
                   g
                 </span>
                 <span className="ml-auto text-[12px]" style={{ color: "var(--s-muted)" }}>
-                  {l.timeSec || 0}초 · {l.waterTemp || 0}℃
+                  {l.timeSec || 0}초{l.waterTemp ? ` · ${l.waterTemp}℃` : ""}
                 </span>
               </div>
 
-              {(l.grindSetting || l.tds) && (
+              {(l.roomTemp > 0 || l.roomHumidity > 0 || l.grinderTemp > 0) && (
                 <div className="mt-1 text-[11.5px]" style={{ color: "var(--s-muted)" }}>
-                  {l.grindSetting ? `분쇄 ${l.grindSetting}` : ""}
-                  {l.grindSetting && l.tds ? " · " : ""}
-                  {l.tds ? `TDS ${l.tds}` : ""}
+                  {[
+                    l.roomTemp > 0 ? `실내 ${l.roomTemp}℃` : "",
+                    l.roomHumidity > 0 ? `습도 ${l.roomHumidity}%` : "",
+                    l.grinderTemp > 0 ? `그라인더 ${l.grinderTemp}℃` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </div>
+              )}
+
+              {l.memo && (
+                <p className="mt-2.5 text-[12.5px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
+                  {l.memo}
+                </p>
               )}
 
               {tags.length > 0 && (
@@ -324,16 +418,16 @@ export default function StaffEspresso() {
                   ))}
                 </div>
               )}
-
-              {l.memo && (
-                <p className="mt-2.5 text-[12.5px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
-                  {l.memo}
-                </p>
-              )}
             </div>
           );
         })
       )}
+
+      <p className="mt-4 px-2 text-center text-[11px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
+        여기 남긴 기록이 거래처가 보는 에스프레소 추출 로그에 그대로 반영됩니다.
+        <br />
+        담당자 이름과 개인적인 내용은 공개 페이지에서 지워집니다.
+      </p>
     </StaffLayout>
   );
 }
@@ -343,23 +437,27 @@ function Field({
   value,
   onChange,
   placeholder,
-  text,
+  test,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  text?: boolean;
+  test?: string;
 }) {
   return (
     <div>
-      <label className="s-label">{label}</label>
+      <label className="s-label" style={{ whiteSpace: "nowrap" }}>
+        {label}
+      </label>
       <input
-        className="s-input"
+        className="s-input center"
+        style={{ padding: "10px 4px" }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        inputMode={text ? undefined : "decimal"}
+        inputMode="decimal"
+        data-testid={test}
       />
     </div>
   );

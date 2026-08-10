@@ -1351,13 +1351,35 @@ export const espressoLogs = sqliteTable("espresso_logs", {
   doseG: real("dose_g").notNull().default(0),
   yieldG: real("yield_g").notNull().default(0),
   timeSec: real("time_sec").notNull().default(0),
-  waterTemp: real("water_temp").notNull().default(0),
+  waterTemp: real("water_temp").notNull().default(0), // 추출 온도
   tds: text("tds").notNull().default(""),
   rating: integer("rating").notNull().default(0), // 1~5, 0이면 미평가
   flavorTags: text("flavor_tags").notNull().default("[]"), // JSON string[]
   memo: text("memo").notNull().default(""),
+  // 구글폼으로 받던 항목들 — 거래처 공개 페이지의 환경별 집계에 쓰인다
+  roomTemp: real("room_temp").notNull().default(0), // 실내 온도(℃)
+  roomHumidity: real("room_humidity").notNull().default(0), // 실내 습도(%)
+  grinderTemp: real("grinder_temp").notNull().default(0), // 그라인더 온도(℃)
+  roastDays: real("roast_days").notNull().default(0), // 로스팅 경과일 D+
+  source: text("source").notNull().default("staff"), // staff | import(구글폼 이관분)
   createdAt: integer("created_at").notNull(),
 });
+
+/** 추출 기록에서 고르는 원두 — 구글폼에서 쓰던 목록을 그대로 옮겨 왔다 */
+export const ESPRESSO_BEAN_PRESETS = ["코튼 블렌드", "실크 블렌드", "싱글 오리진", "디카페인"] as const;
+
+/** 종합 평가 — 구글폼과 같은 5단계. 값이 클수록 좋다. */
+export const ESPRESSO_RATINGS: { value: number; label: string }[] = [
+  { value: 5, label: "매우 긍정" },
+  { value: 4, label: "긍정" },
+  { value: 3, label: "보통" },
+  { value: 2, label: "부정" },
+  { value: 1, label: "매우 부정" },
+];
+
+export function espressoRatingLabel(n: number): string {
+  return ESPRESSO_RATINGS.find((r) => r.value === n)?.label ?? "";
+}
 
 /** 디저트 품목 마스터 — 관리자가 관리하고, 직원은 여기에 수량만 입력한다 */
 export const dessertItems = sqliteTable("dessert_items", {
@@ -1512,6 +1534,10 @@ export const insertEspressoLogSchema = z.object({
   rating: z.number().int().min(0).max(5).optional().default(0),
   flavorTags: z.array(z.string()).optional().default([]),
   memo: z.string().optional().default(""),
+  roomTemp: z.number().min(0).optional().default(0),
+  roomHumidity: z.number().min(0).optional().default(0),
+  grinderTemp: z.number().min(0).optional().default(0),
+  roastDays: z.number().min(0).optional().default(0),
 });
 
 export const insertDessertItemSchema = z.object({

@@ -10,7 +10,7 @@ import { registerStaffRoutes } from "./staff-routes";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
-import { fetchEspressoStats, type EspressoExtraRow } from "./espressoLog";
+import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
 import { staffStorage } from "./staff-storage";
 import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, sendPurchaseToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
@@ -1933,13 +1933,11 @@ export async function registerRoutes(
     res.json(await storage.getPosCompare(a, b, category, groupOrigin, range));
   });
 
-  // 에스프레소 추출 로그 집계 (공개) — 게시된 구글시트 기반
+  // 에스프레소 추출 로그 집계 (공개) — 직원 앱에 쌓인 기록으로 집계한다
   app.get("/api/espresso-log-stats", async (_req, res) => {
-    // 직원 앱에 쌓인 추출 기록을 구글시트 로그와 합쳐서 집계한다
-    let extra: EspressoExtraRow[] = [];
     try {
       const logs = await staffStorage.listEspressoLogs("0000-01-01", "9999-12-31");
-      extra = logs.map((l) => {
+      const rows: EspressoLogRow[] = logs.map((l) => {
         let tags: string[] = [];
         try { tags = JSON.parse(l.flavorTags); } catch { tags = []; }
         return {
@@ -1948,15 +1946,20 @@ export async function registerRoutes(
           dose: l.doseG,
           yield: l.yieldG,
           time: l.timeSec,
+          roomTemp: l.roomTemp,
+          roomHumidity: l.roomHumidity,
           rating: l.rating,
-          note: [tags.join(", "), l.memo].filter(Boolean).join(" · "),
+          note: [l.memo, tags.join(", ")].filter(Boolean).join(" · "),
           staff: l.staffName,
         };
       });
-    } catch {
-      /* 직원 기록을 못 읽어도 시트 집계는 그대로 내보낸다 */
+      res.json(aggregateLogs(rows));
+    } catch (e: any) {
+      res.json({
+        totalLogs: 0, from: "", to: "", byRating: [], byDate: [], byBeanRecipe: [],
+        byHumidity: [], byTemp: [], error: e?.message ?? String(e),
+      });
     }
-    res.json(await fetchEspressoStats(extra));
   });
 
   // 에스프레소 추출 환경 (공개 조회, 관리자 수정)

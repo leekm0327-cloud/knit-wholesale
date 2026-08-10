@@ -4,6 +4,7 @@ import { db, sqlite } from "./storage";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
+import { ESPRESSO_IMPORT_ROWS } from "./espresso-import";
 import {
   staff,
   attendance,
@@ -231,6 +232,11 @@ for (const [table, col] of [
   ["dessert_logs", "discarded_at INTEGER"],
   ["staff", "hire_date TEXT NOT NULL DEFAULT ''"],
   ["staff", "leave_enabled INTEGER NOT NULL DEFAULT 0"],
+  ["espresso_logs", "room_temp REAL NOT NULL DEFAULT 0"],
+  ["espresso_logs", "room_humidity REAL NOT NULL DEFAULT 0"],
+  ["espresso_logs", "grinder_temp REAL NOT NULL DEFAULT 0"],
+  ["espresso_logs", "roast_days REAL NOT NULL DEFAULT 0"],
+  ["espresso_logs", "source TEXT NOT NULL DEFAULT 'staff'"],
 ]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
@@ -556,6 +562,11 @@ export class StaffStorage {
         rating: p.rating ?? 0,
         flavorTags: JSON.stringify(p.flavorTags ?? []),
         memo: p.memo ?? "",
+        roomTemp: p.roomTemp ?? 0,
+        roomHumidity: p.roomHumidity ?? 0,
+        grinderTemp: p.grinderTemp ?? 0,
+        roastDays: p.roastDays ?? 0,
+        source: "staff",
         createdAt: Date.now(),
       })
       .returning()
@@ -1406,6 +1417,52 @@ export class StaffStorage {
 }
 
 export const staffStorage = new StaffStorage();
+
+/**
+ * 구글폼으로 받아 두었던 기존 추출 기록을 DB로 한 번만 옮긴다.
+ * 이미 옮겨진 기록(source='import')이 있으면 아무 것도 하지 않는다.
+ * 담당자 이름이 직원 계정과 같으면 그 계정에 붙이고, 없으면 이름만 남긴다.
+ */
+export function importEspressoHistory(): void {
+  try {
+    const already = db.select().from(espressoLogs).all().some((r) => r.source === "import");
+    if (already) return;
+    if (ESPRESSO_IMPORT_ROWS.length === 0) return;
+
+    const people = db.select().from(staff).all();
+    const idByName = new Map(people.map((p) => [p.name, p.id]));
+
+    for (const r of ESPRESSO_IMPORT_ROWS) {
+      db.insert(espressoLogs)
+        .values({
+          staffId: idByName.get(r.staffName) ?? 0,
+          staffName: r.staffName,
+          logDate: r.logDate,
+          beanName: r.beanName,
+          machine: "",
+          grindSetting: "",
+          doseG: r.doseG,
+          yieldG: r.yieldG,
+          timeSec: r.timeSec,
+          waterTemp: r.waterTemp,
+          tds: "",
+          rating: r.rating,
+          flavorTags: "[]",
+          memo: r.memo,
+          roomTemp: r.roomTemp,
+          roomHumidity: r.roomHumidity,
+          grinderTemp: r.grinderTemp,
+          roastDays: r.roastDays,
+          source: "import",
+          createdAt: r.createdAt,
+        })
+        .run();
+    }
+    console.log(`[seed] 기존 에스프레소 기록 ${ESPRESSO_IMPORT_ROWS.length}건 이관 완료`);
+  } catch (e: any) {
+    console.warn("[import espresso history]", e?.message);
+  }
+}
 
 /**
  * 대표(이강민) 계정을 근무표에 항상 넣어두기 위한 시드.

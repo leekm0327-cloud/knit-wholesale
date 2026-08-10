@@ -540,6 +540,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .staff-ui textarea.s-input { resize: none; line-height: 1.55; }
 .staff-ui .s-input.center { text-align: center; }
+/* 평가 버튼처럼 줄바꿈을 살려야 하는 곳 */
+.staff-ui .s-card button { white-space: pre-line; }
 
 /* 알약 버튼 변형 */
 .staff-ui .s-pill.line {
