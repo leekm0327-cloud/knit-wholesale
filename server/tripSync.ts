@@ -104,9 +104,34 @@ export function createTripSyncRouter(opts: { store: TripStore; auth?: RequestHan
 /* 저장소 어댑터 — 실제로 쓰는 DB에 맞는 것 하나만 고르세요            */
 /* ------------------------------------------------------------------ */
 
-/** (A) better-sqlite3 — 이미 의존성에 있습니다.
- *  ⚠️ SQLite 파일이 Railway 영구 볼륨 위에 있어야 합니다. 아니면 배포 때마다 초기화됩니다. */
-export function sqliteTripStore(db: any): TripStore {
+/** (A-1) ★권장★ DB 파일 경로로 직접 연결.
+ *  storage.ts 의 `db` 는 drizzle 래퍼라 .prepare/.exec 가 없습니다. 그래서 경로로 여는 쪽이 안전합니다.
+ *
+ *    import { DB_PATH } from "./storage";
+ *    sqliteTripStoreFromPath(DB_PATH)
+ */
+export function sqliteTripStoreFromPath(dbPath: string): TripStore {
+  // ESM 환경에서 동기 require 대신 createRequire 사용
+  const { createRequire } = require("node:module");
+  const req = typeof require === "function" ? require : createRequire(import.meta.url);
+  const Database = req("better-sqlite3");
+  const raw = new Database(dbPath);
+  raw.pragma("busy_timeout = 5000");   // 본체 앱이 쓰는 중이면 잠깐 기다렸다 재시도
+  return sqliteTripStore(raw);
+}
+
+/** (A-2) better-sqlite3 핸들을 직접 넘길 때.
+ *  drizzle 인스턴스를 넘겨도 내부 클라이언트($client)를 찾아 씁니다. */
+export function sqliteTripStore(dbOrDrizzle: any): TripStore {
+  const db: any =
+    typeof dbOrDrizzle?.prepare === "function"
+      ? dbOrDrizzle
+      : dbOrDrizzle?.$client ?? dbOrDrizzle?.session?.client ?? dbOrDrizzle;
+  if (typeof db?.prepare !== "function" || typeof db?.exec !== "function") {
+    throw new Error(
+      "tripSync: better-sqlite3 핸들이 아닙니다. sqliteTripStoreFromPath(DB_PATH) 를 쓰세요."
+    );
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS trip_state (
     id TEXT PRIMARY KEY,
     data TEXT NOT NULL,
