@@ -48,7 +48,11 @@ export default function AdminPopupNotices() {
   const [preview, setPreview] = useState<PopupNotice | null>(null);
 
   const { data, isLoading } = useQuery<PopupNotice[]>({ queryKey: [KEY] });
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: [KEY] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: [KEY] });
+    // 거래처 화면이 바로 새 공지를 받아가도록 캐시도 비운다
+    queryClient.invalidateQueries({ queryKey: ["/api/popup-notices/active"] });
+  };
   const set = (patch: Partial<Draft>) => setD((p) => ({ ...p, ...patch }));
 
   async function create() {

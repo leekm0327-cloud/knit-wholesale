@@ -2,6 +2,7 @@
 // '오늘 하루 보지 않기'를 누르면 그날은 다시 뜨지 않고, 그냥 닫으면 다음 로그인 때 또 뜬다.
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import type { PopupNotice } from "@shared/schema";
 import { X, CalendarX2, CalendarCheck2, Truck } from "lucide-react";
@@ -34,6 +35,7 @@ function hideToday(id: number) {
 
 export function PopupNoticeLayer() {
   const { user } = useAuth();
+  const [location] = useLocation();
   const [closed, setClosed] = useState<number[]>([]);
 
   const { data } = useQuery<PopupNotice[]>({
@@ -47,8 +49,9 @@ export function PopupNoticeLayer() {
     setClosed([]);
   }, [user?.id]);
 
-  // 관리자 계정에는 띄우지 않는다. 관리 화면을 가리기만 하고, 미리보기는 팝업 공지 화면에서 따로 볼 수 있다.
-  if (!user || user.role === "admin") return null;
+  // 관리 화면에서는 띄우지 않는다. 작업 중에 가리기만 하기 때문.
+  // 대신 주문 사이트 쪽에서는 대표님도 거래처와 똑같이 보이게 해서 직접 확인할 수 있게 한다.
+  if (!user || location.startsWith("/admin")) return null;
 
   const hidden = readHidden();
   const t = today();
