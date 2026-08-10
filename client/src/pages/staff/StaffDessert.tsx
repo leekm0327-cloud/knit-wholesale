@@ -4,7 +4,8 @@ import { StaffLayout } from "@/components/StaffLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
-import { Loader2, ChefHat, Trash2 } from "lucide-react";
+import type { PrepTask } from "@shared/schema";
+import { Loader2, ChefHat, Trash2, Check, Plus, X } from "lucide-react";
 
 type Row = {
   itemId: number;
@@ -121,6 +122,9 @@ export default function StaffDessert() {
         </button>
       </div>
 
+      {/* 이 날 해야 하는 준비 작업 */}
+      <PrepTasks date={date} />
+
       {isLoading ? (
         <div className="mt-2.5 space-y-2.5">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -193,5 +197,166 @@ export default function StaffDessert() {
         </>
       )}
     </StaffLayout>
+  );
+}
+
+/**
+ * 간헐적으로 하는 준비 작업 (휘낭시에 반죽, 에그타르트 필링, 카라멜소스 제작 등).
+ * 매일 하는 일이 아니라서 품목 마스터가 아니라 '그날 해야 할 일'로 붙여 둔다.
+ */
+function PrepTasks({ date }: { date: string }) {
+  const { toast } = useToast();
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [memo, setMemo] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const key = `/api/staff/prep-tasks?date=${date}`;
+  const { data } = useQuery<{ date: string; rows: PrepTask[] }>({ queryKey: [key] });
+  const rows = data?.rows ?? [];
+  const left = rows.filter((r) => r.done !== 1).length;
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: [key] });
+    queryClient.invalidateQueries({ queryKey: ["/api/staff/home"] });
+  };
+
+  async function add() {
+    if (!title.trim()) {
+      toast({ variant: "destructive", title: "할 일을 입력해 주세요." });
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest("POST", "/api/staff/prep-tasks", {
+        workDate: date,
+        title: title.trim(),
+        memo: memo.trim(),
+      });
+      setTitle("");
+      setMemo("");
+      setAdding(false);
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "추가 실패", description: errMsg(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggle(t: PrepTask) {
+    try {
+      await apiRequest("POST", `/api/staff/prep-tasks/${t.id}/toggle`);
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "실패", description: errMsg(err) });
+    }
+  }
+
+  async function remove(t: PrepTask) {
+    if (!confirm(`'${t.title}' 을(를) 지울까요?`)) return;
+    try {
+      await apiRequest("DELETE", `/api/staff/prep-tasks/${t.id}`);
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "삭제 실패", description: errMsg(err) });
+    }
+  }
+
+  return (
+    <>
+      <div className="s-sect flex items-baseline justify-between">
+        <span>준비 작업</span>
+        <span className="text-[11px] font-normal" style={{ color: "var(--s-muted)" }}>
+          {rows.length === 0 ? "없음" : left === 0 ? "모두 완료" : `${left}개 남음`}
+        </span>
+      </div>
+
+      <div className="s-card" style={{ padding: rows.length ? "4px 16px 12px" : "14px 16px" }}>
+        {rows.length === 0 ? (
+          <p className="text-[12.5px]" style={{ color: "var(--s-muted)" }}>
+            이 날 해야 하는 준비 작업이 없습니다.
+          </p>
+        ) : (
+          rows.map((t) => {
+            const done = t.done === 1;
+            return (
+              <div key={t.id} className="s-li" data-testid={`row-prep-${t.id}`}>
+                <button
+                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  onClick={() => toggle(t)}
+                  data-testid={`toggle-prep-${t.id}`}
+                >
+                  <span
+                    className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px]"
+                    style={
+                      done
+                        ? { background: "var(--s-ink)", color: "#fff" }
+                        : { background: "var(--s-bg)", boxShadow: "inset 0 0 0 1.5px #dedcd6" }
+                    }
+                  >
+                    {done && <Check className="h-3.5 w-3.5" strokeWidth={2.6} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span
+                      className="block truncate text-[13.5px]"
+                      style={done ? { color: "var(--s-faint)", textDecoration: "line-through" } : undefined}
+                    >
+                      {t.title}
+                    </span>
+                    <span className="s-k block truncate" style={{ fontSize: 10.5 }}>
+                      {done
+                        ? `${t.doneByName} 완료`
+                        : t.memo || (t.createdByName ? `${t.createdByName} 등록` : "")}
+                    </span>
+                  </span>
+                </button>
+                <button className="s-icon" onClick={() => remove(t)} aria-label="삭제">
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                </button>
+              </div>
+            );
+          })
+        )}
+
+        {adding ? (
+          <div className="mt-3">
+            <input
+              className="s-input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="예: 휘낭시에 반죽"
+              data-testid="input-prep-title"
+            />
+            <input
+              className="s-input mt-2"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="메모 (선택)"
+            />
+            <div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2">
+              <button className="s-pill" onClick={add} disabled={busy} data-testid="button-add-prep">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "추가"}
+              </button>
+              <button
+                className="s-pill line"
+                style={{ paddingLeft: 18, paddingRight: 18 }}
+                onClick={() => setAdding(false)}
+              >
+                <X className="h-4 w-4" strokeWidth={1.8} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="s-pill line wide mt-3"
+            onClick={() => setAdding(true)}
+            data-testid="button-open-prep-form"
+          >
+            <Plus className="h-4 w-4" strokeWidth={1.8} />할 일 추가
+          </button>
+        )}
+      </div>
+    </>
   );
 }

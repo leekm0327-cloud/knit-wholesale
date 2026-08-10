@@ -179,6 +179,47 @@ export default function StaffHome() {
         </>
       )}
 
+      {/* 오늘 인수인계 · 준비 작업 */}
+      <div className="s-sect">오늘 할 일</div>
+      <div className="s-card" style={{ padding: "4px 16px" }}>
+        <button
+          onClick={() => navigate("/staff/handover")}
+          className="s-li w-full text-left"
+          data-testid="link-handover"
+        >
+          <span className="s-a">인수인계</span>
+          <span className="flex items-center gap-1.5">
+            {(data?.handoverUnread ?? 0) > 0 ? (
+              <span
+                className="rounded-full px-2 py-[3px] text-[10.5px] font-medium"
+                style={{ background: "var(--s-accent-soft)", color: "var(--s-accent)" }}
+              >
+                미확인 {data?.handoverUnread}
+              </span>
+            ) : (
+              <span className="s-b">{(data?.handoverCount ?? 0) > 0 ? `${data?.handoverCount}건 확인함` : "없음"}</span>
+            )}
+            <ChevronRight className="h-4 w-4" style={{ color: "var(--s-faint)" }} />
+          </span>
+        </button>
+        <button onClick={() => navigate("/staff/dessert")} className="s-li w-full text-left" data-testid="link-prep">
+          <span className="s-a">준비 작업</span>
+          <span className="flex items-center gap-1.5">
+            {(data?.prepTodo ?? 0) > 0 ? (
+              <span
+                className="rounded-full px-2 py-[3px] text-[10.5px] font-medium"
+                style={{ background: "var(--s-ink)", color: "#fff" }}
+              >
+                {data?.prepTodo}개 남음
+              </span>
+            ) : (
+              <span className="s-b">{(data?.prepTotal ?? 0) > 0 ? "모두 완료" : "없음"}</span>
+            )}
+            <ChevronRight className="h-4 w-4" style={{ color: "var(--s-faint)" }} />
+          </span>
+        </button>
+      </div>
+
       {/* 공지 */}
       <div className="s-sect flex items-baseline justify-between">
         <span>공지사항</span>

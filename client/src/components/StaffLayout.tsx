@@ -3,7 +3,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import type { PublicStaff } from "@shared/schema";
-import { Loader2, Home, Coffee, CalendarDays, Megaphone, CakeSlice, CalendarOff, User } from "lucide-react";
+import {
+  Loader2,
+  Home,
+  Coffee,
+  CalendarDays,
+  Megaphone,
+  CakeSlice,
+  CalendarOff,
+  User,
+  ArrowLeftRight,
+} from "lucide-react";
 
 export function useStaff() {
   return useQuery<PublicStaff | null>({
@@ -21,6 +31,7 @@ export function useStaff() {
 
 const TABS = [
   { href: "/staff", label: "홈", icon: Home },
+  { href: "/staff/handover", label: "인계", icon: ArrowLeftRight },
   { href: "/staff/espresso", label: "추출", icon: Coffee },
   { href: "/staff/dessert", label: "생산", icon: CakeSlice },
   { href: "/staff/schedule", label: "스케줄", icon: CalendarDays },
@@ -93,7 +104,7 @@ export function StaffLayout({
                 className={active ? "on" : ""}
                 data-testid={`tab-staff-${t.label}`}
               >
-                <Icon className="h-[17px] w-[17px]" strokeWidth={active ? 2 : 1.6} />
+                <Icon className="h-4 w-4" strokeWidth={active ? 2 : 1.6} />
                 {t.label}
               </button>
             );

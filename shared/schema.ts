@@ -1604,6 +1604,10 @@ export type StaffHome = {
   latestAnnouncement: Announcement | null;
   weekMinutes: number; // 이번 주 근무 분
   monthMinutes: number; // 이번 달 근무 분
+  handoverCount: number; // 오늘 인수인계 건수
+  handoverUnread: number; // 그중 내가 아직 확인하지 않은 건수
+  prepTodo: number; // 오늘 남은 준비 작업
+  prepTotal: number; // 오늘 준비 작업 전체
 };
 
 /** 근태 집계 (관리자) */
@@ -1711,4 +1715,88 @@ export type LeaveBalance = {
   remaining: number; // 잔여
   expiringSoon: number; // 60일 내 소멸 예정 잔여
   expiringDate: string; // 가장 가까운 소멸일
+};
+
+// ============================================================
+// 인수인계 · 준비 작업 (2026-08)
+// ============================================================
+
+/** 날짜별 인수인계. 근무 교대와 맞물리도록 workDate 에 묶는다. */
+export const handovers = sqliteTable("handovers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workDate: text("work_date").notNull(),
+  staffId: integer("staff_id").notNull(),
+  staffName: text("staff_name").notNull(),
+  body: text("body").notNull(),
+  important: integer("important").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** 인수인계 확인 기록 — 누가 읽었는지 이름으로 보여준다. */
+export const handoverReads = sqliteTable("handover_reads", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  handoverId: integer("handover_id").notNull(),
+  staffId: integer("staff_id").notNull(),
+  staffName: text("staff_name").notNull(),
+  readAt: integer("read_at").notNull(),
+});
+
+/**
+ * 간헐적으로 하는 베이킹 준비 작업.
+ * 휘낭시에 반죽, 에그타르트 필링, 카라멜소스 제작처럼 매일은 아니지만
+ * 특정 날짜에 반드시 해야 하는 일들을 날짜에 걸어 두고 체크한다.
+ */
+export const prepTasks = sqliteTable("prep_tasks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workDate: text("work_date").notNull(),
+  title: text("title").notNull(),
+  memo: text("memo").notNull().default(""),
+  createdByStaffId: integer("created_by_staff_id").notNull().default(0),
+  createdByName: text("created_by_name").notNull().default(""),
+  done: integer("done").notNull().default(0),
+  doneByStaffId: integer("done_by_staff_id").notNull().default(0),
+  doneByName: text("done_by_name").notNull().default(""),
+  doneAt: integer("done_at"),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ===== zod =====
+export const createHandoverSchema = z.object({
+  workDate: z.string().min(1, "날짜를 선택해 주세요."),
+  body: z.string().trim().min(1, "내용을 입력해 주세요.").max(2000),
+  important: z.boolean().optional().default(false),
+});
+
+export const createPrepTaskSchema = z.object({
+  workDate: z.string().min(1, "날짜를 선택해 주세요."),
+  title: z.string().trim().min(1, "할 일을 입력해 주세요.").max(100),
+  memo: z.string().max(300).optional().default(""),
+});
+
+// ===== 타입 =====
+export type Handover = typeof handovers.$inferSelect;
+export type HandoverRead = typeof handoverReads.$inferSelect;
+export type PrepTask = typeof prepTasks.$inferSelect;
+export type CreateHandover = z.infer<typeof createHandoverSchema>;
+export type CreatePrepTask = z.infer<typeof createPrepTaskSchema>;
+
+/** 확인자 목록과 내 확인 여부를 붙인 인수인계 한 건 */
+export type HandoverRow = Handover & {
+  readers: { staffId: number; staffName: string; readAt: number }[];
+  readByMe: boolean;
+  mine: boolean;
+};
+
+/** 인수인계 하루치 */
+export type HandoverDay = {
+  date: string;
+  rows: HandoverRow[];
+  staffCount: number; // 전체 재직 인원 (확인 진행도 표시에 쓴다)
+};
+
+/** 준비 작업 하루치 */
+export type PrepTaskDay = {
+  date: string;
+  rows: PrepTask[];
 };

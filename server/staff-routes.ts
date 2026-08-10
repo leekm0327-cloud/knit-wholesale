@@ -20,6 +20,8 @@ import {
   createLeaveRequestSchema,
   decideLeaveRequestSchema,
   createLeaveGrantSchema,
+  createHandoverSchema,
+  createPrepTaskSchema,
 } from "@shared/schema";
 
 declare module "express-session" {
@@ -277,6 +279,111 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.markAnnouncementRead(id, req.session.staffId!);
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // 인수인계 — 직원
+  // ============================================================
+  app.get("/api/staff/handover", requireStaff, async (req, res) => {
+    const date = String(req.query.date ?? "") || kstToday();
+    res.json(await staffStorage.handoverDay(date, req.session.staffId!));
+  });
+
+  app.post("/api/staff/handover", requireStaff, async (req, res) => {
+    const parsed = createHandoverSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    const row = await staffStorage.createHandover({
+      workDate: parsed.data.workDate,
+      staffId: me.id,
+      staffName: me.name,
+      body: parsed.data.body,
+      important: parsed.data.important,
+    });
+    res.json(row);
+  });
+
+  app.patch("/api/staff/handover/:id", requireStaff, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getHandover(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    if (row.staffId !== req.session.staffId)
+      return res.status(403).json({ message: "직접 쓴 인수인계만 수정할 수 있습니다." });
+    const body = String(req.body?.body ?? "").trim();
+    if (!body) return res.status(400).json({ message: "내용을 입력해 주세요." });
+    await staffStorage.updateHandover(id, body.slice(0, 2000), !!req.body?.important);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/staff/handover/:id", requireStaff, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getHandover(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    const isOwner = me?.staffRole === "owner";
+    if (row.staffId !== req.session.staffId && !isOwner)
+      return res.status(403).json({ message: "직접 쓴 인수인계만 지울 수 있습니다." });
+    await staffStorage.deleteHandover(id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/staff/handover/:id/read", requireStaff, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    await staffStorage.readHandover(id, me.id, me.name);
+    res.json({ ok: true });
+  });
+
+  // ============================================================
+  // 준비 작업 — 직원 (추가·체크 모두 가능)
+  // ============================================================
+  app.get("/api/staff/prep-tasks", requireStaff, async (req, res) => {
+    const date = String(req.query.date ?? "") || kstToday();
+    res.json({ date, rows: await staffStorage.prepTasksOn(date) });
+  });
+
+  app.post("/api/staff/prep-tasks", requireStaff, async (req, res) => {
+    const parsed = createPrepTaskSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    const row = await staffStorage.createPrepTask({
+      workDate: parsed.data.workDate,
+      title: parsed.data.title,
+      memo: parsed.data.memo,
+      staffId: me.id,
+      staffName: me.name,
+    });
+    res.json(row);
+  });
+
+  app.post("/api/staff/prep-tasks/:id/toggle", requireStaff, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getPrepTask(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    await staffStorage.togglePrepTask(id, row.done !== 1, me.id, me.name);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/staff/prep-tasks/:id", requireStaff, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getPrepTask(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    const isOwner = me?.staffRole === "owner";
+    if (row.createdByStaffId !== req.session.staffId && !isOwner)
+      return res.status(403).json({ message: "직접 추가한 작업만 지울 수 있습니다." });
+    await staffStorage.deletePrepTask(id);
     res.json({ ok: true });
   });
 
@@ -587,6 +694,46 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
 
   app.get("/api/admin/staff/dessert-items", requireAdmin, async (_req, res) => {
     res.json(await staffStorage.listDessertItems(true));
+  });
+
+  // ============================================================
+  // 인수인계 · 준비 작업 — 관리자
+  // ============================================================
+  app.get("/api/admin/staff/handover", requireAdmin, async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json({ rows: await staffStorage.listHandovers(from, to), from, to });
+  });
+
+  app.delete("/api/admin/staff/handover/:id", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteHandover(id);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/staff/prep-tasks", requireAdmin, async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json({ rows: await staffStorage.listPrepTasks(from, to), from, to });
+  });
+
+  app.post("/api/admin/staff/prep-tasks", requireAdmin, async (req, res) => {
+    const parsed = createPrepTaskSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const row = await staffStorage.createPrepTask({
+      workDate: parsed.data.workDate,
+      title: parsed.data.title,
+      memo: parsed.data.memo,
+      staffId: 0,
+      staffName: req.session.adminRole === "owner" ? "대표" : "관리자",
+    });
+    res.json(row);
+  });
+
+  app.delete("/api/admin/staff/prep-tasks/:id", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deletePrepTask(id);
+    res.json({ ok: true });
   });
 
   app.post("/api/admin/staff/dessert-items", requireOwner, async (req, res) => {

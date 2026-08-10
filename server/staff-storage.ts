@@ -15,6 +15,13 @@ import {
   announcementReads,
   leaveGrants,
   leaveRequests,
+  handovers,
+  handoverReads,
+  prepTasks,
+  type Handover,
+  type HandoverRow,
+  type HandoverDay,
+  type PrepTask,
   type Staff,
   type PublicStaff,
   type InsertStaff,
@@ -169,6 +176,39 @@ sqlite.exec(`
     staff_id INTEGER NOT NULL,
     read_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS handovers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_date TEXT NOT NULL,
+    staff_id INTEGER NOT NULL,
+    staff_name TEXT NOT NULL,
+    body TEXT NOT NULL,
+    important INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS handover_reads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    handover_id INTEGER NOT NULL,
+    staff_id INTEGER NOT NULL,
+    staff_name TEXT NOT NULL,
+    read_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS prep_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_date TEXT NOT NULL,
+    title TEXT NOT NULL,
+    memo TEXT NOT NULL DEFAULT '',
+    created_by_staff_id INTEGER NOT NULL DEFAULT 0,
+    created_by_name TEXT NOT NULL DEFAULT '',
+    done INTEGER NOT NULL DEFAULT 0,
+    done_by_staff_id INTEGER NOT NULL DEFAULT 0,
+    done_by_name TEXT NOT NULL DEFAULT '',
+    done_at INTEGER,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 // 기존 DB에 컬럼 추가 (멱등)
@@ -200,6 +240,9 @@ for (const stmt of [
   "CREATE INDEX IF NOT EXISTS idx_shifts_date ON shifts(work_date);",
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_leave_grant_auto ON leave_grants(staff_id, kind, grant_date);",
   "CREATE INDEX IF NOT EXISTS idx_leave_req_staff ON leave_requests(staff_id, start_date);",
+  "CREATE INDEX IF NOT EXISTS idx_handover_date ON handovers(work_date);",
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_handover_read ON handover_reads(handover_id, staff_id);",
+  "CREATE INDEX IF NOT EXISTS idx_prep_task_date ON prep_tasks(work_date);",
 ]) {
   try {
     sqlite.exec(stmt);
@@ -1055,7 +1098,214 @@ export class StaffStorage {
       leaveEnabled: s.leaveEnabled === 1,
       leaveRemaining: bal?.remaining ?? 0,
       leavePending: bal?.pending ?? 0,
+      handoverCount: this.countHandovers(today),
+      handoverUnread: this.countUnreadHandovers(today, staffId),
+      prepTodo: this.countPrepTodo(today),
+      prepTotal: this.countPrepTotal(today),
     };
+  }
+
+  // ============================================================
+  // 인수인계
+  // ============================================================
+
+  private countHandovers(date: string): number {
+    return db.select().from(handovers).where(eq(handovers.workDate, date)).all().length;
+  }
+
+  /** 내가 아직 확인하지 않은, 남이 쓴 인수인계 수 */
+  private countUnreadHandovers(date: string, staffId: number): number {
+    const rows = db.select().from(handovers).where(eq(handovers.workDate, date)).all();
+    if (rows.length === 0) return 0;
+    const mine = new Set(
+      db.select().from(handoverReads).where(eq(handoverReads.staffId, staffId)).all().map((r) => r.handoverId),
+    );
+    return rows.filter((r) => r.staffId !== staffId && !mine.has(r.id)).length;
+  }
+
+  async handoverDay(date: string, staffId: number): Promise<HandoverDay> {
+    const rows = db
+      .select()
+      .from(handovers)
+      .where(eq(handovers.workDate, date))
+      .orderBy(desc(handovers.important), asc(handovers.createdAt))
+      .all();
+
+    const ids = new Set(rows.map((r) => r.id));
+    const reads = ids.size
+      ? db.select().from(handoverReads).all().filter((r) => ids.has(r.handoverId))
+      : [];
+
+    const staffCount = db.select().from(staff).all().filter((s) => s.active === 1).length;
+
+    return {
+      date,
+      staffCount,
+      rows: rows.map((r) => {
+        const readers = reads
+          .filter((x) => x.handoverId === r.id)
+          .map((x) => ({ staffId: x.staffId, staffName: x.staffName, readAt: x.readAt }))
+          .sort((a, b) => a.readAt - b.readAt);
+        return {
+          ...r,
+          readers,
+          readByMe: readers.some((x) => x.staffId === staffId),
+          mine: r.staffId === staffId,
+        } satisfies HandoverRow;
+      }),
+    };
+  }
+
+  async createHandover(input: {
+    workDate: string;
+    staffId: number;
+    staffName: string;
+    body: string;
+    important: boolean;
+  }): Promise<Handover> {
+    const now = Date.now();
+    const [row] = db
+      .insert(handovers)
+      .values({
+        workDate: input.workDate,
+        staffId: input.staffId,
+        staffName: input.staffName,
+        body: input.body,
+        important: input.important ? 1 : 0,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .all();
+    return row;
+  }
+
+  async updateHandover(id: number, body: string, important: boolean): Promise<void> {
+    db.update(handovers)
+      .set({ body, important: important ? 1 : 0, updatedAt: Date.now() })
+      .where(eq(handovers.id, id))
+      .run();
+  }
+
+  async getHandover(id: number): Promise<Handover | null> {
+    return db.select().from(handovers).where(eq(handovers.id, id)).all()[0] ?? null;
+  }
+
+  async deleteHandover(id: number): Promise<void> {
+    db.delete(handoverReads).where(eq(handoverReads.handoverId, id)).run();
+    db.delete(handovers).where(eq(handovers.id, id)).run();
+  }
+
+  /** 확인 표시. 이미 확인했으면 아무 일도 하지 않는다. */
+  async readHandover(id: number, staffId: number, staffName: string): Promise<void> {
+    const already = db
+      .select()
+      .from(handoverReads)
+      .where(and(eq(handoverReads.handoverId, id), eq(handoverReads.staffId, staffId)))
+      .all();
+    if (already.length > 0) return;
+    db.insert(handoverReads)
+      .values({ handoverId: id, staffId, staffName, readAt: Date.now() })
+      .run();
+  }
+
+  /** 관리자용 — 기간 조회 */
+  async listHandovers(from: string, to: string): Promise<HandoverRow[]> {
+    const rows = db
+      .select()
+      .from(handovers)
+      .where(and(gte(handovers.workDate, from), lte(handovers.workDate, to)))
+      .orderBy(desc(handovers.workDate), asc(handovers.createdAt))
+      .all();
+    const ids = new Set(rows.map((r) => r.id));
+    const reads = ids.size ? db.select().from(handoverReads).all().filter((r) => ids.has(r.handoverId)) : [];
+    return rows.map((r) => ({
+      ...r,
+      readers: reads
+        .filter((x) => x.handoverId === r.id)
+        .map((x) => ({ staffId: x.staffId, staffName: x.staffName, readAt: x.readAt }))
+        .sort((a, b) => a.readAt - b.readAt),
+      readByMe: false,
+      mine: false,
+    }));
+  }
+
+  // ============================================================
+  // 준비 작업 (간헐적 베이킹 등)
+  // ============================================================
+
+  private countPrepTotal(date: string): number {
+    return db.select().from(prepTasks).where(eq(prepTasks.workDate, date)).all().length;
+  }
+
+  private countPrepTodo(date: string): number {
+    return db
+      .select()
+      .from(prepTasks)
+      .where(eq(prepTasks.workDate, date))
+      .all()
+      .filter((t) => t.done !== 1).length;
+  }
+
+  async prepTasksOn(date: string): Promise<PrepTask[]> {
+    return db
+      .select()
+      .from(prepTasks)
+      .where(eq(prepTasks.workDate, date))
+      .orderBy(asc(prepTasks.done), asc(prepTasks.createdAt))
+      .all();
+  }
+
+  async listPrepTasks(from: string, to: string): Promise<PrepTask[]> {
+    return db
+      .select()
+      .from(prepTasks)
+      .where(and(gte(prepTasks.workDate, from), lte(prepTasks.workDate, to)))
+      .orderBy(asc(prepTasks.workDate), asc(prepTasks.createdAt))
+      .all();
+  }
+
+  async createPrepTask(input: {
+    workDate: string;
+    title: string;
+    memo: string;
+    staffId: number;
+    staffName: string;
+  }): Promise<PrepTask> {
+    const [row] = db
+      .insert(prepTasks)
+      .values({
+        workDate: input.workDate,
+        title: input.title,
+        memo: input.memo,
+        createdByStaffId: input.staffId,
+        createdByName: input.staffName,
+        done: 0,
+        createdAt: Date.now(),
+      })
+      .returning()
+      .all();
+    return row;
+  }
+
+  async getPrepTask(id: number): Promise<PrepTask | null> {
+    return db.select().from(prepTasks).where(eq(prepTasks.id, id)).all()[0] ?? null;
+  }
+
+  /** 체크/해제. 해제하면 완료자 정보도 지운다. */
+  async togglePrepTask(id: number, done: boolean, staffId: number, staffName: string): Promise<void> {
+    db.update(prepTasks)
+      .set(
+        done
+          ? { done: 1, doneByStaffId: staffId, doneByName: staffName, doneAt: Date.now() }
+          : { done: 0, doneByStaffId: 0, doneByName: "", doneAt: null },
+      )
+      .where(eq(prepTasks.id, id))
+      .run();
+  }
+
+  async deletePrepTask(id: number): Promise<void> {
+    db.delete(prepTasks).where(eq(prepTasks.id, id)).run();
   }
 }
 
