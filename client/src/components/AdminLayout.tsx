@@ -52,6 +52,7 @@ import {
   ClipboardList,
   CalendarOff,
   ArrowLeftRight,
+  MonitorSmartphone,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -118,6 +119,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/espresso", label: "에스프레소 로그", icon: Coffee },
       { href: "/admin/news", label: "소식", icon: Newspaper },
+      { href: "/admin/popup-notices", label: "팝업 공지", icon: MonitorSmartphone },
       { href: "/admin/board", label: "게시판", icon: MessageSquare },
       { href: "/admin/inquiries", label: "납품 문의", icon: Inbox },
       { href: "/admin/visit-setups", label: "방문 세팅", icon: CalendarCheck },

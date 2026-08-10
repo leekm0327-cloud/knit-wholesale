@@ -1856,3 +1856,42 @@ export const updatePrepPresetSchema = z.object({
 
 export type PrepTaskPreset = typeof prepTaskPresets.$inferSelect;
 export type InsertPrepPreset = z.infer<typeof insertPrepPresetSchema>;
+
+// ============================================================
+// 거래처 팝업 공지 (2026-08)
+// ============================================================
+
+/**
+ * 거래처가 로그인했을 때 화면 가운데 띄우는 안내.
+ * 택배사 휴무처럼 '언제까지 주문하면 되는지'가 핵심이라, 본문과 별개로
+ * 주문 마감·재개·배송 안내를 따로 두어 크게 보여준다.
+ */
+export const popupNotices = sqliteTable("popup_notices", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  orderUntil: text("order_until").notNull().default(""), // 예: 8월 13일 (목)까지
+  orderResume: text("order_resume").notNull().default(""), // 예: 8월 18일 (화)부터
+  deliveryNote: text("delivery_note").notNull().default(""), // 예: 13일 주문분은 17~18일 도착 예정
+  startDate: text("start_date").notNull().default(""), // 노출 시작 YYYY-MM-DD (비우면 즉시)
+  endDate: text("end_date").notNull().default(""), // 노출 종료 YYYY-MM-DD (비우면 계속)
+  active: integer("active").notNull().default(1),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const insertPopupNoticeSchema = z.object({
+  title: z.string().trim().min(1, "제목을 입력해 주세요.").max(80),
+  body: z.string().max(1000).optional().default(""),
+  orderUntil: z.string().max(60).optional().default(""),
+  orderResume: z.string().max(60).optional().default(""),
+  deliveryNote: z.string().max(200).optional().default(""),
+  startDate: z.string().optional().default(""),
+  endDate: z.string().optional().default(""),
+  active: z.number().int().min(0).max(1).optional().default(1),
+});
+
+export const updatePopupNoticeSchema = insertPopupNoticeSchema.partial();
+
+export type PopupNotice = typeof popupNotices.$inferSelect;
+export type InsertPopupNotice = z.infer<typeof insertPopupNoticeSchema>;

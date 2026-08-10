@@ -83,6 +83,8 @@ import StaffProfile from "@/pages/staff/StaffProfile";
 import StaffLeave from "@/pages/staff/StaffLeave";
 import StaffHandover from "@/pages/staff/StaffHandover";
 import AdminStaffHandover from "@/pages/admin/AdminStaffHandover";
+import AdminPopupNotices from "@/pages/admin/AdminPopupNotices";
+import { PopupNoticeLayer } from "@/components/PopupNotice";
 import AdminStaffLeave from "@/pages/admin/AdminStaffLeave";
 import AdminWebAnalytics from "@/pages/admin/AdminWebAnalytics";
 import NotFound from "@/pages/not-found";
@@ -218,6 +220,7 @@ function AppRouter() {
       <Route path="/admin/staff/logs" component={AdminStaffLogs} />
       <Route path="/admin/staff/leave" component={AdminStaffLeave} />
       <Route path="/admin/staff/handover" component={AdminStaffHandover} />
+      <Route path="/admin/popup-notices" component={AdminPopupNotices} />
 
       {/* 직원 내부 관리 — 직원 화면 (자체 인증) */}
       <Route path="/staff/login" component={StaffLogin} />
@@ -247,6 +250,7 @@ function App() {
               <Router hook={useHashLocation}>
                 <ErrorBoundary>
                   <AppRouter />
+                  <PopupNoticeLayer />
                 </ErrorBoundary>
               </Router>
             </TooltipProvider>
