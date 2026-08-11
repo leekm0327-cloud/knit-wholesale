@@ -1960,3 +1960,61 @@ export type SupplyOrderSummary = {
   byStaff: { staffName: string; count: number; amount: number }[];
   byMonth: { month: string; count: number; amount: number }[];
 };
+
+// ============================================================
+// 직원 일정 (2026-08)
+// 디저트 단체 주문처럼 날짜에 걸어두고 다 같이 보는 일정.
+// ============================================================
+
+export const STAFF_EVENT_KINDS = ["order", "event", "etc"] as const;
+export type StaffEventKind = (typeof STAFF_EVENT_KINDS)[number];
+export const STAFF_EVENT_KIND_LABEL: Record<string, string> = {
+  order: "단체 주문",
+  event: "행사",
+  etc: "기타",
+};
+
+export const staffEvents = sqliteTable("staff_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  kind: text("kind").notNull().default("order"), // order | event | etc
+  startDate: text("start_date").notNull(), // YYYY-MM-DD
+  endDate: text("end_date").notNull(), // 하루짜리면 startDate 와 같다
+  memo: text("memo").notNull().default(""),
+  createdByStaffId: integer("created_by_staff_id").notNull().default(0),
+  createdByName: text("created_by_name").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const insertStaffEventSchema = z
+  .object({
+    title: z.string().trim().min(1, "일정 이름을 입력해 주세요.").max(60),
+    kind: z.enum(STAFF_EVENT_KINDS).optional().default("order"),
+    startDate: z.string().min(1, "시작일을 선택해 주세요."),
+    endDate: z.string().optional().default(""),
+    memo: z.string().max(500).optional().default(""),
+  })
+  .transform((v) => ({ ...v, endDate: v.endDate || v.startDate }))
+  .refine((v) => v.endDate >= v.startDate, { message: "종료일이 시작일보다 빠릅니다." });
+
+export const updateStaffEventSchema = z.object({
+  title: z.string().trim().min(1).max(60).optional(),
+  kind: z.enum(STAFF_EVENT_KINDS).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  memo: z.string().max(500).optional(),
+});
+
+export type StaffEvent = typeof staffEvents.$inferSelect;
+export type InsertStaffEvent = z.infer<typeof insertStaffEventSchema>;
+
+/** 직원 홈의 2주 달력에 필요한 것들 */
+export type StaffCalendar = {
+  from: string; // 이번 주 월요일
+  to: string; // 그로부터 13일 뒤
+  today: string;
+  events: StaffEvent[];
+  prepTasks: PrepTask[];
+  shifts: Shift[]; // 내 근무
+};

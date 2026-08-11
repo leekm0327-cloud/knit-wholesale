@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
-import type { HandoverRow, PrepTask, PrepTaskPreset } from "@shared/schema";
+import type { HandoverRow, PrepTask, PrepTaskPreset, StaffEvent } from "@shared/schema";
+import { STAFF_EVENT_KIND_LABEL, STAFF_EVENT_KINDS } from "@shared/schema";
 import { AlertCircle, ArrowDown, ArrowUp, Check, Loader2, Plus, Trash2 } from "lucide-react";
 
 function today(): string {
@@ -52,11 +53,53 @@ export default function AdminStaffHandover() {
   const [pTitle, setPTitle] = useState("");
   const [pMemo, setPMemo] = useState("");
 
+  // 일정 등록 폼
+  const eKey = `/api/admin/staff/events?from=${from}&to=${to}`;
+  const { data: eData } = useQuery<{ rows: StaffEvent[] }>({ queryKey: [eKey] });
+  const [evTitle, setEvTitle] = useState("");
+  const [evKind, setEvKind] = useState<string>("order");
+  const [evStart, setEvStart] = useState(today());
+  const [evEnd, setEvEnd] = useState(today());
+  const [evMemo, setEvMemo] = useState("");
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: [hKey] });
     queryClient.invalidateQueries({ queryKey: [pKey] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/prep-presets"] });
+    queryClient.invalidateQueries({ queryKey: [eKey] });
   };
+
+  async function addEvent() {
+    if (!evTitle.trim()) {
+      toast({ variant: "destructive", title: "일정 이름을 입력해 주세요." });
+      return;
+    }
+    try {
+      await apiRequest("POST", "/api/admin/staff/events", {
+        title: evTitle.trim(),
+        kind: evKind,
+        startDate: evStart,
+        endDate: evEnd || evStart,
+        memo: evMemo.trim(),
+      });
+      toast({ title: "일정을 등록했습니다." });
+      setEvTitle("");
+      setEvMemo("");
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "등록 실패", description: errMsg(err) });
+    }
+  }
+
+  async function delEvent(e: StaffEvent) {
+    if (!confirm(`'${e.title}' 일정을 지울까요?`)) return;
+    try {
+      await apiRequest("DELETE", `/api/admin/staff/events/${e.id}`);
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "삭제 실패", description: errMsg(err) });
+    }
+  }
 
   async function addPreset() {
     if (!pTitle.trim()) {
@@ -153,9 +196,10 @@ export default function AdminStaffHandover() {
     <AdminLayout>
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Handover</div>
-        <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">인수인계 · 준비 작업</h1>
+        <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">인수인계 · 일정</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          직원들이 남긴 인수인계를 보고, 간헐적으로 하는 베이킹 준비 작업을 날짜에 걸어둘 수 있습니다.
+          직원들이 남긴 인수인계를 보고, 준비 작업과 일정을 날짜에 걸어둘 수 있습니다. 여기에 등록한 일정은 직원 앱
+          첫 화면의 2주 달력에 바로 뜹니다.
         </p>
 
         <Card className="mb-5 p-4">
@@ -169,6 +213,91 @@ export default function AdminStaffHandover() {
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
             </div>
           </div>
+        </Card>
+
+        {/* 일정 등록 */}
+        <Card className="mb-5 p-5">
+          <h2 className="mb-1 text-sm font-semibold text-foreground">일정 등록</h2>
+          <p className="mb-3 text-[11px] text-muted-foreground">
+            디저트 단체 주문처럼 다 같이 알아야 하는 일을 날짜에 걸어둡니다. 직원 앱 첫 화면 달력에 색 막대로 표시됩니다.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">종류</Label>
+              <select
+                value={evKind}
+                onChange={(e) => setEvKind(e.target.value)}
+                className="h-9 w-28 rounded-md border border-input bg-transparent px-2 text-sm"
+                data-testid="select-event-kind"
+              >
+                {STAFF_EVENT_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {STAFF_EVENT_KIND_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <Label className="text-xs text-muted-foreground">이름</Label>
+              <Input
+                value={evTitle}
+                onChange={(e) => setEvTitle(e.target.value)}
+                placeholder="예: 디저트 단체 주문 30개"
+                data-testid="input-admin-event-title"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">시작일</Label>
+              <Input
+                type="date"
+                value={evStart}
+                onChange={(e) => {
+                  setEvStart(e.target.value);
+                  if (e.target.value > evEnd) setEvEnd(e.target.value);
+                }}
+                className="w-40"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">종료일</Label>
+              <Input type="date" value={evEnd} onChange={(e) => setEvEnd(e.target.value)} className="w-40" />
+            </div>
+            <div className="min-w-[160px] flex-1">
+              <Label className="text-xs text-muted-foreground">메모 (선택)</Label>
+              <Input value={evMemo} onChange={(e) => setEvMemo(e.target.value)} placeholder="수량, 픽업 시간 등" />
+            </div>
+            <Button onClick={addEvent} data-testid="button-admin-add-event">
+              <Plus className="h-4 w-4" />
+              등록
+            </Button>
+          </div>
+
+          {(eData?.rows ?? []).length > 0 && (
+            <div className="mt-4 divide-y rounded-md border">
+              {(eData?.rows ?? []).map((e) => (
+                <div key={e.id} className="flex items-center gap-2 px-3 py-2" data-testid={`admin-event-${e.id}`}>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {STAFF_EVENT_KIND_LABEL[e.kind] ?? "기타"}
+                  </Badge>
+                  <span className="text-sm text-foreground">{e.title}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {e.startDate}
+                    {e.startDate !== e.endDate ? ` ~ ${e.endDate}` : ""}
+                    {e.memo ? ` · ${e.memo}` : ""}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => delEvent(e)}
+                    className="ml-auto text-muted-foreground hover:text-destructive"
+                    aria-label="삭제"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         {/* 준비 작업 등록 */}

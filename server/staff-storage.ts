@@ -22,6 +22,7 @@ import {
   prepTaskPresets,
   supplyVendors,
   supplyOrders,
+  staffEvents,
   type Handover,
   type HandoverRow,
   type HandoverDay,
@@ -30,6 +31,8 @@ import {
   type SupplyVendor,
   type SupplyOrder,
   type SupplyOrderSummary,
+  type StaffEvent,
+  type StaffCalendar,
   type Staff,
   type PublicStaff,
   type InsertStaff,
@@ -204,6 +207,19 @@ sqlite.exec(`
     read_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS staff_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'order',
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    memo TEXT NOT NULL DEFAULT '',
+    created_by_staff_id INTEGER NOT NULL DEFAULT 0,
+    created_by_name TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS supply_vendors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -287,6 +303,7 @@ for (const stmt of [
   "CREATE UNIQUE INDEX IF NOT EXISTS idx_handover_read ON handover_reads(handover_id, staff_id);",
   "CREATE INDEX IF NOT EXISTS idx_prep_task_date ON prep_tasks(work_date);",
   "CREATE INDEX IF NOT EXISTS idx_supply_order_date ON supply_orders(order_date);",
+  "CREATE INDEX IF NOT EXISTS idx_staff_event_date ON staff_events(start_date);",
 ]) {
   try {
     sqlite.exec(stmt);
@@ -1428,6 +1445,85 @@ export class StaffStorage {
 
   async deletePrepPreset(id: number): Promise<void> {
     db.delete(prepTaskPresets).where(eq(prepTaskPresets.id, id)).run();
+  }
+
+  // ============================================================
+  // 일정 (단체 주문 등)
+  // ============================================================
+
+  /** 기간에 걸쳐 있는 일정 — 시작일이 늦어도 기간이 겹치면 포함한다 */
+  async listStaffEvents(from: string, to: string): Promise<StaffEvent[]> {
+    return db
+      .select()
+      .from(staffEvents)
+      .all()
+      .filter((e) => e.startDate <= to && e.endDate >= from)
+      .sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.id - b.id));
+  }
+
+  async getStaffEvent(id: number): Promise<StaffEvent | null> {
+    return db.select().from(staffEvents).where(eq(staffEvents.id, id)).all()[0] ?? null;
+  }
+
+  async createStaffEvent(input: {
+    title: string;
+    kind: string;
+    startDate: string;
+    endDate: string;
+    memo: string;
+    staffId: number;
+    staffName: string;
+  }): Promise<StaffEvent> {
+    const now = Date.now();
+    const [row] = db
+      .insert(staffEvents)
+      .values({
+        title: input.title,
+        kind: input.kind,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        memo: input.memo,
+        createdByStaffId: input.staffId,
+        createdByName: input.staffName,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .all();
+    return row;
+  }
+
+  async updateStaffEvent(
+    id: number,
+    patch: Partial<{ title: string; kind: string; startDate: string; endDate: string; memo: string }>,
+  ): Promise<StaffEvent | null> {
+    if (Object.keys(patch).length > 0) {
+      db.update(staffEvents)
+        .set({ ...patch, updatedAt: Date.now() })
+        .where(eq(staffEvents.id, id))
+        .run();
+    }
+    return this.getStaffEvent(id);
+  }
+
+  async deleteStaffEvent(id: number): Promise<void> {
+    db.delete(staffEvents).where(eq(staffEvents.id, id)).run();
+  }
+
+  /** 홈 2주 달력 — 이번 주 월요일부터 14일치 */
+  async staffCalendar(staffId: number): Promise<StaffCalendar> {
+    const today = kstToday();
+    const from = kstWeekStart(today);
+    const to = addDays(from, 13);
+    const shifts = (await this.listShifts(from, to)).filter((s) => s.staffId === staffId);
+    return {
+      from,
+      to,
+      today,
+      events: await this.listStaffEvents(from, to),
+      prepTasks: await this.listPrepTasks(from, to),
+      shifts,
+    };
   }
 
   // ============================================================

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { StaffLayout } from "@/components/StaffLayout";
+import { StaffCalendarCard } from "@/components/StaffCalendar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
@@ -228,6 +229,9 @@ export default function StaffHome() {
           </button>
         </>
       )}
+
+      {/* 앞으로 2주 */}
+      <StaffCalendarCard />
 
       {/* 오늘 인수인계 · 준비 작업 */}
       <div className="s-sect">오늘 할 일</div>

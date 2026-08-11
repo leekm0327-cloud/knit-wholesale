@@ -28,6 +28,8 @@ import {
   updateSupplyOrderSchema,
   insertSupplyVendorSchema,
   updateSupplyVendorSchema,
+  insertStaffEventSchema,
+  updateStaffEventSchema,
 } from "@shared/schema";
 
 declare module "express-session" {
@@ -413,6 +415,61 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json({ ok: true });
   }));
 
+
+  // ============================================================
+  // 일정 — 직원 (홈 2주 달력)
+  // ============================================================
+  app.get("/api/staff/calendar", requireStaff, safe(async (req, res) => {
+    res.json(await staffStorage.staffCalendar(req.session.staffId!));
+  }));
+
+  app.get("/api/staff/events", requireStaff, safe(async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json(await staffStorage.listStaffEvents(from, to));
+  }));
+
+  app.post("/api/staff/events", requireStaff, safe(async (req, res) => {
+    const parsed = insertStaffEventSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
+    res.json(
+      await staffStorage.createStaffEvent({
+        title: parsed.data.title,
+        kind: parsed.data.kind,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate,
+        memo: parsed.data.memo,
+        staffId: me.id,
+        staffName: me.name,
+      }),
+    );
+  }));
+
+  app.patch("/api/staff/events/:id", requireStaff, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getStaffEvent(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (row.createdByStaffId !== req.session.staffId && me?.staffRole !== "owner")
+      return res.status(403).json({ message: "직접 등록한 일정만 고칠 수 있습니다." });
+    const parsed = updateStaffEventSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    res.json(await staffStorage.updateStaffEvent(id, parsed.data as any));
+  }));
+
+  app.delete("/api/staff/events/:id", requireStaff, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const row = await staffStorage.getStaffEvent(id);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    const me = await staffStorage.getStaff(req.session.staffId!);
+    if (row.createdByStaffId !== req.session.staffId && me?.staffRole !== "owner")
+      return res.status(403).json({ message: "직접 등록한 일정만 지울 수 있습니다." });
+    await staffStorage.deleteStaffEvent(id);
+    res.json({ ok: true });
+  }));
 
   // ============================================================
   // 발주 기록 — 직원
@@ -831,6 +888,44 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     await staffStorage.deletePrepPreset(id);
+    res.json({ ok: true });
+  }));
+
+  app.get("/api/admin/staff/events", requireAdmin, safe(async (req, res) => {
+    const { from, to } = rangeOf(req);
+    res.json({ rows: await staffStorage.listStaffEvents(from, to), from, to });
+  }));
+
+  app.post("/api/admin/staff/events", requireAdmin, safe(async (req, res) => {
+    const parsed = insertStaffEventSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    res.json(
+      await staffStorage.createStaffEvent({
+        title: parsed.data.title,
+        kind: parsed.data.kind,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate,
+        memo: parsed.data.memo,
+        staffId: 0,
+        staffName: req.session.adminRole === "owner" ? "대표" : "관리자",
+      }),
+    );
+  }));
+
+  app.patch("/api/admin/staff/events/:id", requireAdmin, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const parsed = updateStaffEventSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+    const row = await staffStorage.updateStaffEvent(id, parsed.data as any);
+    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
+    res.json(row);
+  }));
+
+  app.delete("/api/admin/staff/events/:id", requireAdmin, safe(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    await staffStorage.deleteStaffEvent(id);
     res.json({ ok: true });
   }));
 
