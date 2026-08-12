@@ -53,6 +53,7 @@ import {
   CalendarOff,
   ArrowLeftRight,
   MonitorSmartphone,
+  AlarmClock,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -85,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/products", label: "상품 관리", icon: Package },
       { href: "/admin/product-categories", label: "상품 카테고리", icon: Tags, ownerOnly: true },
       { href: "/admin/customers", label: "거래처 관리", icon: Building2 },
+      { href: "/admin/customer-activity", label: "미주문 거래처", icon: AlarmClock },
       { href: "/admin/chat", label: "거래처 채팅", icon: MessagesSquare },
       { href: "/admin/transactions", label: "거래내역서", icon: FileBarChart },
       { href: "/admin/quotes", label: "견적서", icon: FileText },

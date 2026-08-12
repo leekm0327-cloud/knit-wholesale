@@ -86,6 +86,7 @@ import StaffSupply from "@/pages/staff/StaffSupply";
 import AdminStaffHandover from "@/pages/admin/AdminStaffHandover";
 import AdminPopupNotices from "@/pages/admin/AdminPopupNotices";
 import AdminStaffSupply from "@/pages/admin/AdminStaffSupply";
+import AdminCustomerActivity from "@/pages/admin/AdminCustomerActivity";
 import { PopupNoticeLayer } from "@/components/PopupNotice";
 import AdminStaffLeave from "@/pages/admin/AdminStaffLeave";
 import AdminWebAnalytics from "@/pages/admin/AdminWebAnalytics";
@@ -223,6 +224,7 @@ function AppRouter() {
       <Route path="/admin/staff/leave" component={AdminStaffLeave} />
       <Route path="/admin/staff/handover" component={AdminStaffHandover} />
       <Route path="/admin/staff/supply" component={AdminStaffSupply} />
+      <Route path="/admin/customer-activity" component={AdminCustomerActivity} />
       <Route path="/admin/popup-notices" component={AdminPopupNotices} />
 
       {/* 직원 내부 관리 — 직원 화면 (자체 인증) */}

@@ -8,7 +8,7 @@ import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductC
 import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
-import { createTripSyncRouter, sqliteTripStore } from "./tripSync";
+import { registerCustomerActivityRoutes } from "./customer-activity";
 import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
@@ -3232,9 +3232,7 @@ export async function registerRoutes(
   registerBoardRoutes(app, storage);
   registerStaffRoutes(app, storage);
   registerPopupNoticeRoutes(app);
-  
-  // ===== 여행 플래너 동기화 =====
-  app.use("/api", createTripSyncRouter({ store: sqliteTripStore(db), auth: requireAuth }));
+  registerCustomerActivityRoutes(app);
 
   return httpServer;
 }
