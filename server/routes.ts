@@ -4,11 +4,12 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, db, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, db, sqlite, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
 import { registerCustomerActivityRoutes } from "./customer-activity";
+import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
 import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
@@ -2742,31 +2743,72 @@ export async function registerRoutes(
     const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
     const hm = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
     const filename = `knit-backup-${ymd}-${hm}.db`;
+
+    // 중요: 이 DB 는 WAL 모드라 data.db 파일을 그대로 보내면 최근 데이터가 통째로 빠진다.
+    // 반드시 온전한 사본을 새로 떠서 보내고, 보낸 뒤 임시 파일을 지운다.
+    const tmpPath = path.join(path.dirname(DB_PATH), `export-${Date.now()}.db`);
+    try {
+      await createBackupFile(tmpPath);
+    } catch (e: any) {
+      return res.status(500).json({ message: `백업 파일 생성 실패: ${e?.message ?? e}` });
+    }
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/octet-stream");
-    res.sendFile(dbPath);
+    res.sendFile(tmpPath, () => {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        /* 임시 파일 정리 실패는 무시 */
+      }
+    });
   });
 
   app.post("/api/admin/backup/import", requireOwner, upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: "파일이 없습니다." });
     const dbPath = DB_PATH;
     const backupPath = path.join(path.dirname(DB_PATH), `data.db.bak.${Date.now()}`);
+    const stagePath = path.join(path.dirname(DB_PATH), `restore-${Date.now()}.db`);
     try {
-      // 현재 DB 백업
-      if (fs.existsSync(dbPath)) {
-        fs.copyFileSync(dbPath, backupPath);
+      // ① 올린 파일이 진짜 쓸 수 있는 DB 인지 먼저 확인한다.
+      //    빈 파일이나 엉뚱한 파일로 덮어써서 운영 데이터를 날리는 일을 여기서 막는다.
+      fs.writeFileSync(stagePath, req.file.buffer);
+      const probe = new Database(stagePath, { readonly: true, fileMustExist: true });
+      let customerCount = 0;
+      try {
+        customerCount = (probe.prepare("SELECT COUNT(*) AS c FROM customers").get() as { c: number }).c;
+      } finally {
+        probe.close();
       }
-      // 업로드 파일로 교체
-      fs.writeFileSync(dbPath, req.file.buffer);
+      if (customerCount < 1) throw new Error("거래처 정보가 들어 있지 않은 파일입니다. 백업 파일이 맞는지 확인해 주세요.");
+
+      // ② 지금 DB 를 온전한 사본으로 남겨 둔다 (되돌릴 길).
+      await createBackupFile(backupPath);
+
       const actor = await getActor(req);
-      // 로그는 새 DB에 쓰지 않고 콘솔에만 (복원 직후라 DB 상태 불확실)
-      console.log(`[backup] 복원 완료. actor=${actor.actorEmail}`);
-      res.json({ ok: true, message: "복원 완료. 페이지를 새로고침해 주세요." });
-    } catch (e: any) {
-      // 실패 시 백업 복원 시도
-      if (fs.existsSync(backupPath)) {
-        try { fs.copyFileSync(backupPath, dbPath); } catch {}
+      console.log(`[backup] 복원 시작. actor=${actor.actorEmail}, 거래처 ${customerCount}곳`);
+
+      // ③ 열려 있는 연결을 정리하고 파일을 바꾼다.
+      //    WAL 파일을 함께 지우지 않으면 옛 DB 의 변경분이 새 DB 위에 얹혀 깨진다.
+      try { sqlite.pragma("wal_checkpoint(TRUNCATE)"); } catch { /* 무시 */ }
+      try { sqlite.close(); } catch { /* 무시 */ }
+      for (const suffix of ["-wal", "-shm"]) {
+        try { if (fs.existsSync(dbPath + suffix)) fs.unlinkSync(dbPath + suffix); } catch { /* 무시 */ }
       }
+      fs.copyFileSync(stagePath, dbPath);
+      try { fs.unlinkSync(stagePath); } catch { /* 무시 */ }
+
+      res.json({
+        ok: true,
+        message: `복원했습니다 (거래처 ${customerCount}곳). 서버가 스스로 다시 시작합니다. 30초쯤 뒤 새로고침해 주세요.`,
+      });
+
+      // ④ 연결을 닫았으므로 반드시 재시작해야 한다. Railway 는 비정상 종료일 때 다시 띄워 준다.
+      setTimeout(() => {
+        console.log("[backup] 복원 완료 — 새 DB 로 다시 시작합니다.");
+        process.exit(1);
+      }, 800);
+    } catch (e: any) {
+      try { if (fs.existsSync(stagePath)) fs.unlinkSync(stagePath); } catch { /* 무시 */ }
       res.status(500).json({ message: `복원 실패: ${e?.message ?? e}` });
     }
   });
@@ -3286,6 +3328,8 @@ export async function registerRoutes(
   registerStaffRoutes(app, storage);
   registerPopupNoticeRoutes(app);
   registerCustomerActivityRoutes(app);
+  registerAutomationRoutes(app);
+  startAutomation();
 
   return httpServer;
 }

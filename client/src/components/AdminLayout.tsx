@@ -54,6 +54,7 @@ import {
   ArrowLeftRight,
   MonitorSmartphone,
   AlarmClock,
+  Zap,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -148,6 +149,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/kakao", label: "카카오 알림", icon: MessageCircle, ownerOnly: true },
       { href: "/admin/managers", label: "매니저", icon: Users, ownerOnly: true },
       { href: "/admin/activity-logs", label: "활동 로그", icon: Activity },
+      { href: "/admin/automation", label: "자동화", icon: Zap, ownerOnly: true },
       { href: "/admin/backup", label: "백업", icon: Archive, ownerOnly: true },
     ],
   },

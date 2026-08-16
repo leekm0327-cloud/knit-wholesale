@@ -46,6 +46,7 @@ import AdminEcountLogs from "@/pages/admin/AdminEcountLogs";
 import AdminBoard from "@/pages/admin/AdminBoard";
 import AdminNews from "@/pages/admin/AdminNews";
 import AdminBackup from "@/pages/admin/AdminBackup";
+import AdminAutomation from "@/pages/admin/AdminAutomation";
 import AdminManagers from "@/pages/admin/AdminManagers";
 import AdminActivityLogs from "@/pages/admin/AdminActivityLogs";
 import AdminTransactions from "@/pages/admin/AdminTransactions";
@@ -189,6 +190,7 @@ function AppRouter() {
       <Route path="/admin/board" component={AdminBoard} />
       <Route path="/admin/news" component={AdminNews} />
       <Route path="/admin/backup" component={AdminBackup} />
+      <Route path="/admin/automation" component={AdminAutomation} />
       <Route path="/admin/managers" component={AdminManagers} />
       <Route path="/admin/activity-logs" component={AdminActivityLogs} />
       <Route path="/admin/transactions" component={AdminTransactions} />
