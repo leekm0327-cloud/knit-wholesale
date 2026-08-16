@@ -18,7 +18,7 @@ import { won, fmtDate, errMsg } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PublicCustomer, Order, OrderItem, CustomerBalance, Product, CustomerPrice } from "@shared/schema";
-import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown, MessagesSquare } from "lucide-react";
+import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown, MessagesSquare, Link2 as LinkIcon } from "lucide-react";
 
 type SortKey = "businessName" | "balance" | "createdAt";
 type SortDir = "asc" | "desc";
@@ -29,6 +29,10 @@ export default function AdminCustomers() {
   const { data: balanceData } = useQuery<{ balances: CustomerBalance[] }>({ queryKey: ["/api/admin/balances"] });
   const balanceMap = new Map((balanceData?.balances ?? []).map((b) => [b.customerId, b.balance]));
   const [detailId, setDetailId] = useState<number | null>(null);
+  // 메일 설정 진단 — 재설정 메일이 왜 안 나가는지 이 화면에서 바로 알 수 있게
+  const { data: mail } = useQuery<{ configured: boolean; from: string; note: string }>({
+    queryKey: ["/api/admin/mail-status"],
+  });
   const [createOpen, setCreateOpen] = useState(false);
   const [editCustomer, setEditCustomer] = useState<PublicCustomer | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -121,6 +125,22 @@ export default function AdminCustomers() {
             <Plus className="mr-1.5 h-4 w-4" /> 거래처 등록
           </Button>
         </div>
+
+        {mail && (!mail.configured || mail.from.endsWith("@resend.dev")) && (
+          <div
+            className="mb-5 rounded-md border border-amber-300 bg-amber-50 p-3 text-[12px] leading-relaxed text-amber-900"
+            data-testid="banner-mail-warning"
+          >
+            <b className="font-semibold">비밀번호 재설정 메일이 거래처에게 배달되지 않는 상태입니다.</b>
+            <br />
+            {mail.note}
+            <br />
+            <span className="text-amber-800">
+              보내는 주소: {mail.from} · 지금은 각 거래처의 &lsquo;재설정 링크 복사&rsquo;로 링크를 만들어 카카오톡으로
+              보내주세요.
+            </span>
+          </div>
+        )}
 
         {/* B-3: 샘플 승인 대기 목록 (사업자 미검증 거래처) */}
         {pendingApproval.length > 0 && (
@@ -605,27 +625,35 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
 }
 
 
-// V8 #29: 비밀번호 재설정 버튼
+// V8 #29: 비밀번호 재설정 — 메일 발송 + 링크 직접 전달
 function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) {
   const { toast } = useToast();
   const [pending, setPending] = useState(false);
+  const [linkPending, setLinkPending] = useState(false);
+  const [link, setLink] = useState("");
 
   if (!customer) return null;
 
   async function handleReset() {
-    if (!confirm(`${customer!.businessName}의 이메일(${customer!.email || "없음"})로 비밀번호 재설정 메일을 발송하시겠습니까?`)) return;
     if (!customer!.email) {
       toast({ title: "이메일 없음", description: "거래처에 등록된 이메일이 없습니다.", variant: "destructive" });
       return;
     }
+    if (!confirm(`${customer!.businessName}의 이메일(${customer!.email})로 비밀번호 재설정 메일을 발송하시겠습니까?`)) return;
     setPending(true);
     try {
       const res = await apiRequest("POST", `/api/admin/customers/${customer!.id}/reset-password`, {});
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast({ title: "재설정 메일을 발송했습니다", description: `${customer!.email}으로 발송됨` });
       } else {
-        const data = await res.json().catch(() => ({}));
-        toast({ title: "발송 실패", description: (data as any)?.message ?? "", variant: "destructive" });
+        // 메일이 막혔어도 링크는 받아 두었다가 카카오톡 등으로 직접 보낼 수 있게 한다
+        if ((data as any)?.resetUrl) setLink((data as any).resetUrl);
+        toast({
+          title: "메일이 발송되지 않았습니다",
+          description: (data as any)?.message ?? "아래 링크를 복사해 직접 전달해 주세요.",
+          variant: "destructive",
+        });
       }
     } catch (e: any) {
       toast({ title: "발송 실패", description: e?.message ?? "", variant: "destructive" });
@@ -634,17 +662,65 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
     }
   }
 
+  async function makeLink() {
+    setLinkPending(true);
+    try {
+      const res = await apiRequest("POST", `/api/admin/customers/${customer!.id}/reset-link`, {});
+      const data = await res.json();
+      setLink(data.resetUrl);
+      try {
+        await navigator.clipboard.writeText(data.resetUrl);
+        toast({ title: "링크를 복사했습니다", description: "1시간 안에 사용해야 합니다." });
+      } catch {
+        toast({ title: "링크를 만들었습니다", description: "아래에서 복사해 주세요." });
+      }
+    } catch (e: any) {
+      toast({ title: "링크 생성 실패", description: e?.message ?? "", variant: "destructive" });
+    } finally {
+      setLinkPending(false);
+    }
+  }
+
   return (
-    <button
-      type="button"
-      onClick={handleReset}
-      disabled={pending}
-      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
-      data-testid="button-send-reset-email"
-    >
-      {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
-      비밀번호 재설정 메일 보내기
-    </button>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={pending}
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+          data-testid="button-send-reset-email"
+        >
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+          비밀번호 재설정 메일 보내기
+        </button>
+        <button
+          type="button"
+          onClick={makeLink}
+          disabled={linkPending}
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+          data-testid="button-make-reset-link"
+        >
+          {linkPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <LinkIcon className="h-3 w-3" />}
+          재설정 링크 복사
+        </button>
+      </div>
+
+      {link && (
+        <div className="rounded-md border bg-muted/30 p-2">
+          <div className="text-[10px] text-muted-foreground">
+            이 링크를 카카오톡이나 문자로 보내주세요. 1시간 동안만 쓸 수 있습니다.
+          </div>
+          <input
+            readOnly
+            value={link}
+            onFocus={(e) => e.currentTarget.select()}
+            className="mt-1 w-full rounded border bg-background px-2 py-1 text-[11px]"
+            data-testid="input-reset-link"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

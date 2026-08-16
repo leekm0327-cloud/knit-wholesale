@@ -9,7 +9,7 @@ import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
 import { registerCustomerActivityRoutes } from "./customer-activity";
-import { sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
+import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
@@ -2947,6 +2947,15 @@ export async function registerRoutes(
     res.json({ deleted });
   });
 
+  /** 재설정 토큰을 새로 만들고 링크를 돌려준다 (유효 1시간) */
+  async function makeResetUrl(req: Request, customerId: number): Promise<string> {
+    const token = crypto.randomBytes(32).toString("hex");
+    await storage.createPasswordResetToken(customerId, token, Date.now() + 60 * 60 * 1000);
+    const origin =
+      process.env.PUBLIC_URL || (req.headers.origin as string) || `${req.protocol}://${req.headers.host}`;
+    return `${origin}/#/reset-password/${token}`;
+  }
+
   // ===== V8 #26: 비밀번호 찾기 =====
   app.post("/api/auth/forgot-password", async (req, res) => {
     const parsed = forgotPasswordSchema.safeParse(req.body);
@@ -2968,8 +2977,8 @@ export async function registerRoutes(
         `${req.protocol}://${req.headers.host}`;
       const resetUrl = `${origin}/#/reset-password/${token}`;
 
-      sendPasswordResetEmail(parsed.data.email, resetUrl)
-        .catch((e) => console.error("[forgot-password] 메일 발송 실패", e));
+      const r = await sendPasswordResetEmail(parsed.data.email, resetUrl);
+      if (!r.ok) console.error("[forgot-password] 메일 발송 실패:", r.error, "| to:", parsed.data.email);
     }
     // 등록 여부 상관없이 동일 응답
     res.json({ message: "메일을 보냈습니다. 받은편지함을 확인하세요." });
@@ -2997,6 +3006,8 @@ export async function registerRoutes(
   });
 
   // ===== V8 #29: 관리자 거래처 비밀번호 재설정 메일 발송 =====
+  // 발송 결과를 기다렸다가 그대로 돌려준다. 예전에는 결과를 안 보고 무조건 성공이라고
+  // 답해서, 실제로는 메일이 안 나가도 화면에는 '발송했습니다'로 보였다.
   app.post("/api/admin/customers/:id/reset-password", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
@@ -3006,20 +3017,31 @@ export async function registerRoutes(
     if (!customer.email || customer.email.trim() === "")
       return res.status(400).json({ message: "등록된 이메일이 없습니다." });
 
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = Date.now() + 60 * 60 * 1000;
-    await storage.createPasswordResetToken(customer.id, token, expiresAt);
+    const resetUrl = await makeResetUrl(req, customer.id);
+    const result = await sendPasswordResetEmail(customer.email, resetUrl);
+    if (!result.ok) {
+      return res.status(502).json({
+        message: `메일이 발송되지 않았습니다. ${result.error ?? ""}`.trim(),
+        resetUrl, // 메일이 막혀도 링크는 직접 전달할 수 있게 함께 돌려준다
+      });
+    }
+    res.json({ message: "재설정 메일을 발송했습니다.", resetUrl });
+  });
 
-    const origin = process.env.PUBLIC_URL ||
-      (req.headers.origin as string) ||
-      `${req.protocol}://${req.headers.host}`;
-    const resetUrl = `${origin}/#/reset-password/${token}`;
+  /** 재설정 링크만 만들어 준다 — 메일이 막혔을 때 카카오톡 등으로 직접 전달하는 용도 */
+  app.post("/api/admin/customers/:id/reset-link", requireAdmin, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const customer = await storage.getCustomer(id);
+    if (!customer || customer.role !== "customer")
+      return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+    const resetUrl = await makeResetUrl(req, customer.id);
+    res.json({ resetUrl, businessName: customer.businessName, expiresInMinutes: 60 });
+  });
 
-    sendPasswordResetEmail(customer.email, resetUrl).catch((e) =>
-      console.error("[admin/reset-password] 메일 발송 실패", e),
-    );
-
-    res.json({ message: "재설정 메일을 발송했습니다." });
+  /** 메일 설정 진단 — 왜 안 나가는지 화면에서 바로 확인 */
+  app.get("/api/admin/mail-status", requireAdmin, (_req, res) => {
+    res.json(mailStatus());
   });
 
   // ===== ③ 니트커피 소식 (블로그형) =====

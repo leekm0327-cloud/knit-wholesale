@@ -94,22 +94,25 @@ export interface OrderMergedEmailPayload {
   newTotalAmount: number;
 }
 
+/** 메일 발송 결과 — 화면에서 실패 이유를 그대로 보여줄 수 있게 돌려준다 */
+export type MailResult = { ok: boolean; id?: string; error?: string };
+
 // ===== 공통 메일 래퍼: RESEND_API_KEY 없으면 건너뜀, 실패해도 메인 흐름 불가 =====
 async function sendEmail(opts: {
   to: string | string[];
   subject: string;
   html: string;
   text: string;
-}) {
+}): Promise<MailResult> {
   if (!process.env.RESEND_API_KEY) {
     console.warn("[email] RESEND_API_KEY 미설정 — 메일 발송 건너뜀:", opts.subject);
-    return;
+    return { ok: false, error: "메일 발송 키(RESEND_API_KEY)가 설정되어 있지 않습니다." };
   }
   try {
     const resend = getResend();
     if (!resend) {
       console.warn("[email] Resend 미초기화 — 메일 스킵");
-      return;
+      return { ok: false, error: "메일 발송기가 초기화되지 않았습니다." };
     }
     const result = await resend.emails.send({
       from: MAIL_FROM,
@@ -119,13 +122,31 @@ async function sendEmail(opts: {
       text: opts.text,
     });
     if (result.error) {
-      console.error("[email] Resend 발송 오류:", result.error);
-    } else {
-      console.log("[email] 발송 완료:", { id: result.data?.id, subject: opts.subject });
+      console.error("[email] Resend 발송 오류:", result.error, "| from:", MAIL_FROM, "| to:", opts.to);
+      const msg = (result.error as any)?.message ?? String(result.error);
+      return { ok: false, error: msg };
     }
-  } catch (err) {
+    console.log("[email] 발송 완료:", { id: result.data?.id, subject: opts.subject, to: opts.to });
+    return { ok: true, id: result.data?.id };
+  } catch (err: any) {
     console.error("[email] 발송 실패 (catch):", err);
+    return { ok: false, error: err?.message ?? String(err) };
   }
+}
+
+/** 지금 메일을 보낼 수 있는 상태인지 — 관리자 화면 진단용 */
+export function mailStatus(): { configured: boolean; from: string; note: string } {
+  const hasKey = !!(process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.trim());
+  const shared = MAIL_FROM.endsWith("@resend.dev");
+  return {
+    configured: hasKey,
+    from: MAIL_FROM,
+    note: !hasKey
+      ? "RESEND_API_KEY 가 설정되어 있지 않아 메일이 나가지 않습니다."
+      : shared
+        ? "보내는 주소가 Resend 공용 테스트 주소(onboarding@resend.dev)입니다. 이 주소로는 Resend 가입 계정 본인 메일로만 배달되고, 거래처에게는 전달되지 않습니다. 도메인을 인증하고 MAIL_FROM 을 바꿔야 합니다."
+      : "정상 설정으로 보입니다.",
+  };
 }
 
 // ===== 신규 주문 관리자 알림 =====
@@ -339,7 +360,7 @@ export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload, baseUr
 }
 
 // ===== 비밀번호 재설정 안내 메일 =====
-export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) {
+export async function sendPasswordResetEmail(toEmail: string, resetUrl: string): Promise<MailResult> {
   const html = `<!doctype html>
 <html lang="ko"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
@@ -372,7 +393,7 @@ export async function sendPasswordResetEmail(toEmail: string, resetUrl: string) 
     `요청하지 않으셨다면 이 메일을 무시하세요.\n\n` +
     `— 니트커피\n`;
 
-  await sendEmail({
+  return sendEmail({
     to: toEmail,
     subject: `[니트커피 도매] 비밀번호 재설정 안내`,
     html,
