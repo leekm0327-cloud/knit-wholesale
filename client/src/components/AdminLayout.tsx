@@ -55,6 +55,7 @@ import {
   MonitorSmartphone,
   AlarmClock,
   Zap,
+  Send,
 } from "lucide-react";
 
 // NAV 항목 타입
@@ -147,6 +148,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/ecount", label: "ECOUNT 연동", icon: Link2 },
       { href: "/admin/ecount-logs", label: "ECOUNT 로그", icon: ScrollText },
       { href: "/admin/kakao", label: "카카오 알림", icon: MessageCircle, ownerOnly: true },
+      { href: "/admin/alimtalk", label: "알림톡", icon: Send, ownerOnly: true },
       { href: "/admin/managers", label: "매니저", icon: Users, ownerOnly: true },
       { href: "/admin/activity-logs", label: "활동 로그", icon: Activity },
       { href: "/admin/automation", label: "자동화", icon: Zap, ownerOnly: true },

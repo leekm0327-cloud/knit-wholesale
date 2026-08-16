@@ -10,6 +10,7 @@ import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
 import { registerCustomerActivityRoutes } from "./customer-activity";
 import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
+import { registerAlimtalkRoutes, sendOrderReceived } from "./alimtalk";
 import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
@@ -677,6 +678,16 @@ export async function registerRoutes(
       note: parsed.data.note ?? "",
       createdAt: order.createdAt,
     }).catch((e) => console.error("[email] 알림 메일 실패:", e));
+
+    // 거래처에게 주문 접수 확인 알림톡 — 설정이 갖춰졌을 때만 나가며, 실패해도 주문은 그대로 진행된다.
+    sendOrderReceived({
+      customerId: customer.id,
+      businessName: customer.businessName,
+      phone: customer.phone,
+      orderNo: order.orderNo,
+      totalAmount: supplyAmount + vat,
+      orderId: order.id,
+    }).catch((e) => console.warn("[alimtalk] 주문 접수 알림 실패:", e?.message ?? e));
 
     // F: 새 도매 주문 발생 시 사장님 카카오톡 알림 (이메일 알림과 병행, 실패해도 흐름 정상 진행)
     sendKakaoMemo(
@@ -3329,6 +3340,7 @@ export async function registerRoutes(
   registerPopupNoticeRoutes(app);
   registerCustomerActivityRoutes(app);
   registerAutomationRoutes(app);
+  registerAlimtalkRoutes(app);
   startAutomation();
 
   return httpServer;
