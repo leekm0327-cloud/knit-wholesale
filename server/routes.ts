@@ -3039,6 +3039,37 @@ export async function registerRoutes(
     res.json({ resetUrl, businessName: customer.businessName, expiresInMinutes: 60 });
   });
 
+  /**
+   * 소유자가 거래처 비밀번호를 직접 새로 지정한다.
+   * 메일이 막혀 있어도 대표가 바로 바꿔서 알려줄 수 있게 하는 길.
+   */
+  app.post("/api/admin/customers/:id/password", requireOwner, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const password = String(req.body?.password ?? "");
+    if (password.length < 6) return res.status(400).json({ message: "비밀번호는 6자 이상이어야 합니다." });
+    if (password.length > 72) return res.status(400).json({ message: "비밀번호가 너무 깁니다." });
+
+    const customer = await storage.getCustomer(id);
+    if (!customer || customer.role !== "customer")
+      return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
+
+    await storage.updateCustomerPassword(id, bcrypt.hashSync(password, 10));
+
+    const actor = await storage.getCustomer(req.session.userId!);
+    await storage.logActivity({
+      actorUserId: req.session.userId ?? 0,
+      actorEmail: actor?.email ?? "",
+      actorRole: req.session.adminRole ?? "owner",
+      action: "customer_password_set",
+      targetType: "customer",
+      targetId: String(id),
+      summary: `거래처 비밀번호 직접 변경: ${customer.businessName}`,
+    });
+
+    res.json({ message: "비밀번호를 변경했습니다.", businessName: customer.businessName });
+  });
+
   /** 메일 설정 진단 — 왜 안 나가는지 화면에서 바로 확인 */
   app.get("/api/admin/mail-status", requireAdmin, (_req, res) => {
     res.json(mailStatus());

@@ -17,8 +17,9 @@ import {
 import { won, fmtDate, errMsg } from "@/lib/format";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import type { PublicCustomer, Order, OrderItem, CustomerBalance, Product, CustomerPrice } from "@shared/schema";
-import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown, MessagesSquare, Link2 as LinkIcon } from "lucide-react";
+import { Building2, FileText, Wallet, Tag, ChevronDown, ChevronUp, Plus, Loader2, Pencil, Mail, Trash2, ChevronUpDown, ArrowUpDown, MessagesSquare, Link2 as LinkIcon, KeyRound } from "lucide-react";
 
 type SortKey = "businessName" | "balance" | "createdAt";
 type SortDir = "asc" | "desc";
@@ -606,7 +607,7 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
             </span>
           </label>
           <div className="space-y-1.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
-            <p className="text-[11px] text-muted-foreground">비밀번호는 이 화면에서 변경할 수 없습니다.</p>
+            <p className="text-[11px] text-muted-foreground">비밀번호</p>
             <ResetPasswordButton customer={customer} />
           </div>
         </div>
@@ -625,12 +626,19 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
 }
 
 
-// V8 #29: 비밀번호 재설정 — 메일 발송 + 링크 직접 전달
+// V8 #29: 비밀번호 재설정 — 메일 발송 / 링크 직접 전달 / 소유자 직접 변경
 function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isOwner = (user as any)?.adminRole === "owner";
+
   const [pending, setPending] = useState(false);
   const [linkPending, setLinkPending] = useState(false);
   const [link, setLink] = useState("");
+
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState("");
+  const [pwPending, setPwPending] = useState(false);
 
   if (!customer) return null;
 
@@ -647,7 +655,6 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
       if (res.ok) {
         toast({ title: "재설정 메일을 발송했습니다", description: `${customer!.email}으로 발송됨` });
       } else {
-        // 메일이 막혔어도 링크는 받아 두었다가 카카오톡 등으로 직접 보낼 수 있게 한다
         if ((data as any)?.resetUrl) setLink((data as any).resetUrl);
         toast({
           title: "메일이 발송되지 않았습니다",
@@ -681,6 +688,37 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
     }
   }
 
+  /** 읽어주기 쉬운 임시 비밀번호 — 헷갈리는 글자(0/O, 1/l)는 뺐다 */
+  function makeTempPw() {
+    const chars = "abcdefghjkmnpqrstuvwxyz23456789";
+    let out = "knit";
+    for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    setPw(out);
+  }
+
+  async function savePw() {
+    if (pw.length < 6) {
+      toast({ title: "비밀번호는 6자 이상이어야 합니다.", variant: "destructive" });
+      return;
+    }
+    if (!confirm(`${customer!.businessName}의 비밀번호를 지금 값으로 바꿉니다.\n바꾼 뒤에는 거래처에 직접 알려주셔야 합니다.`)) return;
+    setPwPending(true);
+    try {
+      const res = await apiRequest("POST", `/api/admin/customers/${customer!.id}/password`, { password: pw });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        try { await navigator.clipboard.writeText(pw); } catch { /* 복사 실패는 무시 */ }
+        toast({ title: "비밀번호를 변경했습니다", description: "새 비밀번호를 복사했습니다. 거래처에 전달해 주세요." });
+      } else {
+        toast({ title: "변경 실패", description: (data as any)?.message ?? "", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "변경 실패", description: e?.message ?? "", variant: "destructive" });
+    } finally {
+      setPwPending(false);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -692,7 +730,7 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
           data-testid="button-send-reset-email"
         >
           {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
-          비밀번호 재설정 메일 보내기
+          재설정 메일 보내기
         </button>
         <button
           type="button"
@@ -704,6 +742,20 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
           {linkPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <LinkIcon className="h-3 w-3" />}
           재설정 링크 복사
         </button>
+        {isOwner && (
+          <button
+            type="button"
+            onClick={() => {
+              setPwOpen((v) => !v);
+              if (!pwOpen && !pw) makeTempPw();
+            }}
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            data-testid="button-toggle-set-password"
+          >
+            <KeyRound className="h-3 w-3" />
+            비밀번호 직접 변경
+          </button>
+        )}
       </div>
 
       {link && (
@@ -718,6 +770,41 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
             className="mt-1 w-full rounded border bg-background px-2 py-1 text-[11px]"
             data-testid="input-reset-link"
           />
+        </div>
+      )}
+
+      {isOwner && pwOpen && (
+        <div className="rounded-md border bg-muted/30 p-2">
+          <div className="text-[10px] text-muted-foreground">
+            새 비밀번호를 지금 바로 지정합니다. 바꾼 뒤 거래처에 직접 알려주세요.
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <input
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              placeholder="6자 이상"
+              className="flex-1 rounded border bg-background px-2 py-1 text-[12px]"
+              data-testid="input-new-customer-password"
+            />
+            <button
+              type="button"
+              onClick={makeTempPw}
+              className="rounded border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+              data-testid="button-generate-password"
+            >
+              새로 만들기
+            </button>
+            <button
+              type="button"
+              onClick={savePw}
+              disabled={pwPending}
+              className="rounded bg-foreground px-3 py-1 text-[11px] font-medium text-background disabled:opacity-50"
+              data-testid="button-save-customer-password"
+            >
+              {pwPending ? "변경 중…" : "변경"}
+            </button>
+          </div>
         </div>
       )}
     </div>
