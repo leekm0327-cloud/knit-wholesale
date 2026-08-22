@@ -207,6 +207,9 @@ export async function sendKakaoMemoDetailed(text: string, linkUrl?: string): Pro
       await logKakao("fail", `카카오 발송 실패(${res.status}): ${raw.slice(0, 200)}`);
       return { ok: false, error: explainKakaoError(res.status, raw) };
     }
+    // 성공도 남긴다. "보냈다는데 왜 안 오지"를 따질 때 이 기록이 있어야
+    // 우리 쪽에서 나간 게 맞는지, 카카오가 받은 게 맞는지 가릴 수 있다.
+    await logKakao("ok", `카카오 발송 성공: ${text.slice(0, 60)}`);
     return { ok: true };
   } catch (e: any) {
     const msg = String(e?.message ?? e);

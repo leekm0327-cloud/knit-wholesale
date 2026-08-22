@@ -154,19 +154,21 @@ export default function AdminKakao() {
             <div className="border-b p-5">
               <h2 className="text-sm font-semibold text-foreground">최근 발송 시도</h2>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                성공한 발송은 기록에 남지 않습니다. 여기 줄이 쌓여 있다면 그 이유로 알림이 가지 않은 것입니다.
+                성공(초록)이면 카카오까지 정상 전달된 것입니다. 그런데도 못 받으셨다면 카카오톡의
+                <span className="font-semibold text-foreground"> '나와의 채팅' </span>
+                방을 확인해 주세요. 연동한 계정이 평소 쓰시는 계정이 맞는지도 함께 보시면 좋습니다.
               </p>
             </div>
             {(logData?.logs ?? []).length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
-                실패 기록이 없습니다.
+                아직 발송 시도 기록이 없습니다.
               </p>
             ) : (
               <div className="divide-y">
                 {(logData?.logs ?? []).map((l, i) => (
                   <div key={i} className="px-5 py-2.5 text-xs" data-testid={`kakao-log-${i}`}>
                     <span className="font-display mr-2 text-muted-foreground">{fmtDateTime(l.createdAt)}</span>
-                    <span className="text-destructive">{l.summary}</span>
+                    <span className={l.action === "kakao.ok" ? "text-emerald-700" : "text-destructive"}>{l.summary}</span>
                   </div>
                 ))}
               </div>
