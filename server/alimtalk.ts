@@ -263,6 +263,11 @@ type SendOne = {
   phone: string;
   templateId: string;
   variables: Record<string, string>;
+  /**
+   * '알림톡 사용' 스위치를 무시하고 보낸다. 테스트 발송 전용.
+   * 켜기 전에 실제로 어떻게 도착하는지 확인하는 게 순서상 맞다.
+   */
+  force?: boolean;
 };
 
 /** 변수 키를 #{이름} 형태로 맞춘다 */
@@ -282,7 +287,7 @@ function formatVariables(v: Record<string, string>): Record<string, string> {
 export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail: string }> {
   const s = getSettings();
   try {
-    if (!s.enabled) {
+    if (!s.enabled && !msg.force) {
       logSend({ ...msg, status: "skip", detail: "알림톡 사용 꺼짐" });
       return { ok: false, detail: "알림톡 사용 꺼짐" };
     }
@@ -525,6 +530,7 @@ export function registerAlimtalkRoutes(app: Express) {
         phone: to,
         templateId,
         variables,
+        force: true, // 켜기 전에 확인해 보는 것이 테스트의 목적이다
       });
       res.status(r.ok ? 200 : 502).json({ message: r.detail, ok: r.ok });
     }),
