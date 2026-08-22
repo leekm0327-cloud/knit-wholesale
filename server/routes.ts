@@ -633,6 +633,12 @@ export async function registerRoutes(
         newTotalAmount,
       }).catch((e) => console.error("[email] 주문 추가 알림 메일 실패:", e));
 
+      // 합쳐진 주문도 대표님께는 알린다. 새 주문서가 생기지 않을 뿐 실제로는 주문이 늘어난 것이다.
+      sendKakaoMemo(
+        `[니트커피] 주문이 추가되었습니다.\n주문번호: ${todayPending.orderNo}\n거래처: ${customer.businessName}\n총액: ${newTotalAmount.toLocaleString("ko-KR")}원`,
+        "https://wholesale.knitcoffee.co.kr/#/admin/orders",
+      ).catch((e) => console.warn("[kakao] 주문 추가 알림 실패:", e?.message ?? e));
+
       storage.createNotification({
         type: "order_merged",
         title: `주문 추가 · ${customer.businessName}`,
@@ -687,16 +693,6 @@ export async function registerRoutes(
       note: parsed.data.note ?? "",
       createdAt: order.createdAt,
     }).catch((e) => console.error("[email] 알림 메일 실패:", e));
-
-    // 거래처에게 주문 접수 확인 알림톡 — 설정이 갖춰졌을 때만 나가며, 실패해도 주문은 그대로 진행된다.
-    sendOrderReceived({
-      customerId: customer.id,
-      businessName: customer.businessName,
-      phone: customer.phone,
-      orderNo: order.orderNo,
-      totalAmount: supplyAmount + vat,
-      orderId: order.id,
-    }).catch((e) => console.warn("[alimtalk] 주문 접수 알림 실패:", e?.message ?? e));
 
     // F: 새 도매 주문 발생 시 사장님 카카오톡 알림 (이메일 알림과 병행, 실패해도 흐름 정상 진행)
     sendKakaoMemo(
@@ -2232,6 +2228,19 @@ export async function registerRoutes(
             taxEmail: customer.taxEmail || customer.email,
             items: JSON.parse(updated.items),
           }, baseUrl).catch((e) => console.error("[email] 처리완료 메일 실패:", e));
+
+          // 거래처에게 주문 접수 확인 알림톡.
+          // 주문이 들어온 순간이 아니라 확인이 끝난 이 시점에 보낸다. 같은 날 추가 주문이
+          // 기존 건에 합쳐지더라도 최종 확정된 내용으로 한 번만 나간다.
+          // 실패해도 상태 변경은 그대로 진행된다.
+          sendOrderReceived({
+            customerId: customer.id,
+            businessName: customer.businessName,
+            phone: customer.phone,
+            orderNo: updated.orderNo,
+            totalAmount: updated.totalAmount,
+            orderId: updated.id,
+          }).catch((e) => console.warn("[alimtalk] 처리완료 알림 실패:", e?.message ?? e));
         }
 
         // A-3: pending → done 전환 시 클라리멘토(대표 공급처)에 원두 자동발주 등록

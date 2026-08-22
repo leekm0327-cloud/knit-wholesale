@@ -52,6 +52,13 @@ sqlite.exec(`
   );
 `);
 
+// 이미 있는 설치본에도 컬럼을 더한다 (있으면 그대로 지나간다)
+try {
+  sqlite.exec("ALTER TABLE alimtalk_logs ADD COLUMN ref TEXT NOT NULL DEFAULT ''");
+} catch {
+  /* 이미 있음 */
+}
+
 // ===== 설정 =====
 
 export type AlimtalkSettings = {
@@ -220,12 +227,13 @@ function logSend(row: {
   status: "ok" | "fail" | "skip";
   detail?: string;
   messageId?: string;
+  ref?: string;
 }): void {
   try {
     sqlite
       .prepare(
-        `INSERT INTO alimtalk_logs (created_at, kind, customer_id, business_name, phone, template_id, status, detail, message_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO alimtalk_logs (created_at, kind, customer_id, business_name, phone, template_id, status, detail, message_id, ref)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         Date.now(),
@@ -237,6 +245,7 @@ function logSend(row: {
         row.status,
         String(row.detail ?? "").slice(0, 500),
         row.messageId ?? "",
+        row.ref ?? "",
       );
     sqlite
       .prepare(
@@ -263,6 +272,8 @@ type SendOne = {
   phone: string;
   templateId: string;
   variables: Record<string, string>;
+  /** 같은 건에 두 번 보내지 않기 위한 식별자 (주문 알림이면 주문번호) */
+  ref?: string;
   /**
    * '알림톡 사용' 스위치를 무시하고 보낸다. 테스트 발송 전용.
    * 켜기 전에 실제로 어떻게 도착하는지 확인하는 게 순서상 맞다.
@@ -348,11 +359,22 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
   }
 }
 
+/** 같은 건으로 이미 성공 발송한 적이 있는지 (재전송 방지) */
+export function alreadySent(kind: string, ref: string): boolean {
+  if (!ref) return false;
+  const r = sqlite
+    .prepare("SELECT COUNT(*) AS c FROM alimtalk_logs WHERE kind = ? AND ref = ? AND status = 'ok'")
+    .get(kind, ref) as { c: number };
+  return r.c > 0;
+}
+
 const won = (n: number) => Number(n || 0).toLocaleString("ko-KR");
 
 /**
- * 주문 접수 확인 — 거래처가 주문하면 자동으로 나간다.
- * 주문 생성 응답을 막지 않도록 호출하는 쪽에서 await 하지 않는다.
+ * 주문 접수 확인 — 관리자가 주문을 '처리완료'로 바꿀 때 거래처에게 나간다.
+ * 주문이 들어온 순간이 아니라 확인이 끝난 시점에 보내야, 같은 날 추가 주문이
+ * 기존 건에 합쳐지는 경우에도 최종 내용으로 한 번만 안내된다.
+ * 응답을 막지 않도록 호출하는 쪽에서 await 하지 않는다.
  */
 export async function sendOrderReceived(args: {
   customerId: number;
@@ -363,6 +385,12 @@ export async function sendOrderReceived(args: {
   orderId: number;
 }): Promise<void> {
   const s = getSettings();
+
+  // 상태를 오갔다가 다시 처리완료로 돌려도 두 번 가지 않게 한다.
+  if (alreadySent("order", args.orderNo)) {
+    console.log(`[alimtalk] ${args.orderNo} 는 이미 발송함 — 건너뜀`);
+    return;
+  }
 
   // 잔액은 '이번 주문을 포함한' 현재 미수금이다. 주문이 저장된 뒤에 계산하므로 방금 주문이 반영된다.
   // 조회에 실패하더라도 알림 자체는 나가야 하므로 기본값을 둔다.
@@ -380,6 +408,7 @@ export async function sendOrderReceived(args: {
     businessName: args.businessName,
     phone: args.phone,
     templateId: s.tplOrder,
+    ref: args.orderNo,
     variables: {
       상호명: args.businessName,
       주문번호: args.orderNo,
