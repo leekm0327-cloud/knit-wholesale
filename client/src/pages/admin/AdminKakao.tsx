@@ -14,10 +14,14 @@ import { MessageCircle, Loader2, LogIn, Send } from "lucide-react";
 type KakaoStatus = {
   configured: boolean;
   linked: boolean;
+  healthy: boolean;
+  note: string;
   accessTokenExpiresAt: number;
   refreshTokenExpiresAt: number;
   updatedAt: number;
 };
+
+type KakaoLog = { action: string; summary: string; createdAt: number };
 
 export default function AdminKakao() {
   const { user } = useAuth();
@@ -29,6 +33,12 @@ export default function AdminKakao() {
   // (서버 콜백은 쿼리 없이 `/#/admin/kakao` 로만 리다이렉트하므로 별도 파라미터 파싱 불필요)
   const { data: status, isLoading } = useQuery<KakaoStatus>({
     queryKey: ["/api/admin/kakao/status"],
+    enabled: isOwner,
+  });
+
+  // 발송 시도 기록 — 왜 안 왔는지는 여기에 남는다
+  const { data: logData, refetch: refetchLogs } = useQuery<{ logs: KakaoLog[] }>({
+    queryKey: ["/api/admin/kakao/logs"],
     enabled: isOwner,
   });
 
@@ -50,8 +60,13 @@ export default function AdminKakao() {
       if (data.ok) {
         toast({ title: "테스트 발송 완료", description: "카카오톡을 확인해 주세요." });
       } else {
-        toast({ variant: "destructive", title: "테스트 발송 실패", description: "연동 상태와 환경변수를 확인해 주세요." });
+        toast({
+          variant: "destructive",
+          title: "테스트 발송 실패",
+          description: (data as any).error || "원인을 확인할 수 없습니다.",
+        });
       }
+      refetchLogs();
     } catch (e) {
       toast({ variant: "destructive", title: "테스트 발송 실패", description: errMsg(e) });
     } finally {
@@ -78,8 +93,10 @@ export default function AdminKakao() {
               <span className="text-sm font-semibold text-foreground">연동 상태</span>
               {!status.configured ? (
                 <Badge variant="secondary">환경변수 미설정</Badge>
-              ) : status.linked ? (
+              ) : status.linked && status.healthy ? (
                 <Badge className="bg-emerald-600 text-white hover:bg-emerald-600" data-testid="badge-kakao-linked">연동됨</Badge>
+              ) : status.linked ? (
+                <Badge className="bg-destructive text-destructive-foreground hover:bg-destructive" data-testid="badge-kakao-expired">재연결 필요</Badge>
               ) : (
                 <Badge className="bg-destructive text-destructive-foreground hover:bg-destructive" data-testid="badge-kakao-unlinked">미연동</Badge>
               )}
@@ -96,6 +113,11 @@ export default function AdminKakao() {
                     <p>access token 만료: <span className="text-foreground">{status.accessTokenExpiresAt ? fmtDateTime(status.accessTokenExpiresAt) : "-"}</span></p>
                     <p>refresh token 만료: <span className="text-foreground">{status.refreshTokenExpiresAt ? fmtDateTime(status.refreshTokenExpiresAt) : "-"}</span></p>
                     <p>마지막 갱신: <span className="text-foreground">{status.updatedAt ? fmtDateTime(status.updatedAt) : "-"}</span></p>
+                    {status.note && (
+                      <p className={status.healthy ? "text-foreground" : "font-semibold text-destructive"} data-testid="text-kakao-note">
+                        {status.note}
+                      </p>
+                    )}
                   </>
                 )}
                 {!status.linked && (
@@ -123,6 +145,32 @@ export default function AdminKakao() {
                 테스트 발송
               </Button>
             </div>
+          </Card>
+        )}
+
+        {/* 발송 시도 기록 — 실패는 여기에 이유와 함께 남는다 */}
+        {isOwner && (
+          <Card className="mt-5 overflow-hidden">
+            <div className="border-b p-5">
+              <h2 className="text-sm font-semibold text-foreground">최근 발송 시도</h2>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                성공한 발송은 기록에 남지 않습니다. 여기 줄이 쌓여 있다면 그 이유로 알림이 가지 않은 것입니다.
+              </p>
+            </div>
+            {(logData?.logs ?? []).length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                실패 기록이 없습니다.
+              </p>
+            ) : (
+              <div className="divide-y">
+                {(logData?.logs ?? []).map((l, i) => (
+                  <div key={i} className="px-5 py-2.5 text-xs" data-testid={`kakao-log-${i}`}>
+                    <span className="font-display mr-2 text-muted-foreground">{fmtDateTime(l.createdAt)}</span>
+                    <span className="text-destructive">{l.summary}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         )}
       </div>

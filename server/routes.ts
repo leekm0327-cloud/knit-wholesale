@@ -12,7 +12,7 @@ import { registerCustomerActivityRoutes } from "./customer-activity";
 import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
 import { registerAlimtalkRoutes, sendOrderReceived } from "./alimtalk";
 import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
-import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo } from "./kakao";
+import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo, sendKakaoMemoDetailed } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
 import { staffStorage } from "./staff-storage";
@@ -2138,10 +2138,22 @@ export async function registerRoutes(
   });
 
   app.post("/api/admin/kakao/test", requireOwner, async (_req, res) => {
-    const ok = await sendKakaoMemo(
+    const r = await sendKakaoMemoDetailed(
       "[니트커피] 카카오톡 알림 연동 테스트입니다. 이 메시지가 보이면 정상 연동되었습니다.",
     );
-    res.json({ ok });
+    // 실패 이유를 그대로 돌려준다. "확인해 주세요" 만으로는 원인을 찾을 수 없다.
+    res.json({ ok: r.ok, error: r.error ?? "" });
+  });
+
+  /** 카카오 발송 시도 기록 — 왜 안 왔는지 화면에서 바로 보이게 */
+  app.get("/api/admin/kakao/logs", requireOwner, (_req, res) => {
+    const rows = sqlite
+      .prepare(
+        `SELECT action, summary, created_at FROM activity_logs
+          WHERE action LIKE 'kakao.%' ORDER BY id DESC LIMIT 20`,
+      )
+      .all() as { action: string; summary: string; created_at: number }[];
+    res.json({ logs: rows.map((r) => ({ action: r.action, summary: r.summary, createdAt: r.created_at })) });
   });
 
   app.patch("/api/admin/orders/:id", requireAdmin, async (req, res) => {
