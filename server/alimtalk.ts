@@ -172,6 +172,33 @@ export async function listTemplates(): Promise<
   }));
 }
 
+// ===== 템플릿이 실제로 쓰는 변수 =====
+
+/**
+ * 승인된 템플릿에 없는 변수를 함께 보내면 발송이 거부될 수 있다.
+ * 템플릿 원문을 한 번 받아 두고, 거기에 등장하는 #{이름} 만 골라 보낸다.
+ * (본문뿐 아니라 버튼 링크·강조 영역까지 통째로 훑으므로 빠뜨릴 일이 없다.)
+ * 승인된 템플릿은 수정이 불가능하므로 한참 캐시해 두어도 안전하다.
+ */
+const varCache = new Map<string, { at: number; names: Set<string> }>();
+const VAR_CACHE_MS = 30 * 60 * 1000;
+
+async function templateVariableNames(templateId: string): Promise<Set<string> | null> {
+  const hit = varCache.get(templateId);
+  if (hit && Date.now() - hit.at < VAR_CACHE_MS) return hit.names;
+  try {
+    const detail = await solapi("GET", `/kakao/v2/templates/${encodeURIComponent(templateId)}`);
+    const found = JSON.stringify(detail ?? {}).match(/#\{[^}]+\}/g) ?? [];
+    const names = new Set(found);
+    if (names.size === 0) return null; // 이상하면 거르지 않는다
+    varCache.set(templateId, { at: Date.now(), names });
+    return names;
+  } catch (e) {
+    console.warn("[alimtalk] 템플릿 변수 조회 실패:", (e as any)?.message ?? e);
+    return null; // 조회 실패 시에는 원래대로 전부 보낸다
+  }
+}
+
 // ===== 발송 =====
 
 /** 숫자만 남긴다. 솔라피는 하이픈 없는 번호를 받는다. */
@@ -277,6 +304,13 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
       return { ok: false, detail: "연락처 오류" };
     }
 
+    // 템플릿에 없는 변수는 빼고 보낸다.
+    let variables = formatVariables(msg.variables);
+    const allowed = await templateVariableNames(msg.templateId);
+    if (allowed) {
+      variables = Object.fromEntries(Object.entries(variables).filter(([k]) => allowed.has(k)));
+    }
+
     const body = {
       messages: [
         {
@@ -285,7 +319,7 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
           kakaoOptions: {
             pfId: s.pfId,
             templateId: msg.templateId,
-            variables: formatVariables(msg.variables),
+            variables,
             disableSms: s.disableSms,
           },
         },
