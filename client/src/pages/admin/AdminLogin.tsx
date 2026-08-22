@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { StackedLogo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,20 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
+import { useAuth } from "@/lib/auth";
 import { Loader2, ShieldCheck } from "lucide-react";
 
 export default function AdminLogin() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user, isLoading: authLoading } = useAuth();
+
+  // 이미 로그인되어 있으면 로그인 화면을 보여주지 않고 바로 들여보낸다.
+  // 홈 화면 아이콘처럼 로그인 주소로 바로 들어오는 경우, 이게 없으면 세션이 멀쩡한데도
+  // 매번 로그인 화면이 떠서 "로그인이 풀렸다"고 느끼게 된다.
+  useEffect(() => {
+    if (!authLoading && user && user.role === "admin") navigate("/admin");
+  }, [authLoading, user, navigate]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);

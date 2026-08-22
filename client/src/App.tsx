@@ -96,8 +96,9 @@ import NotFound from "@/pages/not-found";
 
 // 로그인한 거래처만 접근 가능
 function RequireCustomer({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
+  const { user, isLoading, authUnknown } = useAuth();
+  // 통신이 안 되는 것과 로그인이 풀린 것은 다르다. 전자를 후자로 처리하면 멀쩡한 세션이 튕긴다.
+  if (isLoading || authUnknown) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

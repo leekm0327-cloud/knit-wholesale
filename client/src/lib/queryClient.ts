@@ -2,7 +2,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 // __API_BASE__ 는 vite define 로 치환됨 (pplx.app: "/port/5000", dev: "")
 declare const __API_BASE__: string;
-const API_BASE = typeof __API_BASE__ !== "undefined" ? __API_BASE__ : "";
+export const API_BASE = typeof __API_BASE__ !== "undefined" ? __API_BASE__ : "";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {

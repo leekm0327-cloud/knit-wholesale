@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { StackedLogo } from "@/components/Logo";
 import { KakaoChannelButton } from "@/components/KakaoChannelButton";
@@ -10,12 +10,31 @@ import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
+import { useAuth } from "@/lib/auth";
 import { saveAccount } from "@/lib/savedAccounts";
 import { Loader2 } from "lucide-react";
 
 export default function Login() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user: loggedIn, isLoading: authLoading } = useAuth();
+
+  // 이미 로그인된 상태로 로그인 주소에 들어오면 바로 카탈로그로 보낸다.
+  // 홈 화면 아이콘이 로그인 주소를 가리키는 경우, 이게 없으면 세션이 살아 있어도
+  // 매번 로그인 화면이 떠서 "로그인이 풀렸다"고 느끼게 된다.
+  // 단, '다른 계정 추가 로그인'으로 일부러 온 경우에는 그대로 둔다.
+  const [addAccount] = useState(() => {
+    try {
+      const v = sessionStorage.getItem("knit.addAccount") === "1";
+      if (v) sessionStorage.removeItem("knit.addAccount");
+      return v;
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    if (!addAccount && !authLoading && loggedIn) navigate("/catalog");
+  }, [addAccount, authLoading, loggedIn, navigate]);
   const [businessName, setBusinessName] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true); // #45: 기본 체크(ON)

@@ -114,10 +114,10 @@ export default function Dashboard() {
 
         {/* KPI */}
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Kpi icon={ShoppingCart} label="총 주문" value={isLoading ? "" : String(stats!.totalOrders)} loading={isLoading} />
-          <Kpi icon={Clock} label="미처리 주문" value={isLoading ? "" : String(stats!.pendingOrders)} accent loading={isLoading} />
-          <Kpi icon={Building2} label="거래처 수" value={isLoading ? "" : String(stats!.totalCustomers)} loading={isLoading} />
-          <Kpi icon={Coins} label="누적 매출" value={isLoading ? "" : won(stats!.totalRevenue)} loading={isLoading} />
+          <Kpi icon={ShoppingCart} label="총 주문" value={isLoading ? "" : String(stats?.totalOrders ?? 0)} loading={isLoading} />
+          <Kpi icon={Clock} label="미처리 주문" value={isLoading ? "" : String(stats?.pendingOrders ?? 0)} accent loading={isLoading} />
+          <Kpi icon={Building2} label="거래처 수" value={isLoading ? "" : String(stats?.totalCustomers ?? 0)} loading={isLoading} />
+          <Kpi icon={Coins} label="누적 매출" value={isLoading ? "" : won(stats?.totalRevenue ?? 0)} loading={isLoading} />
           <Kpi icon={AlertCircle} label="총 미수금" value={balanceData ? won(balanceData.totalOutstanding) : ""} accent loading={!balanceData} />
         </div>
 
@@ -185,7 +185,7 @@ export default function Dashboard() {
               <Skeleton className="h-48 w-full" />
             ) : (
               <div className="space-y-3">
-                {stats!.customerStats.map((c) => (
+                {(stats?.customerStats ?? []).map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-2" data-testid={`stat-customer-${c.id}`}>
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-foreground">{c.businessName}</div>
@@ -194,7 +194,7 @@ export default function Dashboard() {
                     <div className="shrink-0 text-sm font-semibold tabular text-foreground">{won(c.revenue)}</div>
                   </div>
                 ))}
-                {stats!.customerStats.length === 0 && (
+                {(stats?.customerStats ?? []).length === 0 && (
                   <div className="py-8 text-center text-sm text-muted-foreground">거래처 없음</div>
                 )}
               </div>

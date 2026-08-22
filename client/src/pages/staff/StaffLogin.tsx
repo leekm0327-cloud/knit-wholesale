@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
@@ -8,6 +9,22 @@ import { Loader2 } from "lucide-react";
 export default function StaffLogin() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+
+  // 이미 로그인되어 있으면 로그인 화면 대신 바로 들여보낸다.
+  // (홈 화면 아이콘이 로그인 주소를 가리켜도 매번 다시 로그인하지 않도록)
+  const { data: me } = useQuery<any>({
+    queryKey: ["/api/staff/me"],
+    queryFn: async () => {
+      const res = await fetch("/api/staff/me", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    retry: false,
+    staleTime: 60 * 1000,
+  });
+  useEffect(() => {
+    if (me && (me as any).id) navigate("/staff");
+  }, [me, navigate]);
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);

@@ -162,13 +162,19 @@ export async function registerRoutes(
       resave: false,
       saveUninitialized: false,
       proxy: true,
+      // 접속할 때마다 만료 시각을 늘린다. 이게 없으면 로그인한 지 30일이 되는 순간
+      // 매일 쓰고 있었더라도 갑자기 로그아웃된다.
+      rolling: true,
       store: new SqliteStore({
         client: sessionDb,
         expired: { clear: true, intervalMs: 900000 },
       }),
       cookie: {
         httpOnly: true,
-        sameSite: isProd ? "none" : "lax",
+        // 같은 사이트 안에서만 쓰는 로그인 쿠키다. "none" 은 브라우저가 서드파티 쿠키로 취급해
+        // 크롬의 서드파티 쿠키 차단이나 사파리 ITP 에 걸려 조용히 사라질 수 있다.
+        // 카카오 로그인 콜백처럼 외부에서 돌아오는 것도 최상위 이동이라 lax 로 정상 동작한다.
+        sameSite: "lax",
         secure: isProd,
         path: "/",
         maxAge: 1000 * 60 * 60 * 24 * 30,
@@ -371,6 +377,9 @@ export async function registerRoutes(
     req.session.userId = admin.id;
     req.session.role = admin.role;
     req.session.adminRole = admin.adminRole;
+    // 관리자는 본인 기기(휴대폰 홈 화면 아이콘 등)에서 계속 쓰는 경우가 많아 길게 잡는다.
+    // rolling 설정과 함께라 접속할 때마다 이 기간이 다시 늘어난다.
+    req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 180;
     req.session.save((err) => {
       if (err) return res.status(500).json({ message: "세션 저장 실패" });
       res.json(toPublic(admin));

@@ -146,6 +146,9 @@ export function AccountSwitcher() {
         <DropdownMenuItem
           onSelect={(e) => {
             e.preventDefault();
+            // 로그인된 상태로 일부러 로그인 화면에 가는 경우다.
+            // 이 표시가 없으면 로그인 화면이 "이미 로그인됨"으로 보고 되돌려 보낸다.
+            try { sessionStorage.setItem("knit.addAccount", "1"); } catch { /* 무시 */ }
             navigate("/login");
           }}
           data-testid="account-add-new"

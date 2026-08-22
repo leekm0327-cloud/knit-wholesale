@@ -181,7 +181,7 @@ function findActiveGroupLabel(location: string): string | null {
 }
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, authUnknown, logout } = useAuth();
   const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -194,11 +194,13 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   });
 
   // 관리자 가드
+  // 서버에 물어보지 못한 상태(authUnknown)에서는 튕겨내지 않는다.
+  // 일시적인 통신 오류를 "로그아웃"으로 처리하면, 세션이 멀쩡한데도 매번 다시 로그인하게 된다.
   useEffect(() => {
-    if (!isLoading && (!user || user.role !== "admin")) {
+    if (!isLoading && !authUnknown && (!user || user.role !== "admin")) {
       navigate("/admin/login");
     }
-  }, [isLoading, user, navigate]);
+  }, [isLoading, authUnknown, user, navigate]);
 
   // 경로가 바뀌면 해당 그룹을 자동으로 펼침 (기존에 펼친 그룹은 유지)
   useEffect(() => {
@@ -375,6 +377,20 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </div>
       );
     });
+
+  if (authUnknown) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center">
+        <p className="text-sm text-foreground">서버에 연결하지 못했습니다.</p>
+        <p className="max-w-sm text-xs text-muted-foreground">
+          로그인이 풀린 것이 아니라 잠시 통신이 되지 않는 상태입니다. 잠시 뒤 다시 시도해 주세요.
+        </p>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()} data-testid="button-auth-retry">
+          다시 시도
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading || !user || user.role !== "admin") {
     return (
