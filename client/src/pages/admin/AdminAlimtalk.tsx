@@ -22,6 +22,8 @@ type Settings = {
   tplBalance: string;
   disableSms: boolean;
   testPhone: string;
+  alertOn: boolean;
+  alertPhone: string;
 };
 
 type Log = {
@@ -337,6 +339,36 @@ export default function AdminAlimtalk() {
                 </Button>
               </div>
 
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">새 주문 문자 알림</h3>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                      거래처 주문이 들어오면 지정한 번호로 문자를 보냅니다. 카카오톡 '나와의 채팅'은 알림이 잘
+                      울리지 않아 놓치기 쉬운데, 문자는 확실히 옵니다. 건당 13원 안팎이고 심사는 필요 없습니다.
+                    </p>
+                  </div>
+                  <label className="ml-3 flex shrink-0 cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!s?.alertOn}
+                      onChange={(e) => saveMut.mutate({ alertOn: e.target.checked })}
+                      className="h-4 w-4 accent-[#6b6a45]"
+                      data-testid="toggle-alert-sms"
+                    />
+                    사용
+                  </label>
+                </div>
+                <Label className="text-xs text-muted-foreground">받을 번호 (여러 개면 쉼표로 구분)</Label>
+                <Input
+                  defaultValue={s?.alertPhone}
+                  onBlur={(e) => saveMut.mutate({ alertPhone: e.target.value })}
+                  placeholder="01012345678"
+                  className="mt-1 w-full sm:w-72"
+                  data-testid="input-alert-phone"
+                />
+              </div>
+
               {!data?.keyConfigured && (
                 <p className="mt-3 text-[11px] text-muted-foreground">
                   API 키는 Railway 환경변수 <code>SOLAPI_API_KEY</code>, <code>SOLAPI_API_SECRET</code> 에 넣어주세요.
@@ -428,7 +460,13 @@ export default function AdminAlimtalk() {
                       )}
                       <span className="font-display w-20 shrink-0 text-muted-foreground">{fmtWhen(l.createdAt)}</span>
                       <span className="w-16 shrink-0 text-muted-foreground">
-                        {l.kind.startsWith("test") ? "테스트" : l.kind === "order" ? "주문접수" : "미수금"}
+                        {l.kind.startsWith("test")
+                          ? "테스트"
+                          : l.kind === "order"
+                            ? "주문접수"
+                            : l.kind === "alert"
+                              ? "주문알림"
+                              : "미수금"}
                       </span>
                       <span className="w-28 shrink-0 truncate text-foreground">{l.businessName}</span>
                       <span className={`min-w-0 flex-1 ${l.status === "fail" ? "text-destructive" : "text-muted-foreground"}`}>

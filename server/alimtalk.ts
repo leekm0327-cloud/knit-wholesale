@@ -58,6 +58,17 @@ try {
 } catch {
   /* 이미 있음 */
 }
+// 새 주문 문자 알림 설정
+for (const ddl of [
+  "ALTER TABLE alimtalk_settings ADD COLUMN alert_on INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE alimtalk_settings ADD COLUMN alert_phone TEXT NOT NULL DEFAULT ''",
+]) {
+  try {
+    sqlite.exec(ddl);
+  } catch {
+    /* 이미 있음 */
+  }
+}
 
 // ===== 설정 =====
 
@@ -69,6 +80,10 @@ export type AlimtalkSettings = {
   tplBalance: string;
   disableSms: boolean;
   testPhone: string;
+  /** 새 주문이 들어오면 대표님 휴대폰으로 문자 보내기 */
+  alertOn: boolean;
+  /** 받을 번호. 쉼표로 여러 개 넣을 수 있다. */
+  alertPhone: string;
 };
 
 type SettingsRow = {
@@ -79,6 +94,8 @@ type SettingsRow = {
   tpl_balance: string;
   disable_sms: number;
   test_phone: string;
+  alert_on: number;
+  alert_phone: string;
 };
 
 export function getSettings(): AlimtalkSettings {
@@ -91,6 +108,8 @@ export function getSettings(): AlimtalkSettings {
     tplBalance: r.tpl_balance,
     disableSms: r.disable_sms === 1,
     testPhone: r.test_phone,
+    alertOn: r.alert_on === 1,
+    alertPhone: r.alert_phone ?? "",
   };
 }
 
@@ -371,6 +390,52 @@ export function alreadySent(kind: string, ref: string): boolean {
 const won = (n: number) => Number(n || 0).toLocaleString("ko-KR");
 
 /**
+ * 새 주문이 들어왔을 때 대표님(또는 지정한 번호)에게 보내는 문자.
+ *
+ * 카카오톡 '나에게 보내기'는 나와의 채팅방에 쌓일 뿐 알림이 잘 울리지 않아, 놓치면 안 되는
+ * 주문 알림에는 문자가 더 확실하다. 알림톡과 달리 템플릿 심사도 필요 없다.
+ * 길어지면 요금이 올라가므로 한 줄로 짧게 유지한다.
+ */
+export async function sendOrderAlertSms(args: {
+  businessName: string;
+  orderNo: string;
+  totalAmount: number;
+  added?: boolean;
+}): Promise<void> {
+  const s = getSettings();
+  if (!s.alertOn) return;
+  if (!isAlimtalkConfigured() || !s.sender) return;
+
+  const targets = s.alertPhone
+    .split(/[,\s]+/)
+    .map((t) => normalizePhone(t))
+    .filter((t) => isSendablePhone(t));
+  if (targets.length === 0) return;
+
+  // 상호가 길면 잘라 문자 한 통 안에 들어가게 한다
+  const name = args.businessName.length > 10 ? `${args.businessName.slice(0, 10)}…` : args.businessName;
+  const head = args.added ? "주문 추가" : "새 주문";
+  const text = `[니트커피] ${head}\n${name} ${won(args.totalAmount)}원\n${args.orderNo}`;
+
+  for (const to of targets) {
+    try {
+      const data = await solapi("POST", "/messages/v4/send-many/detail", {
+        messages: [{ to, from: normalizePhone(s.sender), text }],
+      });
+      const failed: any[] = data?.failedMessageList ?? [];
+      if (failed.length > 0) {
+        const reason = failed[0]?.statusMessage || failed[0]?.statusCode || "발송 실패";
+        logSend({ kind: "alert", businessName: args.businessName, phone: to, status: "fail", detail: String(reason).slice(0, 200), ref: args.orderNo });
+      } else {
+        logSend({ kind: "alert", businessName: args.businessName, phone: to, status: "ok", detail: "주문 알림 문자 발송", ref: args.orderNo });
+      }
+    } catch (e: any) {
+      logSend({ kind: "alert", businessName: args.businessName, phone: to, status: "fail", detail: String(e?.message ?? e).slice(0, 200), ref: args.orderNo });
+    }
+  }
+}
+
+/**
  * 주문 접수 확인 — 관리자가 주문을 '처리완료'로 바꿀 때 거래처에게 나간다.
  * 주문이 들어온 순간이 아니라 확인이 끝난 시점에 보내야, 같은 날 추가 주문이
  * 기존 건에 합쳐지는 경우에도 최종 내용으로 한 번만 안내된다.
@@ -480,12 +545,14 @@ export function registerAlimtalkRoutes(app: Express) {
         tplBalance: typeof b.tplBalance === "string" ? b.tplBalance.trim() : cur.tplBalance,
         disableSms: typeof b.disableSms === "boolean" ? (b.disableSms ? 1 : 0) : cur.disableSms ? 1 : 0,
         testPhone: typeof b.testPhone === "string" ? b.testPhone.trim() : cur.testPhone,
+        alertOn: typeof b.alertOn === "boolean" ? (b.alertOn ? 1 : 0) : cur.alertOn ? 1 : 0,
+        alertPhone: typeof b.alertPhone === "string" ? b.alertPhone.trim() : cur.alertPhone,
       };
       sqlite
         .prepare(
           `UPDATE alimtalk_settings
               SET enabled = ?, pf_id = ?, sender = ?, tpl_order = ?, tpl_balance = ?,
-                  disable_sms = ?, test_phone = ?, updated_at = ?
+                  disable_sms = ?, test_phone = ?, alert_on = ?, alert_phone = ?, updated_at = ?
             WHERE id = 1`,
         )
         .run(
@@ -496,6 +563,8 @@ export function registerAlimtalkRoutes(app: Express) {
           next.tplBalance,
           next.disableSms,
           next.testPhone,
+          next.alertOn,
+          next.alertPhone,
           Date.now(),
         );
       res.json({ message: "저장했습니다.", settings: getSettings(), status: alimtalkStatus() });
