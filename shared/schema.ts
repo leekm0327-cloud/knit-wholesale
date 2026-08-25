@@ -159,6 +159,9 @@ export const ecountSettings = sqliteTable("ecount_settings", {
   apiCertKeyEnc: text("api_cert_key_enc").notNull().default(""), // AES 암호화된 인증키
   zone: text("zone").notNull().default(""),
   warehouseCode: text("warehouse_code").notNull().default(""),
+  // 이카운트 구매입력 "추가항목(구매상단)" 중 납품 거래처명을 넣을 필드코드 (예: 추가문자형식1의 API 필드명)
+  //  - 비워두면 후보 필드코드(U_TXT1~10, U_MEMO1~5)를 모두 넣어본다(이카운트는 모르는 코드는 무시).
+  deliverFieldCode: text("deliver_field_code").notNull().default(""),
   useTestEndpoint: integer("use_test_endpoint").notNull().default(1), // 1=sboapi, 0=oapi
   autoSendSales: integer("auto_send_sales").notNull().default(0),
   autoSendPayments: integer("auto_send_payments").notNull().default(0),
@@ -1227,6 +1230,7 @@ export const ecountSettingsInputSchema = z.object({
   apiCertKey: z.string().optional(), // 입력 안 하면 기존 유지
   zone: z.string().optional().default(""),
   warehouseCode: z.string().min(1, "창고코드 필수"),
+  deliverFieldCode: z.string().optional().default(""),
   useTestEndpoint: z.boolean().optional().default(true),
   autoSendSales: z.boolean().optional().default(false),
   autoSendPayments: z.boolean().optional().default(false),

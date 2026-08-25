@@ -17,6 +17,7 @@ interface EcountSettingsView {
   userId: string;
   zone: string;
   warehouseCode: string;
+  deliverFieldCode: string;
   useTestEndpoint: boolean;
   autoSendSales: boolean;
   autoSendPayments: boolean;
@@ -46,6 +47,7 @@ export default function AdminEcount() {
     userId: "",
     zone: "",
     warehouseCode: "100",
+    deliverFieldCode: "",
     useTestEndpoint: true,
     autoSendSales: false,
     autoSendPayments: false,
@@ -65,6 +67,7 @@ export default function AdminEcount() {
         userId: data.userId,
         zone: data.zone,
         warehouseCode: data.warehouseCode || "100",
+        deliverFieldCode: data.deliverFieldCode ?? "",
         useTestEndpoint: data.useTestEndpoint,
         autoSendSales: data.autoSendSales,
         autoSendPayments: data.autoSendPayments,
@@ -84,6 +87,7 @@ export default function AdminEcount() {
         userId: form.userId,
         zone: form.zone,
         warehouseCode: form.warehouseCode,
+        deliverFieldCode: form.deliverFieldCode,
         useTestEndpoint: form.useTestEndpoint,
         autoSendSales: form.autoSendSales,
         autoSendPayments: form.autoSendPayments,
@@ -214,6 +218,20 @@ export default function AdminEcount() {
                 onChange={(v) => setForm({ ...form, warehouseCode: v })}
                 testId="ecount-warehouse"
               />
+              <div className="sm:col-span-2">
+                <Field
+                  label="납품 거래처 필드코드 (구매입력 추가항목)"
+                  placeholder="예: U_TXT1 (비워두면 후보 코드를 모두 시도)"
+                  value={form.deliverFieldCode}
+                  onChange={(v) => setForm({ ...form, deliverFieldCode: v })}
+                  testId="ecount-deliver-field"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  발주를 이카운트 구매전표로 보낼 때, 상단 <strong>추가항목(구매상단)</strong>의 납품 거래처 칸에 주문한 거래처명을 넣습니다.
+                  이카운트 <em>구매입력 API 문서</em>에서 해당 추가문자형식 항목의 필드코드를 확인해 그대로 입력하세요.
+                  쉼표로 여러 개를 넣으면 모두 시도합니다(맞지 않는 코드는 이카운트가 무시).
+                </p>
+              </div>
             </div>
 
             <div className="mt-5 space-y-3 border-t pt-4">

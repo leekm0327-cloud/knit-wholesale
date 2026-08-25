@@ -200,6 +200,7 @@ CREATE TABLE IF NOT EXISTS ecount_settings (
   api_cert_key_enc TEXT NOT NULL DEFAULT '',
   zone TEXT NOT NULL DEFAULT '',
   warehouse_code TEXT NOT NULL DEFAULT '',
+  deliver_field_code TEXT NOT NULL DEFAULT '',
   use_test_endpoint INTEGER NOT NULL DEFAULT 1,
   auto_send_sales INTEGER NOT NULL DEFAULT 0,
   auto_send_payments INTEGER NOT NULL DEFAULT 0,
@@ -449,6 +450,7 @@ CREATE TABLE IF NOT EXISTS visit_requests (
 for (const [table, col] of [
   ["ecount_settings", "auto_send_customer INTEGER NOT NULL DEFAULT 1"],
   ["ecount_settings", "auto_send_product INTEGER NOT NULL DEFAULT 1"],
+  ["ecount_settings", "deliver_field_code TEXT NOT NULL DEFAULT ''"],
   ["customers", "admin_role TEXT NOT NULL DEFAULT 'owner'"],
   ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
   ["orders", "cancelled_at INTEGER"],
@@ -2410,6 +2412,7 @@ export class DatabaseStorage implements IStorage {
         apiCertKeyEnc: patch.apiCertKeyEnc ?? "",
         zone: patch.zone ?? "",
         warehouseCode: patch.warehouseCode ?? "",
+        deliverFieldCode: patch.deliverFieldCode ?? "",
         useTestEndpoint: patch.useTestEndpoint ?? 1,
         autoSendSales: patch.autoSendSales ?? 0,
         autoSendPayments: patch.autoSendPayments ?? 0,

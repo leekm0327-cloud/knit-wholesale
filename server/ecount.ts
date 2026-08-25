@@ -1075,6 +1075,23 @@ export async function sendCustomerToEcount(customerId: number): Promise<{
 // 발주(매입) → ECOUNT 구매입력 전송 (발주 관리의 수동 버튼에서 호출)
 // ============================================================
 
+// 납품 거래처명을 넣을 이카운트 필드코드 목록.
+//  - 설정(ECOUNT 연동 화면)에 필드코드가 있으면 그것만 사용한다. 쉼표로 여러 개 지정 가능.
+//  - 비어 있으면 예전처럼 후보 코드를 모두 넣어본다(이카운트는 모르는 코드는 무시).
+export function deliverFieldCodes(s: { deliverFieldCode?: string | null }): string[] {
+  const raw = (s.deliverFieldCode || "").trim();
+  if (raw) {
+    return raw
+      .split(/[,\s]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  const fallback: string[] = [];
+  for (let i = 1; i <= 10; i++) fallback.push(`U_TXT${i}`);
+  for (let i = 1; i <= 5; i++) fallback.push(`U_MEMO${i}`);
+  return fallback;
+}
+
 async function savePurchaseOnEcount(
   ctx: { s: EcountSettings; sid: string; host: string },
   purchase: Purchase,
@@ -1091,14 +1108,13 @@ async function savePurchaseOnEcount(
   // 납품거래처(출처 거래처명) 처리:
   //  1) 적요(REMARKS)에 납품 거래처명만 기록 (예: "리몬서울"). 대표님 요청으로 발주번호 문구는 제거.
   //     출처 주문을 찾지 못해 거래처명이 없으면 적요는 비워 둔다.
-  //  2) 구매입력 상단 "추가문자형식" 항목(이 계정에선 추가문자형식1 = 납품 거래처)에도
-  //     채워지도록 문자형식 계열 필드코드에 값을 넣는다. 이 계정에서 활성화되지 않은 코드는
-  //     이카운트가 무시하므로(과거 전송에서 확인됨), 실제 설정된 항목에만 표시된다.
+  //  2) 구매입력 상단 "추가항목(구매상단)"의 납품 거래처 칸에도 채워지도록,
+  //     ECOUNT 연동 설정의 '납품 거래처 필드코드'에 지정된 필드에 거래처명을 넣는다.
+  //     (필드코드는 이카운트 구매입력 API 문서의 추가문자형식1 항목명. 설정이 비어 있으면 후보 코드를 모두 시도)
   const dn = deliver.name || "";
   const customTextFields: Record<string, string> = {};
   if (dn) {
-    for (let i = 1; i <= 10; i++) customTextFields[`U_TXT${i}`] = dn;
-    for (let i = 1; i <= 5; i++) customTextFields[`U_MEMO${i}`] = dn;
+    for (const code of deliverFieldCodes(ctx.s)) customTextFields[code] = dn;
   }
   const PurchasesList = items.map((it, idx) => ({
     Line: String(idx + 1),
