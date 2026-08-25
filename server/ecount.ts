@@ -1089,7 +1089,8 @@ async function savePurchaseOnEcount(
       : ymdFromDate(new Date(purchase.createdAt));
   const url = `${ctx.host}/OAPI/V2/Purchases/SavePurchases?SESSION_ID=${ctx.sid}`;
   // 납품거래처(출처 거래처명) 처리:
-  //  1) 적요(REMARKS)에 발주번호 + 납품거래처를 함께 기록 → 확실하게 남는 기본값(검증 완료).
+  //  1) 적요(REMARKS)에 납품 거래처명만 기록 (예: "리몬서울"). 대표님 요청으로 발주번호 문구는 제거.
+  //     출처 주문을 찾지 못해 거래처명이 없으면 적요는 비워 둔다.
   //  2) 구매입력 상단 "추가문자형식" 항목(이 계정에선 추가문자형식1 = 납품 거래처)에도
   //     채워지도록 문자형식 계열 필드코드에 값을 넣는다. 이 계정에서 활성화되지 않은 코드는
   //     이카운트가 무시하므로(과거 전송에서 확인됨), 실제 설정된 항목에만 표시된다.
@@ -1112,7 +1113,7 @@ async function savePurchaseOnEcount(
       SUPPLY_AMT: String(it.amount),
       VAT_AMT: String(Math.round(it.amount * 0.1)),
       ...customTextFields,
-      REMARKS: dn ? `발주 ${purchase.purchaseNo} · 납품 ${dn}` : `발주 ${purchase.purchaseNo}`,
+      REMARKS: dn,
     },
   }));
   const body = { PurchasesList };
