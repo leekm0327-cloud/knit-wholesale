@@ -11,6 +11,7 @@ import { registerPopupNoticeRoutes } from "./popup-notice";
 import { registerCustomerActivityRoutes } from "./customer-activity";
 import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
 import { registerAlimtalkRoutes, sendOrderReceived, sendOrderAlertSms } from "./alimtalk";
+import { registerExpenseImportRoutes } from "./expense-import";
 import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo, sendKakaoMemoDetailed } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
@@ -3385,6 +3386,7 @@ export async function registerRoutes(
   registerCustomerActivityRoutes(app);
   registerAutomationRoutes(app);
   registerAlimtalkRoutes(app);
+  registerExpenseImportRoutes(app);
   startAutomation();
 
   return httpServer;

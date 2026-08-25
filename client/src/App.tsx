@@ -66,6 +66,7 @@ import AdminMoneyEntry from "@/pages/admin/AdminMoneyEntry";
 import AdminFinancials from "@/pages/admin/AdminFinancials";
 import AdminPosSales from "@/pages/admin/AdminPosSales";
 import AdminExpenseCleanup from "@/pages/admin/AdminExpenseCleanup";
+import AdminExpenseImport from "@/pages/admin/AdminExpenseImport";
 import AdminEspresso from "@/pages/admin/AdminEspresso";
 import AdminKakao from "@/pages/admin/AdminKakao";
 import AdminInquiries from "@/pages/admin/AdminInquiries";
@@ -209,6 +210,7 @@ function AppRouter() {
       <Route path="/admin/financials" component={AdminFinancials} />
       <Route path="/admin/pos-sales" component={AdminPosSales} />
       <Route path="/admin/expense-cleanup" component={AdminExpenseCleanup} />
+      <Route path="/admin/expense-import" component={AdminExpenseImport} />
       <Route path="/admin/espresso" component={AdminEspresso} />
       <Route path="/admin/store-sales" component={AdminStoreSales} />
       <Route path="/admin/money" component={AdminMoneyEntry} />
