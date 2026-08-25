@@ -813,6 +813,66 @@ export class StaffStorage {
       .get();
   }
 
+  /**
+   * 한 주의 근무표를 다른 주로 복사한다.
+   *
+   * 요일이 어긋나면 안 되므로 두 주 모두 월요일 기준으로 받고, 같은 요일·같은 칸으로 옮긴다.
+   * 연차가 승인된 사람은 넣지 않는다. 쉬기로 한 날에 근무가 들어가 있으면
+   * 나중에 근태와 어긋나 더 큰 혼란이 된다.
+   */
+  async copyWeek(p: {
+    fromMonday: string;
+    toMonday: string;
+    mode: "fill" | "overwrite";
+  }): Promise<{ copied: number; skippedFilled: number; skippedLeave: { date: string; staffId: number }[] }> {
+    const addDays = (ymd: string, n: number): string => {
+      const [y, m, d] = ymd.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() + n);
+      return dt.toISOString().slice(0, 10);
+    };
+
+    const fromEnd = addDays(p.fromMonday, 6);
+    const toEnd = addDays(p.toMonday, 6);
+    const source = await this.listShifts(p.fromMonday, fromEnd);
+    const target = await this.listShifts(p.toMonday, toEnd);
+
+    const taken = new Set(target.map((t) => `${t.workDate}|${t.position}`));
+    const leaves = await this.approvedLeaveDays(p.toMonday, toEnd);
+    const onLeave = new Set(leaves.map((l) => `${l.date}|${l.staffId}`));
+
+    let copied = 0;
+    let skippedFilled = 0;
+    const skippedLeave: { date: string; staffId: number }[] = [];
+
+    // 전체 덮어쓰기면 대상 주를 먼저 비운다. 원본에 없는 칸이 남아 있으면
+    // "덮어썼는데 예전 근무가 그대로 있다"는 상태가 되어 더 헷갈린다.
+    if (p.mode === "overwrite") {
+      for (const t of target) await this.clearShift(t.workDate, t.position);
+    }
+
+    for (const sh of source) {
+      // 원본 주 안에서 며칠째인지 → 대상 주의 같은 요일
+      const offset = Math.round(
+        (Date.parse(`${sh.workDate}T00:00:00Z`) - Date.parse(`${p.fromMonday}T00:00:00Z`)) / 86400000,
+      );
+      if (offset < 0 || offset > 6) continue;
+      const newDate = addDays(p.toMonday, offset);
+
+      if (p.mode === "fill" && taken.has(`${newDate}|${sh.position}`)) {
+        skippedFilled += 1;
+        continue;
+      }
+      if (onLeave.has(`${newDate}|${sh.staffId}`)) {
+        skippedLeave.push({ date: newDate, staffId: sh.staffId });
+        continue;
+      }
+      await this.assignShift({ staffId: sh.staffId, workDate: newDate, slot: sh.position });
+      copied += 1;
+    }
+    return { copied, skippedFilled, skippedLeave };
+  }
+
   /** 근무표 칸 비우기 */
   async clearShift(workDate: string, slot: string): Promise<void> {
     db.delete(shifts).where(and(eq(shifts.workDate, workDate), eq(shifts.position, slot))).run();

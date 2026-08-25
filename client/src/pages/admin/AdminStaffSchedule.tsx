@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { staffColor } from "@/lib/staffColors";
 import { SHIFT_SLOTS, WEEKLY_TARGET_DAYS, slotLabel, type Shift, type PublicStaff } from "@shared/schema";
-import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Copy, ClipboardPaste, X } from "lucide-react";
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -54,6 +54,9 @@ export default function AdminStaffSchedule() {
   const today = new Date();
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
   const [editing, setEditing] = useState<{ date: string; slot: string } | null>(null);
+  // 복사해 둔 주의 월요일 날짜. 다른 주에 붙여넣을 때까지 들고 있는다.
+  const [copied, setCopied] = useState<string | null>(null);
+  const [pasting, setPasting] = useState("");
 
   const weeks = useMemo(() => weeksOfMonth(cursor.y, cursor.m), [cursor]);
   const from = ymd(weeks[0][0]);
@@ -85,6 +88,39 @@ export default function AdminStaffSchedule() {
       invalidate();
     } catch (err) {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
+    }
+  }
+
+  async function pasteWeek(toMonday: string, mode: "fill" | "overwrite") {
+    if (!copied) return;
+    if (
+      mode === "overwrite" &&
+      !confirm("이 주의 근무표를 모두 지우고 복사한 주로 덮어씁니다. 진행할까요?")
+    )
+      return;
+    setPasting(toMonday);
+    try {
+      const res = await apiRequest("POST", "/api/admin/staff/shifts/copy-week", {
+        fromMonday: copied,
+        toMonday,
+        mode,
+      });
+      const r = await res.json();
+      const parts = [`${r.copied}칸을 붙여넣었습니다.`];
+      if (r.skippedFilled > 0) parts.push(`이미 차 있던 ${r.skippedFilled}칸은 그대로 두었습니다.`);
+      if ((r.skippedLeave ?? []).length > 0) {
+        const names = (r.skippedLeave as { staffId: number }[])
+          .map((x) => nameOf.get(x.staffId) ?? "직원")
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .join(", ");
+        parts.push(`연차인 ${names}은(는) 넣지 않았습니다.`);
+      }
+      toast({ title: "복사 완료", description: parts.join(" ") });
+      invalidate();
+    } catch (err) {
+      toast({ variant: "destructive", title: "복사 실패", description: errMsg(err) });
+    } finally {
+      setPasting("");
     }
   }
 
@@ -164,8 +200,65 @@ export default function AdminStaffSchedule() {
                     (s) => s.staffRole !== "owner" && (counts.get(s.id) ?? 0) < WEEKLY_TARGET_DAYS,
                   );
 
+              const weekMonday = ymd(week[0]);
+              const isCopied = copied === weekMonday;
+
               return (
-                <Card key={ymd(week[0])} className="overflow-hidden">
+                <Card key={weekMonday} className="overflow-hidden">
+                  {/* 주 단위 복사·붙여넣기 */}
+                  <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2">
+                    <span className="font-display text-xs text-muted-foreground">
+                      {week[0].getMonth() + 1}/{week[0].getDate()} ~ {week[6].getMonth() + 1}/{week[6].getDate()}
+                    </span>
+                    {isCopied ? (
+                      <>
+                        <span className="rounded bg-foreground px-2 py-0.5 text-[11px] font-medium text-background">
+                          복사됨
+                        </span>
+                        <Button variant="ghost" size="sm" onClick={() => setCopied(null)} data-testid="button-copy-cancel">
+                          <X className="h-3.5 w-3.5" />
+                          취소
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCopied(weekMonday)}
+                        disabled={weekEmpty}
+                        data-testid={`button-copy-${weekMonday}`}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        이 주 복사
+                      </Button>
+                    )}
+
+                    {copied && !isCopied && (
+                      <div className="ml-auto flex items-center gap-1.5">
+                        <span className="text-[11px] text-muted-foreground">여기에 붙여넣기</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => pasteWeek(weekMonday, "fill")}
+                          disabled={pasting === weekMonday}
+                          data-testid={`button-paste-fill-${weekMonday}`}
+                        >
+                          <ClipboardPaste className="h-3.5 w-3.5" />
+                          빈 칸만
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => pasteWeek(weekMonday, "overwrite")}
+                          disabled={pasting === weekMonday}
+                          data-testid={`button-paste-over-${weekMonday}`}
+                        >
+                          전체 덮어쓰기
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="table-scroll overflow-x-auto">
                     <div className="flex min-w-[900px]">
                       {/* 달력 */}

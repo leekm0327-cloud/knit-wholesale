@@ -766,6 +766,20 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json(await staffStorage.assignShift(parsed.data));
   });
 
+  /** 한 주의 근무표를 다른 주로 복사 */
+  app.post("/api/admin/staff/shifts/copy-week", requireAdmin, async (req, res) => {
+    const isMonday = (v: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ""));
+    const fromMonday = String(req.body?.fromMonday ?? "");
+    const toMonday = String(req.body?.toMonday ?? "");
+    const mode = req.body?.mode === "overwrite" ? "overwrite" : "fill";
+    if (!isMonday(fromMonday) || !isMonday(toMonday))
+      return res.status(400).json({ message: "복사할 주와 붙여넣을 주를 확인해 주세요." });
+    if (fromMonday === toMonday) return res.status(400).json({ message: "같은 주에는 붙여넣을 수 없습니다." });
+
+    const result = await staffStorage.copyWeek({ fromMonday, toMonday, mode });
+    res.json(result);
+  });
+
   app.post("/api/admin/staff/shifts/clear", requireAdmin, async (req, res) => {
     const parsed = clearShiftSchema.safeParse(req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
