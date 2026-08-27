@@ -4,7 +4,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, db, sqlite, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, backfillPurchaseEcountSent, db, sqlite, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
@@ -137,6 +137,8 @@ export async function registerRoutes(
   app: Express,
 ): Promise<Server> {
   await seed();
+  // 전송 이력 컬럼이 생기기 전에 이카운트로 보낸 발주들을 호출 로그에서 복원 (멱등)
+  backfillPurchaseEcountSent();
   seedFixedCostItems();
   seedPersonalCategories();
   seedProductCategories();
@@ -2959,6 +2961,17 @@ export async function registerRoutes(
     try {
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ ok: false, message: "잘못된 발주 ID" });
+      // 중복 전송 방지 — 이미 성공한 발주는 force=true 없이는 다시 보내지 않는다
+      const existing = await storage.getPurchase(id);
+      if (existing?.ecountSentAt && req.body?.force !== true) {
+        return res.status(409).json({
+          ok: false,
+          alreadySent: true,
+          sentAt: existing.ecountSentAt,
+          steps: [],
+          message: `이미 ${new Date(existing.ecountSentAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}에 이카운트로 전송된 발주입니다. 다시 보내면 이카운트에 구매전표가 한 건 더 쌓입니다.`,
+        });
+      }
       const result = await sendPurchaseToEcount(id);
       res.json(result);
     } catch (e: any) {

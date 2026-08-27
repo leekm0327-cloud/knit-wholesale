@@ -235,6 +235,10 @@ export const purchases = sqliteTable("purchases", {
   // 이 발주가 어느 거래처(주문)를 위한 것인지. 자동발주는 주문 거래처가 자동 기입, 직접등록은 선택/입력.
   customerId: integer("customer_id"), // 매칭된 회원 id (없으면 null)
   customerName: text("customer_name").notNull().default(""), // 표시용 거래처명(직접 입력 가능)
+  // ECOUNT 구매전표 전송 이력 — 전송됨/미전송/재전송 필요 표시에 사용
+  ecountSentAt: integer("ecount_sent_at"), // 마지막 성공 전송 시각 (null = 미전송)
+  ecountSentAmount: integer("ecount_sent_amount"), // 전송 당시 공급가 합계 (이후 발주가 수정되면 현재 금액과 달라짐)
+  ecountSentCount: integer("ecount_sent_count").notNull().default(0), // 성공 전송 횟수 (2 이상이면 중복 전송)
   createdAt: integer("created_at").notNull(),
 });
 

@@ -451,6 +451,10 @@ for (const [table, col] of [
   ["ecount_settings", "auto_send_customer INTEGER NOT NULL DEFAULT 1"],
   ["ecount_settings", "auto_send_product INTEGER NOT NULL DEFAULT 1"],
   ["ecount_settings", "deliver_field_code TEXT NOT NULL DEFAULT ''"],
+  // 발주별 ECOUNT 전송 이력 (전송됨/미전송 표시)
+  ["purchases", "ecount_sent_at INTEGER"],
+  ["purchases", "ecount_sent_amount INTEGER"],
+  ["purchases", "ecount_sent_count INTEGER NOT NULL DEFAULT 0"],
   ["customers", "admin_role TEXT NOT NULL DEFAULT 'owner'"],
   ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
   ["orders", "cancelled_at INTEGER"],
@@ -721,6 +725,51 @@ for (const col of ["ecount_code TEXT NOT NULL DEFAULT ''"]) {
 
 export const db = drizzle(sqlite);
 // 직원 관리 모듈(staff-storage.ts)에서 테이블 생성을 위해 raw 핸들이 필요합니다.
+// ===== 기존 발주에 ECOUNT 전송 이력 채우기 (1회성, 멱등) =====
+// 전송 여부를 기록하기 전에 보낸 발주들은 ecount_sent_at 이 비어 있어 '미전송'으로 보인다.
+// ECOUNT 호출 로그(action='purchase', ok=1)에 발주번호가 남아 있으므로 그걸로 되살린다.
+// 이미 값이 있는 행은 건드리지 않으므로 몇 번 실행해도 안전하다.
+export function backfillPurchaseEcountSent(): { filled: number } {
+  try {
+    const rows = sqlite
+      .prepare(
+        `SELECT ref_id AS refId, MAX(created_at) AS sentAt, COUNT(*) AS cnt
+           FROM ecount_logs
+          WHERE action = 'purchase' AND ok = 1 AND ref_id <> ''
+          GROUP BY ref_id`,
+      )
+      .all() as Array<{ refId: string; sentAt: number; cnt: number }>;
+    if (rows.length === 0) return { filled: 0 };
+    // 전송 당시 금액은 로그 summary("... · 506,400원 · ...")에서 뽑는다. 없으면 현재 금액으로 둔다.
+    const amtStmt = sqlite.prepare(
+      `SELECT summary FROM ecount_logs
+        WHERE action = 'purchase' AND ok = 1 AND ref_id = ?
+        ORDER BY created_at DESC LIMIT 1`,
+    );
+    const upd = sqlite.prepare(
+      `UPDATE purchases
+          SET ecount_sent_at = ?, ecount_sent_amount = ?, ecount_sent_count = ?
+        WHERE purchase_no = ? AND ecount_sent_at IS NULL`,
+    );
+    let filled = 0;
+    const tx = sqlite.transaction(() => {
+      for (const r of rows) {
+        const row = amtStmt.get(r.refId) as { summary?: string } | undefined;
+        const m = /([\d,]+)\s*원/.exec(row?.summary ?? "");
+        const amount = m ? Number(m[1].replace(/,/g, "")) : null;
+        const res = upd.run(r.sentAt, Number.isFinite(amount as number) ? amount : null, r.cnt, r.refId);
+        filled += res.changes;
+      }
+    });
+    tx();
+    if (filled > 0) console.log(`[ecount] 기존 발주 ${filled}건에 전송 이력을 채웠습니다.`);
+    return { filled };
+  } catch (e: any) {
+    console.warn("[ecount] 전송 이력 백필 실패:", e?.message ?? e);
+    return { filled: 0 };
+  }
+}
+
 export { sqlite };
 
 export interface IStorage {
@@ -838,6 +887,7 @@ export interface IStorage {
   updateSupplier(id: number, patch: Partial<Supplier>): Promise<Supplier | undefined>;
   deleteSupplier(id: number): Promise<void>;
   listPurchases(supplierId?: number): Promise<Purchase[]>;
+  markPurchaseEcountSent(purchaseId: number, sentAmount: number): Promise<void>;
   getPurchase(id: number): Promise<Purchase | undefined>;
   createPurchase(p: InsertPurchase & { totalAmount: number; items: PurchaseItem[] }): Promise<Purchase>;
   updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number }): Promise<Purchase | undefined>;
@@ -1309,6 +1359,20 @@ export class DatabaseStorage implements IStorage {
       : q.orderBy(desc(purchases.createdAt)).all();
     return rows;
   }
+  // ECOUNT 구매전표 전송 성공 시 호출 — 전송 시각/금액/횟수 기록
+  async markPurchaseEcountSent(purchaseId: number, sentAmount: number): Promise<void> {
+    const cur = db.select().from(purchases).where(eq(purchases.id, purchaseId)).get();
+    if (!cur) return;
+    db.update(purchases)
+      .set({
+        ecountSentAt: Date.now(),
+        ecountSentAmount: sentAmount,
+        ecountSentCount: (cur.ecountSentCount ?? 0) + 1,
+      })
+      .where(eq(purchases.id, purchaseId))
+      .run();
+  }
+
   async getPurchase(id: number): Promise<Purchase | undefined> {
     return db.select().from(purchases).where(eq(purchases.id, id)).get();
   }

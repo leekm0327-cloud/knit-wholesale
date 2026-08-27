@@ -1243,6 +1243,14 @@ export async function sendPurchaseToEcount(purchaseId: number): Promise<{
     try {
       const r = await savePurchaseOnEcount(ctx, purchase, custCode, items, productCodeMap, deliver);
       steps.push({ step: "구매전표 등록", ok: r.ok, message: r.message });
+      // 전송 성공 시 발주에 전송 이력을 남긴다 (목록의 전송됨/미전송 표시용)
+      if (r.ok) {
+        try {
+          await storage.markPurchaseEcountSent(purchase.id, purchase.totalAmount);
+        } catch (e: any) {
+          console.warn("[ecount] 발주 전송 이력 기록 실패:", e?.message ?? e);
+        }
+      }
       await recordLog({
         action: "purchase",
         label: "구매전표 등록",

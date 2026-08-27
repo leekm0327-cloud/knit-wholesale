@@ -37,6 +37,34 @@ function emptyLine(): Line {
   return { productId: null, name: "", qty: "1", unitPrice: "0" };
 }
 
+type SendState =
+  | { kind: "unsent"; label: string; sentAtText: "" }
+  | { kind: "sent" | "changed" | "duplicate"; label: string; sentAtText: string };
+
+// 발주 한 건의 이카운트 전송 상태
+//  unsent    — 아직 안 보냄
+//  sent      — 보냈고 그 뒤로 금액 변동 없음
+//  changed   — 보낸 뒤 발주 금액이 바뀜 (이카운트 전표는 예전 금액 그대로)
+//  duplicate — 두 번 이상 성공 전송됨 (이카운트에 전표가 여러 건)
+function sendState(p: Purchase): SendState {
+  const at = (p as any).ecountSentAt as number | null | undefined;
+  if (!at) return { kind: "unsent", label: "미전송", sentAtText: "" };
+  const when = new Date(at);
+  const sentAtText = `${when.getFullYear()}.${String(when.getMonth() + 1).padStart(2, "0")}.${String(when.getDate()).padStart(2, "0")}`;
+  const count = ((p as any).ecountSentCount as number | undefined) ?? 1;
+  if (count > 1) return { kind: "duplicate", label: `중복 ${count}회`, sentAtText };
+  const sentAmount = (p as any).ecountSentAmount as number | null | undefined;
+  if (sentAmount != null && sentAmount !== p.totalAmount) return { kind: "changed", label: "수정됨", sentAtText };
+  return { kind: "sent", label: "전송됨", sentAtText };
+}
+
+const SEND_BADGE: Record<SendState["kind"], string> = {
+  unsent: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  sent: "bg-teal-100 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300",
+  changed: "bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300",
+  duplicate: "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
+};
+
 export default function AdminPurchases() {
   const { toast } = useToast();
   const { data: suppliers } = useQuery<Supplier[]>({ queryKey: ["/api/admin/suppliers"] });
@@ -210,15 +238,25 @@ export default function AdminPurchases() {
     setLines([emptyLine()]);
   }
 
-  async function sendToEcount(p: Purchase) {
-    if (!confirm(`발주 '${p.purchaseNo}'을(를) 이카운트 구매전표로 전송할까요?`)) return;
+  async function sendToEcount(p: Purchase, force = false) {
+    const st = sendState(p);
+    if (!force) {
+      const warn =
+        st.kind === "sent"
+          ? `발주 '${p.purchaseNo}'은(는) 이미 ${st.sentAtText}에 전송되었습니다.\n다시 보내면 이카운트에 구매전표가 한 건 더 쌓입니다. 그래도 보낼까요?`
+          : st.kind === "changed"
+            ? `발주 '${p.purchaseNo}'은(는) ${st.sentAtText}에 전송된 뒤 금액이 바뀌었습니다.\n다시 보내면 이카운트에는 예전 전표가 그대로 남고 새 전표가 추가됩니다. 이카운트에서 예전 전표를 먼저 지우셨나요?`
+            : `발주 '${p.purchaseNo}'을(를) 이카운트 구매전표로 전송할까요?`;
+      if (!confirm(warn)) return;
+    }
     setSendingId(p.id);
     try {
-      const res = await apiRequest("POST", `/api/admin/ecount/purchases/${p.id}/send`);
+      const res = await apiRequest("POST", `/api/admin/ecount/purchases/${p.id}/send`, st.kind === "unsent" ? {} : { force: true });
       const data = await res.json();
       const steps = (data.steps ?? []) as Array<{ step: string; ok: boolean; message: string }>;
       if (data.ok) {
         toast({ title: "이카운트 전송 완료", description: `발주 ${p.purchaseNo} 구매전표가 등록되었습니다.` });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/purchases"] });
       } else {
         const failed = steps.find((s) => !s.ok);
         toast({ variant: "destructive", title: "이카운트 전송 실패", description: failed?.message ?? data.message ?? "전송에 실패했습니다." });
@@ -377,7 +415,7 @@ export default function AdminPurchases() {
             </div>
           ) : (
             <div className="table-scroll">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-[860px] text-sm">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>
                     <th className="sticky-col px-4 py-2 text-left font-medium">발주번호</th>
@@ -386,6 +424,7 @@ export default function AdminPurchases() {
                     <th className="px-4 py-2 text-left font-medium">거래처(주문)</th>
                     <th className="px-4 py-2 text-left font-medium">품목</th>
                     <th className="px-4 py-2 text-right font-medium">합계 (부가세 포함)</th>
+                    <th className="px-4 py-2 text-left font-medium">이카운트</th>
                     <th className="px-4 py-2 text-right font-medium"></th>
                   </tr>
                 </thead>
@@ -424,6 +463,21 @@ export default function AdminPurchases() {
                         <td className="px-4 py-3 text-right">
                           <div className="font-display tabular font-semibold text-foreground">{won(p.totalAmount + Math.round(p.totalAmount * 0.1))}</div>
                           <div className="text-[10px] text-muted-foreground whitespace-nowrap">공급가 {won(p.totalAmount)} · VAT {won(Math.round(p.totalAmount * 0.1))}</div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {(() => {
+                            const st = sendState(p);
+                            return (
+                              <div className="flex flex-col gap-0.5" data-testid={`ecount-state-${p.id}`}>
+                                <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${SEND_BADGE[st.kind]}`}>
+                                  {st.label}
+                                </span>
+                                {st.sentAtText && (
+                                  <span className="text-[10px] text-muted-foreground">{st.sentAtText}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
                           <Button variant="ghost" size="icon" onClick={() => sendToEcount(p)} disabled={sendingId === p.id} aria-label="이카운트 전송" title="이카운트 구매전표로 전송" data-testid={`button-ecount-purchase-${p.id}`}>
