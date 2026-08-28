@@ -639,6 +639,10 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState("");
   const [pwPending, setPwPending] = useState(false);
+  // 변경에 성공한 비밀번호를 화면에 남겨둔다. 클립보드 복사는 실패해도 조용히 넘어가기 때문에
+  // 값을 눈으로 확인하고 직접 적어둘 수 있어야 한다.
+  const [savedPw, setSavedPw] = useState("");
+  const [savedCopied, setSavedCopied] = useState(false);
 
   if (!customer) return null;
 
@@ -707,8 +711,19 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
       const res = await apiRequest("POST", `/api/admin/customers/${customer!.id}/password`, { password: pw });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        try { await navigator.clipboard.writeText(pw); } catch { /* 복사 실패는 무시 */ }
-        toast({ title: "비밀번호를 변경했습니다", description: "새 비밀번호를 복사했습니다. 거래처에 전달해 주세요." });
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(pw);
+          copied = true;
+        } catch { /* 복사 실패 — 아래에서 화면으로 안내 */ }
+        setSavedPw(pw);
+        setSavedCopied(copied);
+        toast({
+          title: "비밀번호를 변경했습니다",
+          description: copied
+            ? "새 비밀번호를 복사했습니다. 거래처에 전달해 주세요."
+            : "복사가 되지 않았습니다. 아래에 보이는 값을 직접 적어 전달해 주세요.",
+        });
       } else {
         toast({ title: "변경 실패", description: (data as any)?.message ?? "", variant: "destructive" });
       }
@@ -716,6 +731,17 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
       toast({ title: "변경 실패", description: e?.message ?? "", variant: "destructive" });
     } finally {
       setPwPending(false);
+    }
+  }
+
+  async function copySavedPw() {
+    try {
+      await navigator.clipboard.writeText(savedPw);
+      setSavedCopied(true);
+      toast({ title: "복사했습니다" });
+    } catch {
+      setSavedCopied(false);
+      toast({ title: "복사할 수 없습니다", description: "화면에 보이는 값을 직접 적어 주세요.", variant: "destructive" });
     }
   }
 
@@ -805,6 +831,37 @@ function ResetPasswordButton({ customer }: { customer: PublicCustomer | null }) 
               {pwPending ? "변경 중…" : "변경"}
             </button>
           </div>
+
+          {savedPw && (
+            <div
+              className="mt-2 rounded-md border border-emerald-300/60 bg-emerald-50/60 p-2 dark:bg-emerald-950/20"
+              data-testid="box-saved-password"
+            >
+              <div className="text-[10px] text-emerald-900 dark:text-emerald-200">
+                변경 완료. 아래 값을 거래처에 전달해 주세요.
+                {savedCopied ? " (클립보드에도 복사했습니다)" : " ⚠ 클립보드 복사에 실패했으니 직접 적어 주세요."}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <code
+                  className="flex-1 select-all rounded border bg-background px-2 py-1 font-mono text-[13px] tracking-wide text-foreground"
+                  data-testid="text-saved-password"
+                >
+                  {savedPw}
+                </code>
+                <button
+                  type="button"
+                  onClick={copySavedPw}
+                  className="rounded border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  data-testid="button-copy-saved-password"
+                >
+                  복사
+                </button>
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                거래처 휴대폰에 예전 비밀번호가 자동으로 채워질 수 있습니다. 입력칸을 한 번 비우고 직접 입력해 달라고 안내해 주세요.
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

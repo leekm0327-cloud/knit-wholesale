@@ -22,7 +22,11 @@ export default function Login() {
   // 이미 로그인된 상태로 로그인 주소에 들어오면 바로 카탈로그로 보낸다.
   // 홈 화면 아이콘이 로그인 주소를 가리키는 경우, 이게 없으면 세션이 살아 있어도
   // 매번 로그인 화면이 떠서 "로그인이 풀렸다"고 느끼게 된다.
-  // 단, '다른 계정 추가 로그인'으로 일부러 온 경우에는 그대로 둔다.
+  // 단, 다음 두 경우는 넘기지 않고 입력창을 보여준다.
+  //   1) '다른 계정 추가 로그인'으로 일부러 온 경우
+  //   2) 관리자로 로그인된 경우 — 관리자가 거래처 로그인 화면에 온 것은
+  //      거래처 계정을 확인해보려는 것이지 카탈로그를 보려는 게 아니다.
+  //      (여기서 넘겨버리면 비밀번호를 바꿔주고도 확인할 방법이 없어진다)
   const [addAccount] = useState(() => {
     try {
       const v = sessionStorage.getItem("knit.addAccount") === "1";
@@ -32,9 +36,10 @@ export default function Login() {
       return false;
     }
   });
+  const isAdminSession = (loggedIn as any)?.role === "admin";
   useEffect(() => {
-    if (!addAccount && !authLoading && loggedIn) navigate("/catalog");
-  }, [addAccount, authLoading, loggedIn, navigate]);
+    if (!addAccount && !authLoading && loggedIn && !isAdminSession) navigate("/catalog");
+  }, [addAccount, authLoading, loggedIn, isAdminSession, navigate]);
   const [businessName, setBusinessName] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true); // #45: 기본 체크(ON)
@@ -81,6 +86,16 @@ export default function Login() {
         <p className="mb-6 text-xs text-muted-foreground">
           가입 시 입력한 상호명으로 로그인하세요 (이메일 아님)
         </p>
+        {loggedIn && (
+          <div
+            className="mb-5 rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2.5 text-[11px] leading-relaxed text-amber-900 dark:bg-amber-950/20 dark:text-amber-200"
+            data-testid="notice-already-logged-in"
+          >
+            지금 <strong className="font-semibold">{(loggedIn as any).businessName || (loggedIn as any).email}</strong> 계정으로 로그인되어 있습니다.
+            아래에 다른 상호명과 비밀번호를 넣으면 그 계정으로 바뀝니다.
+            {isAdminSession && " (관리자 화면으로 돌아가려면 다시 관리자 로그인을 해주세요)"}
+          </div>
+        )}
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
             {/* #27: 입력란 라벨 강화 */}
