@@ -111,6 +111,9 @@ export default function Login() {
   }
 
   return (
+    // 카카오 버튼은 .knit-landing 밖에 둔다 — 안에 있으면 `.knit-landing a{color:inherit}`가
+    // 버튼의 글자·아이콘 색(text-background)을 덮어써서 검은 배경에 검은 아이콘이 된다.
+    <>
     <div className="knit-landing">
       {/* ── 최상단: 로고 + 거래처 로그인 ── */}
       <div className="wrap top">
@@ -392,8 +395,8 @@ export default function Login() {
           </div>
         </div>
       </footer>
-
-      <KakaoChannelButton />
     </div>
+    <KakaoChannelButton />
+    </>
   );
 }
