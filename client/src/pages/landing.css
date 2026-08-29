@@ -6,9 +6,9 @@
 .knit-landing{
     --kl-bg:#ffffff; --kl-fg:#222222; --kl-muted:#777777; --kl-border:#ebebeb; --kl-soft:#f7f7f7;
     --kl-teal:#0f766e;
-    /* 제목용 — Mendl Serif 라이선스가 준비되면 아래 첫 항목만 살아납니다 */
-    --kl-serif:'Mendl Serif Dusk','MendlSerifDusk','Mendl Serif Dusk Regular','mendl-serif-dusk',
-           'Playfair Display','Noto Serif KR', Georgia, serif;
+    /* 제목용 — Adobe Fonts(index.html의 typekit 링크)에서 받아옵니다.
+       로컬 설치 폰트 이름을 앞에 두면 개발자 PC에서만 다르게 보이므로 두지 않습니다. */
+    --kl-serif:"mendl-serif-dusk",'Playfair Display','Noto Serif KR', Georgia, serif;
     --kl-sans:'Gowun Dodum', "맑은 고딕", system-ui, sans-serif;
     --kl-ui:'Quicksand', 'Gowun Dodum', sans-serif;
     --kl-gutter:clamp(26px, 5.2vw, 44px);
