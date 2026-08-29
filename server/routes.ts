@@ -462,6 +462,36 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // ===== 공개 소개 페이지용 =====
+  // 도매 소개(랜딩) 페이지의 원두 소개 섹션이 읽는 통로.
+  // 로그인하지 않은 방문자도 보는 화면이라 단가는 절대 내려주지 않고,
+  // 소개에 필요한 항목만 골라서 내려준다. 상품 관리에서 고치면 이 값도 함께 바뀐다.
+  app.get("/api/public/blends", async (_req, res) => {
+    const list = (await storage.listProducts())
+      .filter((p) => p.category === "blend" && p.available === 1)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    const out = list.map((p) => {
+      let d: any = {};
+      try { d = JSON.parse(p.detailJson || "{}"); } catch { /* noop */ }
+      let components: Array<{ name: string; ratio: string }> = [];
+      try {
+        const raw = d.blendComponents;
+        if (raw) components = (JSON.parse(raw) as any[]).map((c) => ({ name: String(c.name ?? ""), ratio: String(c.ratio ?? "") }));
+      } catch { /* noop */ }
+      return {
+        id: p.id,
+        name: p.name,
+        tagline: String(d.tagline ?? ""),
+        flavorNotes: String(d.flavorNotes ?? ""),
+        roastLevel: String(d.roastLevel ?? ""),
+        components: components.filter((c) => c.name),
+      };
+    });
+    // 소개 내용은 자주 바뀌지 않으므로 잠깐 캐시해 방문자마다 DB를 다시 읽지 않게 한다
+    res.set("Cache-Control", "public, max-age=60");
+    res.json(out);
+  });
+
   // ===== Products =====
   app.get("/api/products", async (req, res) => {
     const list = await storage.listProducts();
