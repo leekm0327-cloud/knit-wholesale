@@ -455,6 +455,10 @@ for (const [table, col] of [
   ["purchases", "ecount_sent_at INTEGER"],
   ["purchases", "ecount_sent_amount INTEGER"],
   ["purchases", "ecount_sent_count INTEGER NOT NULL DEFAULT 0"],
+  // 주문별 ECOUNT 판매전표 전송 이력
+  ["orders", "ecount_sent_at INTEGER"],
+  ["orders", "ecount_sent_amount INTEGER"],
+  ["orders", "ecount_sent_count INTEGER NOT NULL DEFAULT 0"],
   ["customers", "admin_role TEXT NOT NULL DEFAULT 'owner'"],
   ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
   ["orders", "cancelled_at INTEGER"],
@@ -729,6 +733,46 @@ export const db = drizzle(sqlite);
 // 전송 여부를 기록하기 전에 보낸 발주들은 ecount_sent_at 이 비어 있어 '미전송'으로 보인다.
 // ECOUNT 호출 로그(action='purchase', ok=1)에 발주번호가 남아 있으므로 그걸로 되살린다.
 // 이미 값이 있는 행은 건드리지 않으므로 몇 번 실행해도 안전하다.
+export function backfillOrderEcountSent(): { filled: number } {
+  try {
+    const rows = sqlite
+      .prepare(
+        `SELECT ref_id AS refId, MAX(created_at) AS sentAt, COUNT(*) AS cnt
+           FROM ecount_logs
+          WHERE action = 'sale' AND ok = 1 AND ref_id <> ''
+          GROUP BY ref_id`,
+      )
+      .all() as Array<{ refId: string; sentAt: number; cnt: number }>;
+    if (rows.length === 0) return { filled: 0 };
+    const amtStmt = sqlite.prepare(
+      `SELECT summary FROM ecount_logs
+        WHERE action = 'sale' AND ok = 1 AND ref_id = ?
+        ORDER BY created_at DESC LIMIT 1`,
+    );
+    const upd = sqlite.prepare(
+      `UPDATE orders
+          SET ecount_sent_at = ?, ecount_sent_amount = ?, ecount_sent_count = ?
+        WHERE order_no = ? AND ecount_sent_at IS NULL`,
+    );
+    let filled = 0;
+    const tx = sqlite.transaction(() => {
+      for (const r of rows) {
+        const row = amtStmt.get(r.refId) as { summary?: string } | undefined;
+        const m = /([\d,]+)\s*원/.exec(row?.summary ?? "");
+        const amount = m ? Number(m[1].replace(/,/g, "")) : null;
+        const res = upd.run(r.sentAt, Number.isFinite(amount as number) ? amount : null, r.cnt, r.refId);
+        filled += res.changes;
+      }
+    });
+    tx();
+    if (filled > 0) console.log(`[ecount] 기존 주문 ${filled}건에 판매전표 전송 이력을 채웠습니다.`);
+    return { filled };
+  } catch (e: any) {
+    console.warn("[ecount] 주문 전송 이력 백필 실패:", e?.message ?? e);
+    return { filled: 0 };
+  }
+}
+
 export function backfillPurchaseEcountSent(): { filled: number } {
   try {
     const rows = sqlite
@@ -888,6 +932,7 @@ export interface IStorage {
   deleteSupplier(id: number): Promise<void>;
   listPurchases(supplierId?: number): Promise<Purchase[]>;
   markPurchaseEcountSent(purchaseId: number, sentAmount: number): Promise<void>;
+  markOrderEcountSent(orderId: number, sentAmount: number): Promise<void>;
   getPurchase(id: number): Promise<Purchase | undefined>;
   createPurchase(p: InsertPurchase & { totalAmount: number; items: PurchaseItem[] }): Promise<Purchase>;
   updatePurchase(id: number, p: { supplierId: number; purchaseDate: string; memo: string; items: PurchaseItem[]; totalAmount: number }): Promise<Purchase | undefined>;
@@ -1359,6 +1404,20 @@ export class DatabaseStorage implements IStorage {
       : q.orderBy(desc(purchases.createdAt)).all();
     return rows;
   }
+  // ECOUNT 판매전표 전송 성공 시 호출 — 전송 시각/금액/횟수 기록
+  async markOrderEcountSent(orderId: number, sentAmount: number): Promise<void> {
+    const cur = db.select().from(orders).where(eq(orders.id, orderId)).get();
+    if (!cur) return;
+    db.update(orders)
+      .set({
+        ecountSentAt: Date.now(),
+        ecountSentAmount: sentAmount,
+        ecountSentCount: (cur.ecountSentCount ?? 0) + 1,
+      })
+      .where(eq(orders.id, orderId))
+      .run();
+  }
+
   // ECOUNT 구매전표 전송 성공 시 호출 — 전송 시각/금액/횟수 기록
   async markPurchaseEcountSent(purchaseId: number, sentAmount: number): Promise<void> {
     const cur = db.select().from(purchases).where(eq(purchases.id, purchaseId)).get();

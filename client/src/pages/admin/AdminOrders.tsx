@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { won, fmtDate } from "@/lib/format";
+import { ecountState, ECOUNT_BADGE_CLASS } from "@/lib/ecountState";
 import type { Order, OrderItem } from "@shared/schema";
 import { CheckCircle2, RotateCcw, Plus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -247,6 +248,20 @@ export default function AdminOrders() {
                           {o.isSample === 1 && (
                             <Badge className="shrink-0 bg-emerald-600 text-[10px] text-white hover:bg-emerald-600">샘플</Badge>
                           )}
+                          {/* 이카운트 판매전표 전송 상태 — 세금계산서 일괄 발행 전에 빠진 건을 찾기 위한 표시.
+                              접수 상태에서는 아직 보낼 단계가 아니라 '미전송'을 굳이 띄우지 않는다. */}
+                          {!cancelled && (o.status === "done" || (o as any).ecountSentAt) && (() => {
+                            const st = ecountState(o as any);
+                            return (
+                              <span
+                                className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ECOUNT_BADGE_CLASS[st.kind]}`}
+                                title={st.sentAtText ? `이카운트 ${st.sentAtText} 전송` : "이카운트로 아직 전송되지 않았습니다"}
+                                data-testid={`ecount-state-order-${o.id}`}
+                              >
+                                {st.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
                           {items[0]?.name}{items.length > 1 ? ` 외 ${items.length - 1}건` : ""} · {fmtDate(effectiveOrderTs(o))}

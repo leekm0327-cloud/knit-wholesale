@@ -148,6 +148,12 @@ export const orders = sqliteTable("orders", {
   cancelledBy: integer("cancelled_by"), // 취소한 사용자 customer.id (관리자/거래처, nullable)
   // 처리완료(done) 전환 시 클라리멘토 자동발주로 생성된 purchase.id (중복 자동발주 방지, nullable)
   autoPurchaseId: integer("auto_purchase_id"),
+  // ECOUNT 판매전표 전송 이력 — 전송됨/미전송/재전송 필요 표시 및 중복 전송 방지에 사용.
+  // 세금계산서는 이 판매전표를 근거로 이카운트에서 월 단위 일괄 발행하므로,
+  // '빠짐없이 넘어갔는지'를 앱에서 확인할 수 있어야 한다.
+  ecountSentAt: integer("ecount_sent_at"),          // 마지막 성공 전송 시각 (null = 미전송)
+  ecountSentAmount: integer("ecount_sent_amount"),  // 전송 당시 합계 금액
+  ecountSentCount: integer("ecount_sent_count").notNull().default(0), // 성공 전송 횟수
   createdAt: integer("created_at").notNull(),
 });
 

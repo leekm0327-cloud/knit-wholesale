@@ -4,7 +4,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, backfillPurchaseEcountSent, db, sqlite, DB_PATH } from "./storage";
+import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, backfillPurchaseEcountSent, backfillOrderEcountSent, db, sqlite, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
@@ -139,6 +139,7 @@ export async function registerRoutes(
   await seed();
   // 전송 이력 컬럼이 생기기 전에 이카운트로 보낸 발주들을 호출 로그에서 복원 (멱등)
   backfillPurchaseEcountSent();
+  backfillOrderEcountSent();
   seedFixedCostItems();
   seedPersonalCategories();
   seedProductCategories();
@@ -2272,6 +2273,33 @@ export async function registerRoutes(
           }).catch((e) => console.warn("[alimtalk] 처리완료 알림 실패:", e?.message ?? e));
         }
 
+        // pending → done 전환 시 ECOUNT 판매전표 자동 전송.
+        //  세금계산서는 이 판매전표를 근거로 이카운트 (세금)계산서진행단계에서 월 단위로
+        //  일괄 발행하므로, 전표가 빠짐없이 넘어가 있는 것이 가장 중요하다.
+        //  - ECOUNT 설정의 '판매전표 자동 전송'이 켜져 있을 때만 동작
+        //  - 매장 내부 계정 주문은 동일 사업자 간 거래라 세금계산서 대상이 아니므로 제외
+        //  - 이미 전송된 주문(ecountSentAt)은 다시 보내지 않는다
+        //  - 실패해도 상태 변경은 그대로 두고, 목록에 '미전송'으로 남겨 나중에 손으로 보낼 수 있게 한다
+        if (order.status === "pending" && !updated.ecountSentAt) {
+          try {
+            const ecountSettings = await storage.getEcountSettings();
+            const cust = await storage.getCustomer(updated.customerId);
+            const isStoreOrder = updated.isStoreOrder === 1 || (updated.isStoreOrder === -1 && !!(cust as any)?.isStore);
+            if (ecountSettings?.autoSendSales && !isStoreOrder) {
+              sendOrderToEcount(updated.id)
+                .then((r) => {
+                  if (!r.ok) {
+                    const failed = r.steps.find((st) => !st.ok);
+                    console.warn(`[ecount] 판매전표 자동 전송 실패 (${updated.orderNo}):`, failed?.message ?? "원인 불명");
+                  }
+                })
+                .catch((e) => console.warn(`[ecount] 판매전표 자동 전송 오류 (${updated.orderNo}):`, e?.message ?? e));
+            }
+          } catch (e: any) {
+            console.warn("[ecount] 판매전표 자동 전송 준비 실패:", e?.message ?? e);
+          }
+        }
+
         // A-3: pending → done 전환 시 클라리멘토(대표 공급처)에 원두 자동발주 등록
         //  - skipAutoPurchase=true 이면 생략, 이미 자동발주된 주문(autoPurchaseId 존재)이면 재생성 안 함
         const skipAutoPurchase = req.body.skipAutoPurchase === true;
@@ -2989,6 +3017,16 @@ export async function registerRoutes(
         const cust = await storage.getCustomer(ord.customerId);
         if ((cust as any)?.isStore) {
           return res.status(400).json({ ok: false, message: "매장 내부 주문은 세금계산서(ECOUNT) 전송 대상이 아닙니다." });
+        }
+        // 중복 전송 방지 — 이미 성공한 주문은 force=true 없이는 다시 보내지 않는다
+        if (ord.ecountSentAt && req.body?.force !== true) {
+          return res.status(409).json({
+            ok: false,
+            alreadySent: true,
+            sentAt: ord.ecountSentAt,
+            steps: [],
+            message: `이미 ${new Date(ord.ecountSentAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}에 이카운트로 전송된 주문입니다. 다시 보내면 이카운트에 판매전표가 한 건 더 쌓이고 세금계산서 금액이 이중으로 잡힙니다.`,
+          });
         }
       }
       const result = await sendOrderToEcount(id);

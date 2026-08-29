@@ -243,7 +243,7 @@ export default function AdminEcount() {
               />
               <ToggleRow
                 label="판매전표 자동 전송"
-                hint="주문 완료 시 자동으로 ECOUNT 판매전표 생성 (검증 완료 후 켜세요)"
+                hint="주문을 처리완료로 바꿀 때 ECOUNT 판매전표를 자동 전송합니다. 세금계산서는 이 전표를 근거로 이카운트에서 월 단위로 일괄 발행합니다. (매장 내부 계정 주문은 제외)"
                 value={form.autoSendSales}
                 onChange={(v) => setForm({ ...form, autoSendSales: v })}
               />

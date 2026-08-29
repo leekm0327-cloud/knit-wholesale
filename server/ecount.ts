@@ -89,12 +89,17 @@ export function decrypt(enc: string): string {
 }
 
 // ---- ECOUNT 도메인 ----
+// ECOUNT_BASE_URL이 설정되어 있으면 그 주소를 쓴다. 로컬 테스트에서 실제 이카운트 서버를
+// 건드리지 않고 가짜 서버로 돌리기 위한 장치이며, 운영에서는 설정하지 않는다.
+const ECOUNT_BASE_OVERRIDE = (process.env.ECOUNT_BASE_URL || "").replace(/\/$/, "");
 function baseHost(zone: string, useTest: boolean): string {
+  if (ECOUNT_BASE_OVERRIDE) return ECOUNT_BASE_OVERRIDE;
   const prefix = useTest ? "sboapi" : "oapi";
   // ECOUNT 도메인은 Zone 코드가 대문자여야 함 (예: sboapiAA.ecount.com)
   return `https://${prefix}${(zone || "").toUpperCase()}.ecount.com`;
 }
 function zoneLookupHost(useTest: boolean): string {
+  if (ECOUNT_BASE_OVERRIDE) return ECOUNT_BASE_OVERRIDE;
   return useTest ? "https://sboapi.ecount.com" : "https://oapi.ecount.com";
 }
 
@@ -828,6 +833,14 @@ export async function sendOrderToEcount(orderId: number): Promise<{
     try {
       const r = await saveSaleOnEcount(ctx, order, custCode, customer.businessName, productCodeMap);
       steps.push({ step: "판매전표 등록", ok: r.ok, message: r.message });
+      // 전송 성공 시 주문에 이력을 남긴다 (목록의 전송됨/미전송 표시 + 중복 전송 방지)
+      if (r.ok) {
+        try {
+          await storage.markOrderEcountSent(order.id, order.totalAmount);
+        } catch (e: any) {
+          console.warn("[ecount] 주문 전송 이력 기록 실패:", e?.message ?? e);
+        }
+      }
       const items: OrderItem[] = JSON.parse(order.items);
       await recordLog({
         action: "sale",

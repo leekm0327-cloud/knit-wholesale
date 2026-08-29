@@ -24,6 +24,7 @@ import { OrderItemsEditor } from "@/components/OrderItemsEditor";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
+import { ecountState, ECOUNT_BADGE_CLASS } from "@/lib/ecountState";
 import { orderToKakaoText } from "@/lib/kakaoFormat";
 import type { Order } from "@shared/schema";
 import { ArrowLeft, Printer, Loader2, CheckCircle2, RotateCcw, Link2, ScrollText, Pencil, XCircle, Copy } from "lucide-react";
@@ -107,9 +108,17 @@ export default function AdminOrderDetail() {
 
   async function sendToEcount() {
     if (!id) return;
+    const st = ecountState(order);
+    if (st.kind !== "unsent") {
+      const warn =
+        st.kind === "changed"
+          ? `이 주문은 ${st.sentAtText}에 이카운트로 전송된 뒤 금액이 바뀌었습니다.\n다시 보내면 예전 판매전표가 그대로 남은 채 새 전표가 추가되어 세금계산서 금액이 이중으로 잡힙니다. 이카운트에서 예전 전표를 먼저 지우셨나요?`
+          : `이 주문은 이미 ${st.sentAtText}에 이카운트로 전송되었습니다.\n다시 보내면 판매전표가 한 건 더 쌓이고 세금계산서 금액이 이중으로 잡힙니다. 그래도 보낼까요?`;
+      if (!confirm(warn)) return;
+    }
     setSendingEcount(true);
     try {
-      const res = await apiRequest("POST", `/api/admin/ecount/orders/${id}/send`, {});
+      const res = await apiRequest("POST", `/api/admin/ecount/orders/${id}/send`, st.kind === "unsent" ? {} : { force: true });
       const data = await res.json();
       if (data.ok) {
         const stepMsg = (data.steps ?? [])
@@ -119,6 +128,8 @@ export default function AdminOrderDetail() {
           title: "ECOUNT 전송 성공",
           description: stepMsg || "거래처 + 판매전표 등록 완료",
         });
+        queryClient.invalidateQueries({ queryKey: ["/api/orders", id] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
       } else {
         const failStep = (data.steps ?? []).find((s: any) => !s.ok);
         toast({
@@ -315,8 +326,20 @@ export default function AdminOrderDetail() {
                   <Link2 className="h-3.5 w-3.5" />
                   <span>ECOUNT 연동</span>
                 </div>
+                {(() => {
+                  const st = ecountState(order as any);
+                  return (
+                    <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="ecount-state-order">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${ECOUNT_BADGE_CLASS[st.kind]}`}>
+                        {st.label}
+                      </span>
+                      {st.sentAtText && <span className="text-[11px] text-muted-foreground">{st.sentAtText} 전송</span>}
+                    </div>
+                  );
+                })()}
                 <p className="mb-2 text-xs text-muted-foreground">
-                  이 주문을 ECOUNT에 거래처 + 판매전표로 전송합니다. 결과는 ECOUNT 로그에 기록됩니다.
+                  이 주문을 ECOUNT에 거래처 + 판매전표로 전송합니다. 세금계산서는 이카운트에 쌓인 판매전표를 근거로
+                  월 단위로 일괄 발행하므로, 모든 주문이 전송됨 상태여야 빠짐없이 발행됩니다. 결과는 ECOUNT 로그에 기록됩니다.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
