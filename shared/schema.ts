@@ -616,11 +616,42 @@ export const createOrderSchema = z.object({
   quickRequest: z.boolean().optional().default(false),
 });
 
+// 관리자 전용 수량 규칙 — 손상·반품 차감을 주문에 그대로 남기기 위해 음수를 허용한다.
+//  · 음수 한 줄이 들어가면 그 금액만큼 주문 합계가 줄고, ECOUNT 판매전표와 세금계산서에도
+//    차감된 금액으로 반영된다.
+//  · 0은 아무 의미가 없으므로 막는다. 거래처가 직접 넣는 주문에는 적용하지 않는다.
+const adminOrderQty = z
+  .number()
+  .int("수량은 정수로 입력해 주세요.")
+  .refine((v) => v !== 0, "수량은 0일 수 없습니다.");
+
+const adminOrderItemSchema = z.object({
+  productId: z.number(),
+  name: z.string(),
+  category: z.string(),
+  unitPrice: z.number(),
+  qty: adminOrderQty,
+  amount: z.number(),
+});
+
 // ② 관리자 대리 주문 생성 페이로드 (requireAdmin) — 거래처 지정
-export const adminCreateOrderSchema = createOrderSchema.extend({
+export const adminCreateOrderSchema = z.object({
+  items: z.array(adminOrderItemSchema).min(1, "주문 품목을 선택해 주세요."),
+  desiredDate: z.string().optional().default(""),
+  note: z.string().optional().default(""),
+  quickRequest: z.boolean().optional().default(false),
   customerId: z.number().int().min(1, "거래처를 선택해 주세요."),
 });
 export type AdminCreateOrderInput = z.infer<typeof adminCreateOrderSchema>;
+
+// 관리자가 기존 주문의 품목을 고칠 때 쓰는 페이로드 (음수 허용)
+export const adminUpdateOrderItemsSchema = z.object({
+  items: z.array(adminOrderItemSchema).min(1, "주문 품목을 선택해 주세요."),
+  desiredDate: z.string().optional().default(""),
+  note: z.string().optional().default(""),
+  quickRequest: z.boolean().optional().default(false),
+});
+export type AdminUpdateOrderItemsInput = z.infer<typeof adminUpdateOrderItemsSchema>;
 
 // 주문 수정(품목 변경) 페이로드 — 거래처/관리자 공용
 export const updateOrderItemsSchema = z.object({

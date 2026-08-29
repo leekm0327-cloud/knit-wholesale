@@ -35,6 +35,7 @@ import {
   VISIT_STATUSES,
   updateNewsSchema,
   updateOrderItemsSchema,
+  adminUpdateOrderItemsSchema,
   insertProductSchema,
   insertProductCategorySchema,
   insertEspressoSetupSchema,
@@ -750,7 +751,9 @@ export async function registerRoutes(
       .filter((i: any) => beanKeys2.has(i.category))
       .reduce((s: number, i: any) => s + i.qty, 0);
     // 매장 내부 계정은 도매 최소주문(5kg) 규칙에서 제외 (내부 소비용)
-    if (!(customer as any).isStore && beanQtyTotal > 0 && beanQtyTotal < 5)
+    // 음수 라인이 섞인 주문은 손상·반품 차감이므로 최소 주문량 규칙을 적용하지 않는다
+    const hasDeduction = recomputed.items.some((i: any) => i.qty < 0);
+    if (!(customer as any).isStore && !hasDeduction && beanQtyTotal > 0 && beanQtyTotal < 5)
       return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
 
     const order = await storage.createOrder({
@@ -2184,7 +2187,8 @@ export async function registerRoutes(
     // body에 items가 있으면 가격 재계산 후 공급가/부가세/합계를 patch에 자동 세팅 (#11)
     let itemsChanged = false;
     if (req.body.items !== undefined) {
-      const parsed = updateOrderItemsSchema.safeParse(req.body);
+      // 관리자 수정은 음수 수량(손상·반품 차감)을 허용한다
+      const parsed = adminUpdateOrderItemsSchema.safeParse(req.body);
       if (!parsed.success)
         return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
       const recomputed = await recomputeOrderItems(order.customerId, parsed.data.items);
@@ -2303,7 +2307,16 @@ export async function registerRoutes(
         // A-3: pending → done 전환 시 클라리멘토(대표 공급처)에 원두 자동발주 등록
         //  - skipAutoPurchase=true 이면 생략, 이미 자동발주된 주문(autoPurchaseId 존재)이면 재생성 안 함
         const skipAutoPurchase = req.body.skipAutoPurchase === true;
-        if (!skipAutoPurchase && order.status === "pending" && !updated.autoPurchaseId) {
+        //  손상·반품 차감(음수 라인)이 섞인 주문은 공장에 다시 발주할 일이 아니므로 자동발주를 건너뛴다.
+        //  공급처 쪽 정산이 필요하면 발주 관리에서 따로 처리한다.
+        let hasNegativeLine = false;
+        try {
+          hasNegativeLine = (JSON.parse(updated.items) as any[]).some((it) => Number(it.qty) < 0);
+        } catch { /* noop */ }
+        if (hasNegativeLine) {
+          console.log(`[auto-purchase] ${updated.orderNo} 차감 라인이 있어 자동발주를 건너뜁니다.`);
+        }
+        if (!skipAutoPurchase && !hasNegativeLine && order.status === "pending" && !updated.autoPurchaseId) {
           try {
             const supplier = await storage.getPrimarySupplier();
             if (supplier) {

@@ -120,7 +120,9 @@ export default function AdminOrderNew() {
     .filter((r) => beanKeys.has(r.product.category))
     .reduce((s, r) => s + r.qty, 0);
   // 매장 내부 계정은 도매 최소주문(5kg)·상품별 최소수량에서 제외 (내부 소비용)
-  const beanShortage = !selectedIsStore && beanQtyTotal > 0 && beanQtyTotal < 5;
+  // 차감(음수) 라인이 있으면 손상·반품 처리이므로 최소 주문량 규칙을 적용하지 않는다
+  const hasDeduction = cartRows.some((r) => r.qty < 0);
+  const beanShortage = !selectedIsStore && !hasDeduction && beanQtyTotal > 0 && beanQtyTotal < 5;
 
   // 상품별 최소 주문 수량 위반
   const minViolations = selectedIsStore
@@ -140,8 +142,13 @@ export default function AdminOrderNew() {
     });
     setAddProductId("");
   }
+  // 수량 칸에 "-"만 찍힌 중간 상태를 허용하려고 입력 중 문자열을 따로 들고 있는다
+  const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
+
+  // 관리자 대리 주문은 손상·반품 차감을 위해 음수 수량을 허용한다. 0만 막는다.
   function setQty(productId: number, qty: number) {
-    setLines((prev) => prev.map((l) => (l.productId === productId ? { ...l, qty: Math.max(1, qty) } : l)));
+    if (qty === 0 || !Number.isInteger(qty)) return;
+    setLines((prev) => prev.map((l) => (l.productId === productId ? { ...l, qty } : l)));
   }
   function removeLine(productId: number) {
     setLines((prev) => prev.filter((l) => l.productId !== productId));
@@ -300,11 +307,24 @@ export default function AdminOrderNew() {
                         </div>
                       </div>
                       <Input
-                        type="number"
-                        min={1}
-                        value={r.qty}
-                        onChange={(e) => setQty(r.product.id, Number(e.target.value))}
-                        className="w-20"
+                        type="text"
+                        inputMode="numeric"
+                        value={qtyDraft[r.product.id] ?? String(r.qty)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (!/^-?\d*$/.test(v)) return;
+                          setQtyDraft((d) => ({ ...d, [r.product.id]: v }));
+                          const n = Number(v);
+                          if (v !== "" && v !== "-" && Number.isInteger(n) && n !== 0) setQty(r.product.id, n);
+                        }}
+                        onBlur={() =>
+                          setQtyDraft((d) => {
+                            const nd = { ...d };
+                            delete nd[r.product.id];
+                            return nd;
+                          })
+                        }
+                        className={`w-20 ${r.qty < 0 ? "text-destructive" : ""}`}
                         data-testid={`input-admin-order-qty-${r.product.id}`}
                       />
                       <div className="w-24 text-right text-sm font-medium text-foreground">

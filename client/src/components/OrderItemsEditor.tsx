@@ -95,9 +95,35 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const vat = Math.round(supplyAmount * 0.1);
   const total = supplyAmount + vat;
 
+  // 관리자는 손상·반품 차감을 위해 음수 수량을 넣을 수 있다. 0은 의미가 없어 건너뛴다.
+  // 거래처가 직접 고칠 때는 예전처럼 1 미만으로 내려가지 않는다.
   function setQty(productId: number, qty: number) {
-    if (qty < 1) return;
+    if (isAdmin) {
+      if (qty === 0) return;
+    } else if (qty < 1) {
+      return;
+    }
     setItems((prev) => prev.map((i) => (i.productId === productId ? { ...i, qty } : i)));
+  }
+
+  // 수량 칸에 "-"만 찍힌 중간 상태를 허용하려고 입력 중 문자열을 따로 들고 있는다
+  const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
+  function clearDraft(productId: number) {
+    setQtyDraft((d) => {
+      if (!(productId in d)) return d;
+      const n = { ...d };
+      delete n[productId];
+      return n;
+    });
+  }
+
+  // +/- 버튼은 관리자 모드에서 0을 건너뛴다 (1 → -1, -1 → 1)
+  function stepQty(productId: number, delta: number) {
+    const cur = items.find((i) => i.productId === productId)?.qty ?? 0;
+    let next = cur + delta;
+    if (isAdmin && next === 0) next = cur + delta * 2;
+    clearDraft(productId);
+    setQty(productId, next);
   }
 
   function removeItem(productId: number) {
@@ -134,10 +160,14 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const minMap = new Map<number, number>((products ?? []).map((p) => [p.id, (p as any).minOrderQty ?? 0]));
   const isSampleOrder = (order as any).isSample === 1;
   const beanQty = items.filter((i) => beanKeys.has(i.category)).reduce((s, i) => s + i.qty, 0);
-  const belowMin = !isSampleOrder && beanQty > 0 && beanQty < 5;
-  const minViolations = items
-    .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get(i.productId) ?? 0 }))
-    .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
+  // 차감(음수) 라인이 있는 주문은 손상·반품 처리이므로 최소 주문량 규칙을 적용하지 않는다
+  const hasDeduction = items.some((i) => i.qty < 0);
+  const belowMin = !isSampleOrder && !hasDeduction && beanQty > 0 && beanQty < 5;
+  const minViolations = hasDeduction
+    ? []
+    : items
+        .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get(i.productId) ?? 0 }))
+        .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
   const blocked = belowMin || minViolations.length > 0;
 
   async function submit() {
@@ -213,16 +243,35 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
             <div className="flex items-center justify-between gap-3 sm:justify-end">
               <div className="flex items-center border border-border">
                 <button
-                  onClick={() => setQty(i.productId, i.qty - 1)}
+                  onClick={() => stepQty(i.productId, -1)}
                   className="px-2 py-1.5 text-muted-foreground hover-elevate"
                   aria-label="수량 감소"
                   data-testid={`button-edit-minus-${i.productId}`}
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </button>
-                <span className="w-8 text-center text-sm font-semibold tabular">{i.qty}</span>
+                {isAdmin ? (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={qtyDraft[i.productId] ?? String(i.qty)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (!/^-?\d*$/.test(v)) return;
+                      setQtyDraft((d) => ({ ...d, [i.productId]: v }));
+                      const n = Number(v);
+                      if (v !== "" && v !== "-" && Number.isInteger(n) && n !== 0) setQty(i.productId, n);
+                    }}
+                    onBlur={() => clearDraft(i.productId)}
+                    className={`w-14 border-x border-border bg-transparent py-1.5 text-center text-sm font-semibold tabular outline-none ${i.qty < 0 ? "text-destructive" : "text-foreground"}`}
+                    aria-label="수량"
+                    data-testid={`input-edit-qty-${i.productId}`}
+                  />
+                ) : (
+                  <span className="w-8 text-center text-sm font-semibold tabular">{i.qty}</span>
+                )}
                 <button
-                  onClick={() => setQty(i.productId, i.qty + 1)}
+                  onClick={() => stepQty(i.productId, +1)}
                   className="px-2 py-1.5 text-muted-foreground hover-elevate"
                   aria-label="수량 증가"
                   data-testid={`button-edit-plus-${i.productId}`}
@@ -333,6 +382,13 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
           <span className="font-ui tabular text-foreground" data-testid="text-edit-total">{won(total)}</span>
         </div>
       </div>
+
+      {isAdmin && hasDeduction && (
+        <div className="rounded-md border border-amber-300/60 bg-amber-50/40 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200" data-testid="text-edit-deduction">
+          <p>수량이 음수인 품목이 있습니다. 손상·반품 차감으로 처리됩니다.</p>
+          <p className="mt-1">그만큼 주문 합계가 줄고, 이카운트 판매전표와 세금계산서에도 차감된 금액으로 반영됩니다. 이 주문에서는 공장 자동발주가 생성되지 않습니다.</p>
+        </div>
+      )}
 
       {/* 저장이 막히는 이유를 미리 보여준다 (저장 눌렀다가 거절당하지 않도록) */}
       {blocked && (
