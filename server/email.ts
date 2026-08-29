@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { INQUIRY_TYPE_LABELS, type InquiryType } from "@shared/schema";
 
 // Resend SDK 게으른 초기화 — 실제 메일 발송 시점에만 생성
 let _resend: Resend | null = null;
@@ -477,7 +478,7 @@ export async function sendOrderMergedEmail(payload: OrderMergedEmailPayload) {
   });
 }
 
-// ===== 홀세일 납품 문의 관리자 알림 =====
+// ===== 홀세일/컨설팅 문의 관리자 알림 =====
 export async function sendWholesaleInquiryEmail(payload: {
   businessName: string;
   contactName?: string;
@@ -486,13 +487,17 @@ export async function sendWholesaleInquiryEmail(payload: {
   region?: string;
   volume?: string;
   message: string;
+  inquiryType?: string;
 }) {
   if (!NOTIFY_TO) {
     console.warn("[email] NOTIFY_TO 미설정 — 납품 문의 알림 건너뜀");
     return;
   }
   const esc = (s: string) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const typeLabel =
+    INQUIRY_TYPE_LABELS[(payload.inquiryType || "wholesale") as InquiryType] || "원두 납품";
   const rows: [string, string][] = [
+    ["문의 유형", typeLabel],
     ["상호", payload.businessName],
     ["담당자", payload.contactName || "-"],
     ["연락처", payload.phone],
@@ -501,7 +506,7 @@ export async function sendWholesaleInquiryEmail(payload: {
     ["예상 월 물량", payload.volume || "-"],
   ];
   const html = `<div style="font-family:sans-serif;max-width:560px">
-    <h2 style="margin:0 0 12px">홀세일 납품 문의</h2>
+    <h2 style="margin:0 0 12px">${esc(typeLabel)} 문의</h2>
     <table style="border-collapse:collapse;width:100%;font-size:14px">
     ${rows
       .map(
@@ -511,10 +516,10 @@ export async function sendWholesaleInquiryEmail(payload: {
       .join("")}
     </table>
     <div style="margin-top:14px;padding:14px;background:#f5f2ec;border-radius:8px;white-space:pre-wrap;font-size:14px">${esc(payload.message)}</div>
-    <p style="margin-top:16px;font-size:12px;color:#999">관리자 &gt; 납품 문의 에서 확인하세요.</p>
+    <p style="margin-top:16px;font-size:12px;color:#999">관리자 &gt; 문의 에서 확인하세요.</p>
   </div>`;
-  const text = `홀세일 납품 문의\n상호: ${payload.businessName}\n담당자: ${payload.contactName || "-"}\n연락처: ${payload.phone}\n이메일: ${payload.email || "-"}\n지역: ${payload.region || "-"}\n예상 월 물량: ${payload.volume || "-"}\n\n${payload.message}`;
-  await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] 홀세일 납품 문의 — ${payload.businessName}`, html, text });
+  const text = `${typeLabel} 문의\n상호: ${payload.businessName}\n담당자: ${payload.contactName || "-"}\n연락처: ${payload.phone}\n이메일: ${payload.email || "-"}\n지역: ${payload.region || "-"}\n예상 월 물량: ${payload.volume || "-"}\n\n${payload.message}`;
+  await sendEmail({ to: NOTIFY_TO, subject: `[니트커피] ${typeLabel} 문의 — ${payload.businessName}`, html, text });
 }
 
 // 신규 거래처 가입 알림 (관리자 수신)

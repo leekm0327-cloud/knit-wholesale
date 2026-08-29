@@ -10,8 +10,18 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
 import { Loader2 } from "lucide-react";
 
+function readSampleIntent(): boolean {
+  try {
+    return sessionStorage.getItem("knit.sampleIntent") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function Register() {
   const [, navigate] = useLocation();
+  // 랜딩의 "무료 샘플 신청하기"로 들어온 경우 — 가입 후 바로 샘플 신청으로 보냅니다.
+  const [sampleIntent] = useState(readSampleIntent);
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -56,8 +66,14 @@ export default function Register() {
       const user = await res.json();
       queryClient.setQueryData(["/api/auth/me"], user);
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      toast({ title: "거래처 등록 완료", description: "환영합니다! 이제 주문하실 수 있습니다." });
-      navigate("/catalog");
+      if (sampleIntent) {
+        try { sessionStorage.removeItem("knit.sampleIntent"); } catch {}
+        toast({ title: "거래처 등록 완료", description: "이어서 무료 샘플을 신청해 주세요." });
+        navigate("/sample");
+      } else {
+        toast({ title: "거래처 등록 완료", description: "환영합니다! 이제 주문하실 수 있습니다." });
+        navigate("/catalog");
+      }
     } catch (err: any) {
       toast({ title: "가입 실패", description: errMsg(err), variant: "destructive" });
     } finally {
@@ -79,6 +95,12 @@ export default function Register() {
       </div>
 
       <Card className="w-full max-w-lg p-7 sm:p-8">
+        {sampleIntent && (
+          <div className="mb-4 rounded-md border border-teal-600/40 bg-teal-600/5 px-4 py-3 text-xs leading-relaxed text-foreground break-keep" data-testid="notice-sample-intent">
+            <strong className="font-semibold">무료 원두 샘플</strong>은 거래처 가입 후 신청하실 수 있습니다.
+            아래 정보를 남겨 주시면 바로 샘플 신청 화면으로 이동합니다.
+          </div>
+        )}
         <div className="mb-5 rounded-md border border-border bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground break-keep">
           로그인은 입력하신 <strong className="font-semibold text-foreground">상호명</strong>으로 진행됩니다.
         </div>

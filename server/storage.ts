@@ -459,6 +459,8 @@ for (const [table, col] of [
   ["orders", "ecount_sent_at INTEGER"],
   ["orders", "ecount_sent_amount INTEGER"],
   ["orders", "ecount_sent_count INTEGER NOT NULL DEFAULT 0"],
+  // 홀세일 문의 유형 (원두 납품 / 카페 컨설팅 / 둘 다)
+  ["wholesale_inquiries", "inquiry_type TEXT NOT NULL DEFAULT 'wholesale'"],
   ["customers", "admin_role TEXT NOT NULL DEFAULT 'owner'"],
   ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
   ["orders", "cancelled_at INTEGER"],

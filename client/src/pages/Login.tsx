@@ -90,6 +90,17 @@ export default function Login() {
   }
 
   // 해시 라우팅을 쓰기 때문에 <a href="#id"> 는 주소를 바꿔버린다. 직접 스크롤한다.
+  // 랜딩 CTA → 다음 화면에 의도 전달
+  function markSampleIntent() {
+    try { sessionStorage.setItem("knit.sampleIntent", "1"); } catch {}
+  }
+  function markInquiryType(t: string) {
+    try {
+      if (t) sessionStorage.setItem("knit.inquiryType", t);
+      else sessionStorage.removeItem("knit.inquiryType");
+    } catch {}
+  }
+
   function scrollTo(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -328,7 +339,7 @@ export default function Login() {
           <p className="lead" style={{marginTop: "34px"}}>컨설팅만 받으셔도 되고, 납품과 함께 하셔도 됩니다.</p>
 
           <div className="cta-row">
-            <Link href="/inquiry" className="btn ghost">컨설팅 문의</Link>
+            <Link href="/inquiry" className="btn ghost" onClick={() => markInquiryType("consulting")}>컨설팅 문의</Link>
           </div>
         </div>
       </section>
@@ -368,8 +379,8 @@ export default function Login() {
       <div className="wrap final" id="knit-start">
         <div className="subhead">Get in touch</div>
         <div className="cta-row">
-          <Link href="/register" className="btn">무료 샘플 신청하기</Link>
-          <Link href="/inquiry" className="btn ghost">상담 문의</Link>
+          <Link href="/register" className="btn" onClick={markSampleIntent}>무료 샘플 신청하기</Link>
+          <Link href="/inquiry" className="btn ghost" onClick={() => markInquiryType("")}>상담 문의</Link>
         </div>
       </div>
 

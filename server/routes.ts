@@ -30,6 +30,7 @@ import {
   adminCreateOrderSchema,
   createNewsSchema,
   insertInquirySchema,
+  INQUIRY_TYPE_LABELS,
   insertVisitRequestSchema,
   VISIT_PURPOSE_LABELS,
   VISIT_STATUSES,
@@ -3380,6 +3381,7 @@ export async function registerRoutes(
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
     const d = parsed.data;
     const item = await storage.createInquiry({
+      inquiryType: d.inquiryType,
       businessName: d.businessName,
       contactName: d.contactName ?? "",
       phone: d.phone,
@@ -3396,7 +3398,7 @@ export async function registerRoutes(
     }
     storage.createNotification({
       type: "inquiry",
-      title: `홀세일 납품 문의 · ${d.businessName}`,
+      title: `${INQUIRY_TYPE_LABELS[d.inquiryType] ?? "문의"} · ${d.businessName}`,
       body: `${d.contactName || "-"} · ${d.phone}`,
       link: "/admin/inquiries",
     }).catch((e) => console.error("[notif] 문의 알림 저장 실패:", e));

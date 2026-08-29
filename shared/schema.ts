@@ -713,8 +713,18 @@ export const newsBlockSchema = z.discriminatedUnion("type", [
 export type NewsBlock = z.infer<typeof newsBlockSchema>;
 
 // ===== 홀세일 납품 문의 (비회원 공개 폼) =====
+// 문의 유형 — 원두 납품인지 카페 컨설팅인지, 아니면 둘 다인지
+export const INQUIRY_TYPES = ["wholesale", "consulting", "both"] as const;
+export type InquiryType = (typeof INQUIRY_TYPES)[number];
+export const INQUIRY_TYPE_LABELS: Record<InquiryType, string> = {
+  wholesale: "원두 납품",
+  consulting: "카페 컨설팅",
+  both: "원두 납품 + 카페 컨설팅",
+};
+
 export const wholesaleInquiries = sqliteTable("wholesale_inquiries", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  inquiryType: text("inquiry_type").notNull().default("wholesale"), // wholesale | consulting | both
   businessName: text("business_name").notNull(), // 상호
   contactName: text("contact_name").notNull().default(""), // 담당자
   phone: text("phone").notNull(), // 연락처
@@ -728,6 +738,7 @@ export const wholesaleInquiries = sqliteTable("wholesale_inquiries", {
 });
 export type WholesaleInquiry = typeof wholesaleInquiries.$inferSelect;
 export const insertInquirySchema = z.object({
+  inquiryType: z.enum(INQUIRY_TYPES).optional().default("wholesale"),
   businessName: z.string().trim().min(1, "상호(업체명)를 입력해 주세요.").max(120),
   contactName: z.string().trim().max(80).optional().default(""),
   phone: z.string().trim().min(1, "연락처를 입력해 주세요.").max(60),

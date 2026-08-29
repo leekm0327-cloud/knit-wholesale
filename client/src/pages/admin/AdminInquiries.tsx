@@ -10,9 +10,11 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg, fmtDate } from "@/lib/format";
 import { Inbox } from "lucide-react";
+import { INQUIRY_TYPE_LABELS, type InquiryType } from "@shared/schema";
 
 type Inquiry = {
   id: number;
+  inquiryType?: InquiryType;
   businessName: string;
   contactName: string;
   phone: string;
@@ -57,17 +59,41 @@ export default function AdminInquiries() {
     }
   }
 
-  const items = list ?? [];
+  const [typeFilter, setTypeFilter] = useState<"all" | InquiryType>("all");
+  const all = list ?? [];
+  const items = typeFilter === "all" ? all : all.filter((i) => (i.inquiryType ?? "wholesale") === typeFilter);
   const newCount = items.filter((i) => i.status === "new").length;
+  const TYPE_FILTERS: { value: "all" | InquiryType; label: string }[] = [
+    { value: "all", label: "전체" },
+    { value: "wholesale", label: "원두 납품" },
+    { value: "consulting", label: "카페 컨설팅" },
+    { value: "both", label: "둘 다" },
+  ];
 
   return (
     <AdminLayout>
       <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
         <div className="mb-6">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">납품 문의</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">문의</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            홀세일 납품 문의 접수 내역입니다. {newCount > 0 && <span className="font-semibold text-foreground">· 신규 {newCount}건</span>}
+            원두 납품 · 카페 컨설팅 문의 접수 내역입니다. {newCount > 0 && <span className="font-semibold text-foreground">· 신규 {newCount}건</span>}
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {TYPE_FILTERS.map((f) => {
+              const n = f.value === "all" ? all.length : all.filter((i) => (i.inquiryType ?? "wholesale") === f.value).length;
+              return (
+                <Button
+                  key={f.value}
+                  size="sm"
+                  variant={typeFilter === f.value ? "default" : "outline"}
+                  onClick={() => setTypeFilter(f.value)}
+                  data-testid={`button-inq-filter-${f.value}`}
+                >
+                  {f.label} {n}
+                </Button>
+              );
+            })}
+          </div>
         </div>
 
         {isLoading ? (
@@ -86,6 +112,9 @@ export default function AdminInquiries() {
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-base font-semibold text-foreground">{it.businessName}</span>
+                      <Badge variant="secondary" className="font-normal" data-testid={`badge-inq-type-${it.id}`}>
+                        {INQUIRY_TYPE_LABELS[it.inquiryType ?? "wholesale"] ?? "원두 납품"}
+                      </Badge>
                       {isNew ? (
                         <Badge className="bg-teal-600 text-white hover:bg-teal-600">신규</Badge>
                       ) : (
