@@ -77,7 +77,7 @@ export default function Inquiry() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">상호(업체명) <span className="text-teal-600">*</span></Label>
-                <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} placeholder="예: 니트 로스터리" data-testid="input-inq-business" />
+                <Input value={form.businessName} onChange={(e) => set("businessName", e.target.value)} placeholder="예: 니트커피" data-testid="input-inq-business" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">담당자명</Label>
