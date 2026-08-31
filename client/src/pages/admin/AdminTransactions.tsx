@@ -67,7 +67,7 @@ interface TransactionResult {
   endDate: string;
   orders: TransactionOrder[];
   payments: TransactionPayment[];
-  openingBalance: number;
+  openingBalance?: number; // 서버가 예전 버전이면 아예 안 올 수 있다
   totalAmount: number;
   paidAmount: number;
   unpaidAmount: number;
@@ -258,7 +258,19 @@ export default function AdminTransactions() {
           (() => {
             const supplyTotal = result.orders.reduce((s, o) => s + o.supplyAmount, 0);
             const vatTotal = result.orders.reduce((s, o) => s + o.vat, 0);
+            // 서버가 전월 이월을 안 보내는 경우(구버전 배포)에도 화면이 NaN으로 깨지지 않게 한다.
+            // 다만 그 상태의 잔액은 '조회 기간분'일 뿐이므로 관리자에게만 따로 알려준다.
+            const hasOpening = Number.isFinite(result.openingBalance as number);
+            const opening = hasOpening ? (result.openingBalance as number) : 0;
+            const balance = hasOpening ? result.unpaidAmount : result.totalAmount - result.paidAmount;
             return (
+          <>
+          {!hasOpening && (
+            <div className="no-print mx-auto mb-3 max-w-3xl border border-amber-400/60 bg-amber-50/60 px-4 py-3 text-xs leading-relaxed text-amber-900 break-keep dark:bg-amber-950/20 dark:text-amber-200" data-testid="notice-opening-missing">
+              서버가 아직 <strong>전월 이월</strong>을 보내지 않고 있습니다. 지금 보이는 미수 잔액은 조회 기간 안의 거래만 계산한 값이라,
+              지난달 채무를 이번 달에 입금한 경우 실제보다 적게 나옵니다. <strong>server/storage.ts</strong>를 배포하면 정상 표시됩니다.
+            </div>
+          )}
           <div className="print-area txn-doc mx-auto max-w-3xl border border-foreground/70 bg-white p-6 text-foreground sm:p-8">
             {/* 제목 + 발행 정보 */}
             <div className="flex items-start justify-between border-b-2 border-foreground pb-3">
@@ -300,17 +312,17 @@ export default function AdminTransactions() {
                 받는 사람이 가장 먼저 알고 싶은 건 '그래서 얼마를 보내야 하나'다. */}
             <div className="txn-summary mt-5 grid grid-cols-1 border border-border sm:grid-cols-[1fr_auto]">
               <div className="divide-y divide-border">
-                <SumRow label="전월 이월" value={won(result.openingBalance)} />
+                <SumRow label="전월 이월" value={hasOpening ? won(opening) : "—"} />
                 <SumRow label="당월 거래" value={`+ ${won(result.totalAmount)}`} />
                 <SumRow label="입금액" value={`− ${won(result.paidAmount)}`} />
               </div>
               {/* 결론이지만 소리치지는 않게 — 색을 반전하는 대신 크기와 여백으로만 구분한다 */}
               <div className="flex flex-col items-end justify-center gap-1.5 border-t border-border bg-muted/30 px-6 py-4 sm:min-w-[230px] sm:border-l sm:border-t-0">
                 <div className="text-[11px] text-muted-foreground">
-                  {result.unpaidAmount < 0 ? "과입금액" : "미수 잔액"}
+                  {balance < 0 ? "과입금액" : "미수 잔액"}
                 </div>
                 <div className="font-display text-xl font-semibold tabular text-foreground" data-testid="text-txn-balance">
-                  {won(Math.abs(result.unpaidAmount))}
+                  {won(Math.abs(balance))}
                 </div>
               </div>
             </div>
@@ -432,6 +444,7 @@ export default function AdminTransactions() {
               <p className="text-sm font-bold text-foreground">{SELLER.name}</p>
             </div>
           </div>
+          </>
             );
           })()
         ) : queryKey != null ? (

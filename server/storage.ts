@@ -927,6 +927,8 @@ export interface IStorage {
   // #32 거래내역서
   listTransactions(customerId: number, startDate: string, endDate: string): Promise<{
     orders: Array<Order & { parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> }>;
+    payments: Array<{ id: number; paidAt: string; amount: number; method: string; memo: string }>;
+    openingBalance: number;
     totalAmount: number;
     paidAmount: number;
     unpaidAmount: number;
@@ -3075,9 +3077,10 @@ export class DatabaseStorage implements IStorage {
   async listTransactions(customerId: number, startDate: string, endDate: string): Promise<{
     orders: Array<Order & { parsedItems: Array<{ name: string; qty: number; unitPrice: number; amount: number }> }>;
     payments: Array<{ id: number; paidAt: string; amount: number; method: string; memo: string }>;
-    totalAmount: number;
-    paidAmount: number;
-    unpaidAmount: number;
+    openingBalance: number;   // 전기 이월 — 시작일 이전까지의 (주문 합계 − 입금 합계)
+    totalAmount: number;      // 당기 매출 (기간 내 주문 합계)
+    paidAmount: number;       // 당기 입금 (기간 내 입금 합계)
+    unpaidAmount: number;     // 기말 잔액 = 이월 + 당기 매출 − 당기 입금
   }> {
     // 유효 주문일자 = 관리자 지정 주문 일자(ecountDate, YYYY-MM-DD) 있으면 그것, 없으면 생성일(KST)
     const effYmd = (o: any): string =>
@@ -3121,12 +3124,25 @@ export class DatabaseStorage implements IStorage {
       .map((p) => ({ id: p.id, paidAt: p.paidAt, amount: p.amount, method: p.method, memo: p.memo }));
     const paidAmount = periodPayments.reduce((s, p) => s + p.amount, 0);
 
+    // 전기 이월 — 시작일 '이전'의 주문과 입금을 모두 더해 남은 잔액.
+    // 이게 없으면 지난달 채무를 이번달에 입금한 경우 그 입금이 이번달 매출에서 깎여
+    // 잔액이 실제보다 적게 나온다. (기말 잔액 = 이월 + 당기 매출 − 당기 입금)
+    const beforeOrdersTotal = custOrders
+      .filter((ord) => ord.status !== "cancelled" && effYmd(ord) < startDate)
+      .reduce((sum, ord) => sum + ord.totalAmount, 0);
+    const beforePaidTotal = allPayments
+      .filter((pay) => pay.paidAt < startDate)
+      .reduce((sum, pay) => sum + pay.amount, 0);
+    const openingBalance = beforeOrdersTotal - beforePaidTotal;
+
     return {
       orders: resultOrders,
       payments: periodPayments,
+      openingBalance,
       totalAmount,
       paidAmount,
-      unpaidAmount: Math.max(0, totalAmount - paidAmount),
+      // 0으로 깎지 않는다 — 과입금(선입금)이면 음수가 나와야 실제 상태가 보인다.
+      unpaidAmount: openingBalance + totalAmount - paidAmount,
     };
   }
 
