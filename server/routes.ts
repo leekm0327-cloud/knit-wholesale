@@ -1499,6 +1499,125 @@ export async function registerRoutes(
   });
 
   // 발주 수정 (품목/공급처/발주일/메모 전체 교체 — 채무는 발주 합계에서 자동 파생되므로 재계산 불필요)
+  // ===== 발주 단가 일괄 변경 =====
+  //  공장 단가가 오르면 그 시점 이후에 이미 쌓인 발주들의 단가도 같이 맞춰야
+  //  공장 채무와 매출원가가 실제와 어긋나지 않는다. 미리보기로 확인한 뒤에만 적용한다.
+  async function collectRepriceTargets(productId: number, from: string, to: string, unitPrice: number) {
+    const product = await storage.getProduct(productId);
+    if (!product) return { ok: false as const, message: "상품을 찾을 수 없습니다." };
+    const all = await storage.listPurchases();
+    const rows: Array<{
+      id: number; purchaseNo: string; purchaseDate: string; memo: string;
+      qty: number; oldUnitPrice: number; oldTotal: number; newTotal: number;
+      ecountSentAt: number | null; items: PurchaseItem[];
+    }> = [];
+    for (const p of all) {
+      if (p.purchaseDate < from || p.purchaseDate > to) continue;
+      let items: PurchaseItem[] = [];
+      try { items = JSON.parse(p.items); } catch { continue; }
+      // 상품 ID로 맞추되, 손으로 넣어 ID가 없는 줄은 품목명으로도 찾는다
+      const hit = items.filter(
+        (it) => it.productId === productId || (it.productId == null && it.name === product.name),
+      );
+      if (hit.length === 0) continue;
+      const qty = hit.reduce((s, it) => s + it.qty, 0);
+      const oldUnitPrice = hit[0].unitPrice;
+      if (hit.every((it) => it.unitPrice === unitPrice)) continue; // 이미 새 단가면 건너뛴다
+      const next = items.map((it) =>
+        it.productId === productId || (it.productId == null && it.name === product.name)
+          ? { ...it, unitPrice, amount: Math.round(it.qty * unitPrice) }
+          : it,
+      );
+      rows.push({
+        id: p.id, purchaseNo: p.purchaseNo, purchaseDate: p.purchaseDate, memo: p.memo ?? "",
+        qty, oldUnitPrice, oldTotal: p.totalAmount,
+        newTotal: next.reduce((s, it) => s + it.amount, 0),
+        ecountSentAt: (p as any).ecountSentAt ?? null,
+        items: next,
+      });
+    }
+    rows.sort((a, b) => (a.purchaseDate < b.purchaseDate ? -1 : a.purchaseDate > b.purchaseDate ? 1 : a.id - b.id));
+    return { ok: true as const, product, rows };
+  }
+
+  app.get("/api/admin/purchases/reprice/preview", requireOwner, async (req, res) => {
+    const productId = Number(req.query.productId);
+    const from = String(req.query.from ?? "").slice(0, 10);
+    const to = String(req.query.to ?? "2099-12-31").slice(0, 10);
+    const unitPrice = Math.round(Number(req.query.unitPrice));
+    if (!Number.isFinite(productId) || productId <= 0) return res.status(400).json({ message: "상품을 선택해 주세요." });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ message: "시작일을 선택해 주세요." });
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) return res.status(400).json({ message: "새 단가를 입력해 주세요." });
+    const r = await collectRepriceTargets(productId, from, to, unitPrice);
+    if (!r.ok) return res.status(404).json({ message: r.message });
+    const diff = r.rows.reduce((s, x) => s + (x.newTotal - x.oldTotal), 0);
+    res.json({
+      productName: r.product.name,
+      currentCostPrice: (r.product as any).costPrice ?? 0,
+      rows: r.rows.map(({ items, ...rest }) => rest),
+      summary: {
+        count: r.rows.length,
+        diff,
+        alreadySent: r.rows.filter((x) => x.ecountSentAt).length,
+      },
+    });
+  });
+
+  app.post("/api/admin/purchases/reprice", requireOwner, async (req, res) => {
+    const productId = Number(req.body?.productId);
+    const from = String(req.body?.from ?? "").slice(0, 10);
+    const to = String(req.body?.to ?? "2099-12-31").slice(0, 10);
+    const unitPrice = Math.round(Number(req.body?.unitPrice));
+    const alsoCostPrice = req.body?.alsoCostPrice !== false;
+    if (!Number.isFinite(productId) || productId <= 0) return res.status(400).json({ message: "상품을 선택해 주세요." });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return res.status(400).json({ message: "시작일을 선택해 주세요." });
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) return res.status(400).json({ message: "새 단가를 입력해 주세요." });
+
+    const r = await collectRepriceTargets(productId, from, to, unitPrice);
+    if (!r.ok) return res.status(404).json({ message: r.message });
+
+    let changed = 0;
+    for (const row of r.rows) {
+      const cur = await storage.getPurchase(row.id);
+      if (!cur) continue;
+      await storage.updatePurchase(row.id, {
+        supplierId: cur.supplierId,
+        purchaseDate: cur.purchaseDate,
+        memo: cur.memo ?? "",
+        items: row.items,
+        totalAmount: row.newTotal,
+        customerId: (cur as any).customerId ?? null,
+        customerName: (cur as any).customerName ?? "",
+        segment: (cur as any).segment ?? "wholesale",
+      });
+      changed += 1;
+    }
+
+    let costPriceUpdated = false;
+    if (alsoCostPrice) {
+      await storage.updateProduct(productId, { costPrice: unitPrice } as any);
+      costPriceUpdated = true;
+    }
+
+    const actor = await getActor(req);
+    await storage.logActivity({
+      ...actor,
+      action: "purchase.reprice",
+      targetType: "product",
+      targetId: String(productId),
+      summary:
+        `${r.product.name} 매입단가 ${unitPrice.toLocaleString("ko-KR")}원으로 일괄 변경 ` +
+        `(${from}~${to}, 발주 ${changed}건${costPriceUpdated ? ", 상품 매입원가 포함" : ""})`,
+    });
+
+    res.json({
+      changed,
+      costPriceUpdated,
+      diff: r.rows.reduce((s, x) => s + (x.newTotal - x.oldTotal), 0),
+      message: `발주 ${changed}건의 단가를 바꿨습니다.`,
+    });
+  });
+
   app.patch("/api/admin/purchases/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });

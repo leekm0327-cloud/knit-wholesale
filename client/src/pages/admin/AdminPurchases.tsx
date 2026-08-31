@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -279,6 +280,9 @@ export default function AdminPurchases() {
 
         <ItemPeriodSummary endpoint="/api/admin/purchases/item-summary" qtyLabel="발주 수량" amountLabel="발주 금액" detailEndpoint="/api/admin/purchases/item-detail" />
 
+        {/* 매입단가 일괄 변경 — 공장 단가가 오른 뒤 그 시점 이후 발주를 한 번에 맞춘다 */}
+        <RepriceCard products={products ?? []} />
+
         {/* 발주 입력 */}
         <Card className="mb-6 p-5">
           <h2 className="mb-4 text-sm font-semibold text-foreground">
@@ -500,5 +504,193 @@ export default function AdminPurchases() {
         </Card>
       </div>
     </AdminLayout>
+  );
+}
+
+// 공장 단가가 바뀌었을 때, 그 시점 이후에 이미 쌓인 발주의 단가를 한 번에 맞춘다.
+// 바로 고치지 않고 먼저 무엇이 얼마나 바뀌는지 보여준다 — 공장 채무와 매출원가가 함께 움직이기 때문.
+function RepriceCard({ products }: { products: Product[] }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [productId, setProductId] = useState<string>("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [price, setPrice] = useState("");
+  const [alsoCostPrice, setAlsoCostPrice] = useState(true);
+  const [preview, setPreview] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+
+  const numericPrice = Math.max(0, Math.round(Number(price.replace(/[^0-9]/g, "")) || 0));
+  const ready = !!productId && /^\d{4}-\d{2}-\d{2}$/.test(from) && numericPrice > 0;
+
+  async function loadPreview() {
+    if (!ready) return;
+    setBusy(true);
+    try {
+      const q = `productId=${productId}&from=${from}&to=${to || "2099-12-31"}&unitPrice=${numericPrice}`;
+      const res = await apiRequest("GET", `/api/admin/purchases/reprice/preview?${q}`);
+      setPreview(await res.json());
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "미리보기 실패", description: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apply() {
+    if (!preview || preview.summary.count === 0) return;
+    const msg =
+      `${preview.productName} 단가를 ${won(numericPrice)}으로 바꿉니다.\n` +
+      `발주 ${preview.summary.count}건 · 공장 채무 ${preview.summary.diff >= 0 ? "+" : ""}${won(preview.summary.diff)}\n` +
+      (preview.summary.alreadySent > 0
+        ? `\n이 중 ${preview.summary.alreadySent}건은 이미 이카운트로 보낸 발주입니다.\n이카운트에는 예전 금액이 그대로 남으니 직접 고치셔야 합니다.\n`
+        : "") +
+      `\n계속할까요?`;
+    if (!confirm(msg)) return;
+    setBusy(true);
+    try {
+      const res = await apiRequest("POST", "/api/admin/purchases/reprice", {
+        productId: Number(productId),
+        from,
+        to: to || "2099-12-31",
+        unitPrice: numericPrice,
+        alsoCostPrice,
+      });
+      const body = await res.json();
+      toast({ title: body.message, description: alsoCostPrice ? "상품의 매입원가도 함께 바꿨습니다." : undefined });
+      setPreview(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "변경 실패", description: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6 p-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+        data-testid="button-reprice-toggle"
+      >
+        <span className="text-sm font-semibold text-foreground">매입단가 일괄 변경</span>
+        <span className="text-xs text-muted-foreground">{open ? "접기" : "펼치기"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-4">
+          <p className="break-keep text-xs leading-relaxed text-muted-foreground">
+            공장 단가가 오른 경우, 그 시점 이후에 이미 등록된 발주의 단가를 한 번에 맞춥니다.
+            발주 금액이 바뀌면 공장 채무와 매출원가도 함께 움직이니, 먼저 미리보기로 확인하세요.
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">상품 *</Label>
+              <Select value={productId} onValueChange={(v) => { setProductId(v); setPreview(null); }}>
+                <SelectTrigger data-testid="select-reprice-product">
+                  <SelectValue placeholder="상품 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">새 매입단가 *</Label>
+              <Input
+                inputMode="numeric"
+                value={price}
+                onChange={(e) => { setPrice(e.target.value.replace(/[^0-9]/g, "")); setPreview(null); }}
+                placeholder="예: 21900"
+                data-testid="input-reprice-price"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">적용 시작일 *</Label>
+              <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPreview(null); }} data-testid="input-reprice-from" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">종료일 <span className="font-normal text-muted-foreground">(비우면 오늘까지 전부)</span></Label>
+              <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPreview(null); }} data-testid="input-reprice-to" />
+            </div>
+          </div>
+
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <Checkbox checked={alsoCostPrice} onCheckedChange={(v) => setAlsoCostPrice(!!v)} data-testid="check-reprice-costprice" />
+            <span className="text-sm leading-snug text-foreground break-keep">
+              상품의 매입원가도 함께 바꾸기
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                앞으로 들어올 자동발주와 매장 내부 계정 주문의 단가에 쓰입니다. 꺼두면 이미 쌓인 발주만 고칩니다.
+              </span>
+            </span>
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={loadPreview} disabled={!ready || busy} data-testid="button-reprice-preview">
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              미리보기
+            </Button>
+            {preview && preview.summary.count > 0 && (
+              <Button onClick={apply} disabled={busy} data-testid="button-reprice-apply">적용하기</Button>
+            )}
+          </div>
+
+          {preview && (
+            preview.summary.count === 0 ? (
+              <p className="text-sm text-muted-foreground">해당 기간에 단가를 바꿀 발주가 없습니다. (이미 새 단가이거나 그 품목이 든 발주가 없습니다)</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="border border-border bg-muted/30 px-4 py-3 text-sm break-keep">
+                  <div className="font-semibold text-foreground">
+                    발주 {preview.summary.count}건 · 공장 채무 {preview.summary.diff >= 0 ? "+" : ""}{won(preview.summary.diff)}
+                  </div>
+                  {preview.summary.alreadySent > 0 && (
+                    <div className="mt-1 text-xs text-destructive">
+                      이 중 {preview.summary.alreadySent}건은 이미 이카운트로 보냈습니다. 이카운트에는 예전 금액이 남으니 그쪽도 고치셔야 합니다.
+                    </div>
+                  )}
+                </div>
+                <div className="table-scroll">
+                  <table className="w-full min-w-[560px] border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground">
+                        <th className="px-2 py-1.5 text-left font-medium">발주번호</th>
+                        <th className="px-2 py-1.5 text-left font-medium">발주일</th>
+                        <th className="px-2 py-1.5 text-right font-medium">수량</th>
+                        <th className="px-2 py-1.5 text-right font-medium">기존 단가</th>
+                        <th className="px-2 py-1.5 text-right font-medium">발주 금액</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {preview.rows.map((r: any) => (
+                        <tr key={r.id}>
+                          <td className="px-2 py-1.5 text-foreground">
+                            {r.purchaseNo}
+                            {r.ecountSentAt ? <span className="ml-1 text-[10px] text-destructive">전송됨</span> : null}
+                          </td>
+                          <td className="px-2 py-1.5 tabular text-muted-foreground">{r.purchaseDate.replace(/-/g, ".")}</td>
+                          <td className="px-2 py-1.5 text-right tabular text-foreground">{r.qty}</td>
+                          <td className="px-2 py-1.5 text-right tabular text-muted-foreground">{won(r.oldUnitPrice)}</td>
+                          <td className="px-2 py-1.5 text-right tabular text-foreground">
+                            {won(r.oldTotal)} <span className="text-muted-foreground">→</span>{" "}
+                            <strong>{won(r.newTotal)}</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
