@@ -96,8 +96,13 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 async function recomputeOrderItems(
   customerId: number,
   rawItems: Array<{ productId: number; name: string; category: string; unitPrice: number; qty: number; amount: number }>,
+  // 정액 할인(양수). 공급가액에서 빼고 부가세를 다시 계산한다.
+  discountAmount = 0,
+  // true면 할인이 품목 합계보다 클 때 거절하지 않고 합계까지 줄여서 맞춘다.
+  // (거래처가 품목을 줄여 재저장하는 경우처럼, 관리자가 넣은 할인을 이유로 저장을 막으면 안 되는 곳에서 쓴다.)
+  clampDiscount = false,
 ): Promise<
-  | { ok: true; items: any[]; supplyAmount: number; vat: number; totalAmount: number }
+  | { ok: true; items: any[]; supplyAmount: number; vat: number; totalAmount: number; discountAmount: number }
   | { ok: false; message: string }
 > {
   const customer = await storage.getCustomer(customerId);
@@ -129,9 +134,21 @@ async function recomputeOrderItems(
       amount: unitPrice * it.qty,
     });
   }
-  const supplyAmount = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const itemsTotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  let discount = Math.max(0, Math.round(discountAmount || 0));
+  if (discount > itemsTotal) {
+    if (!clampDiscount) {
+      return {
+        ok: false,
+        message: `할인 금액(${discount.toLocaleString("ko-KR")}원)이 품목 합계(${itemsTotal.toLocaleString("ko-KR")}원)보다 큽니다.`,
+      };
+    }
+    discount = itemsTotal;
+  }
+  // 할인은 공급가액에서 뺀다 → 부가세도 줄어든 공급가액 기준으로 다시 계산
+  const supplyAmount = itemsTotal - discount;
   const vat = Math.round(supplyAmount * 0.1);
-  return { ok: true, items, supplyAmount, vat, totalAmount: supplyAmount + vat };
+  return { ok: true, items, supplyAmount, vat, totalAmount: supplyAmount + vat, discountAmount: discount };
 }
 
 export async function registerRoutes(
@@ -646,12 +663,16 @@ export async function registerRoutes(
         }
       }
 
-      const newSupplyAmount = mergedItems.reduce((s: number, i: any) => s + i.unitPrice * i.qty, 0);
+      // 합쳐질 주문에 관리자가 걸어둔 정액 할인이 있으면 그대로 이어간다
+      const mergedItemsTotal = mergedItems.reduce((s: number, i: any) => s + i.unitPrice * i.qty, 0);
+      const keptDiscount = Math.min(Math.max(0, (todayPending as any).discountAmount ?? 0), mergedItemsTotal);
+      const newSupplyAmount = mergedItemsTotal - keptDiscount;
       const newVat = Math.round(newSupplyAmount * 0.1);
       const newTotalAmount = newSupplyAmount + newVat;
 
       const updatedOrder = await storage.updateOrder(todayPending.id, {
         items: JSON.stringify(mergedItems),
+        discountAmount: keptDiscount,
         supplyAmount: newSupplyAmount,
         vat: newVat,
         totalAmount: newTotalAmount,
@@ -772,7 +793,7 @@ export async function registerRoutes(
     if (!customer) return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
 
     // 거래처 등록단가로 금액 재계산 (기존 서버 로직 재사용, 중복 구현 금지)
-    const recomputed = await recomputeOrderItems(customer.id, parsed.data.items);
+    const recomputed = await recomputeOrderItems(customer.id, parsed.data.items, parsed.data.discountAmount);
     if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
 
     // A-4: 도매 원두 최소 5kg(수량 5개) 검증 — 카테고리 관리의 '원두(isBean)' 기준
@@ -802,6 +823,8 @@ export async function registerRoutes(
         paymentMethod: customer.paymentMethod,
       }),
       items: JSON.stringify(recomputed.items),
+      discountAmount: recomputed.discountAmount,
+      discountLabel: (parsed.data.discountLabel ?? "").trim(),
       supplyAmount: recomputed.supplyAmount,
       vat: recomputed.vat,
       totalAmount: recomputed.totalAmount,
@@ -943,11 +966,19 @@ export async function registerRoutes(
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
 
-    const recomputed = await recomputeOrderItems(order.customerId, parsed.data.items);
+    // 관리자가 걸어둔 정액 할인은 그대로 유지한다.
+    // 그냥 다시 계산하면 할인은 DB에 남은 채 금액에서만 사라져 앞뒤가 안 맞게 된다.
+    const recomputed = await recomputeOrderItems(
+      order.customerId,
+      parsed.data.items,
+      (order as any).discountAmount ?? 0,
+      true,
+    );
     if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
 
     const updated = await storage.updateOrder(id, {
       items: JSON.stringify(recomputed.items),
+      discountAmount: recomputed.discountAmount,
       supplyAmount: recomputed.supplyAmount,
       vat: recomputed.vat,
       totalAmount: recomputed.totalAmount,
@@ -2222,9 +2253,11 @@ export async function registerRoutes(
       const parsed = adminUpdateOrderItemsSchema.safeParse(req.body);
       if (!parsed.success)
         return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
-      const recomputed = await recomputeOrderItems(order.customerId, parsed.data.items);
+      const recomputed = await recomputeOrderItems(order.customerId, parsed.data.items, parsed.data.discountAmount);
       if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
       patch.items = JSON.stringify(recomputed.items);
+      patch.discountAmount = recomputed.discountAmount;
+      patch.discountLabel = (parsed.data.discountLabel ?? "").trim();
       patch.supplyAmount = recomputed.supplyAmount;
       patch.vat = recomputed.vat;
       patch.totalAmount = recomputed.totalAmount;
@@ -2953,6 +2986,7 @@ export async function registerRoutes(
         zone: "",
         warehouseCode: "",
         deliverFieldCode: "",
+        discountProductCode: "",
         useTestEndpoint: true,
         autoSendSales: false,
         autoSendPayments: false,
@@ -2969,6 +3003,7 @@ export async function registerRoutes(
       zone: s.zone,
       warehouseCode: s.warehouseCode,
       deliverFieldCode: s.deliverFieldCode ?? "",
+      discountProductCode: s.discountProductCode ?? "",
       useTestEndpoint: !!s.useTestEndpoint,
       autoSendSales: !!s.autoSendSales,
       autoSendPayments: !!s.autoSendPayments,
@@ -2998,6 +3033,7 @@ export async function registerRoutes(
       zone: d.zone ?? "",
       warehouseCode: d.warehouseCode,
       deliverFieldCode: (d.deliverFieldCode ?? "").trim(),
+      discountProductCode: (d.discountProductCode ?? "").trim(),
       useTestEndpoint: useTest,
       autoSendSales: keep(d.autoSendSales, prev?.autoSendSales, 0),
       autoSendPayments: keep(d.autoSendPayments, prev?.autoSendPayments, 0),

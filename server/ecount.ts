@@ -697,6 +697,28 @@ async function saveSaleOnEcount(
       REMARKS_WIN: `도매주문 ${order.orderNo}`,
     },
   }));
+  // 정액 할인은 품목 라인을 건드리지 않고 맨 아래에 음수 한 줄로 붙인다.
+  // (단가를 깎아 나눠 넣으면 이카운트에 남는 원두 단가가 실제 판매가와 달라져 단가·재고 통계가 흔들린다.)
+  const discount = Math.max(0, (order as any).discountAmount ?? 0);
+  if (discount > 0) {
+    const label = ((order as any).discountLabel || "").trim();
+    SaleList.push({
+      Line: String(SaleList.length + 1),
+      BulkDatas: {
+        IO_DATE: ioDate,
+        UPLOAD_SER_NO: "1",
+        CUST: custCode,
+        WH_CD: ctx.s.warehouseCode,
+        PROD_CD: (ctx.s.discountProductCode || "").trim(),
+        QTY: "1",
+        PRICE: String(-discount),
+        SUPPLY_AMT: String(-discount),
+        VAT_AMT: String(-Math.round(discount * 0.1)),
+        REMARKS_WIN: `도매주문 ${order.orderNo} 할인${label ? ` · ${label}` : ""}`,
+      },
+    });
+  }
+
   const body = { SaleList };
   const res = await post(url, body);
   const { error: errStr, treatAsSuccess } = extractRealError(res);
@@ -706,7 +728,7 @@ async function saveSaleOnEcount(
   const noFail = fail === undefined || fail === 0 || fail === "0";
   const ok = status && !errStr && noFail;
   const message = ok
-    ? `판매전표 ${succ ?? items.length}건 등록 완료`
+    ? `판매전표 ${succ ?? SaleList.length}건 등록 완료${discount > 0 ? ` (할인 ${discount.toLocaleString("ko-KR")}원 포함)` : ""}`
     : `실패: ${errStr ?? `Status ${res?.Status ?? "?"}`}`;
   return { ok, message, res };
 }
@@ -783,6 +805,20 @@ export async function sendOrderToEcount(orderId: number): Promise<{
         message: msg,
         durationMs: Date.now() - t0,
       });
+      return { ok: false, steps };
+    }
+  }
+
+  // 1.4) 할인이 걸린 주문인데 할인 품목코드가 없으면 전송을 막는다.
+  //  할인 줄만 빠진 채로 넘어가면 이카운트 금액이 실제보다 크고, 그대로 세금계산서가 발행된다.
+  {
+    const discount = Math.max(0, (order as any).discountAmount ?? 0);
+    if (discount > 0 && !(ctx.s.discountProductCode || "").trim()) {
+      const msg =
+        "이 주문에는 할인이 걸려 있는데 '할인 품목코드'가 설정되지 않았습니다. " +
+        "관리자 → ECOUNT 연동에서 할인용 이카운트 품목코드를 먼저 입력해 주세요. " +
+        "(할인 줄이 빠진 채로 전송되면 세금계산서 금액이 실제보다 크게 발행됩니다.)";
+      steps.push({ step: "사전 검증", ok: false, message: msg });
       return { ok: false, steps };
     }
   }

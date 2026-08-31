@@ -133,7 +133,12 @@ export const orders = sqliteTable("orders", {
   // 주문 시점의 '매장 내부 계정' 여부 스냅샷. 거래처를 삭제하거나 isStore를 나중에 바꿔도
   // 과거 손익이 흔들리지 않도록 주문에 기록해 둔다. (-1 = 미기록: 거래처 현재값으로 판정)
   isStoreOrder: integer("is_store_order").notNull().default(-1),
-  supplyAmount: integer("supply_amount").notNull(), // 공급가액
+  // 정액 할인 — 공급가액에서 빼는 금액(양수로 저장, 0이면 할인 없음).
+  // 공급가액에서 차감하므로 부가세도 10%만큼 함께 줄고, 거래처가 덜 내는 실제 금액은 할인액의 110%다.
+  // (예: 할인 200,000 → 공급가액 -200,000, 부가세 -20,000, 합계 -220,000)
+  discountAmount: integer("discount_amount").notNull().default(0),
+  discountLabel: text("discount_label").notNull().default(""), // 할인 사유 (예: 8월 프로모션)
+  supplyAmount: integer("supply_amount").notNull(), // 공급가액 (할인 반영 후)
   vat: integer("vat").notNull(), // 부가세
   totalAmount: integer("total_amount").notNull(), // 합계
   desiredDate: text("desired_date").notNull().default(""), // 희망 납품일
@@ -168,6 +173,9 @@ export const ecountSettings = sqliteTable("ecount_settings", {
   // 이카운트 구매입력 "추가항목(구매상단)" 중 납품 거래처명을 넣을 필드코드 (예: 추가문자형식1의 API 필드명)
   //  - 비워두면 후보 필드코드(U_TXT1~10, U_MEMO1~5)를 모두 넣어본다(이카운트는 모르는 코드는 무시).
   deliverFieldCode: text("deliver_field_code").notNull().default(""),
+  // 판매전표에 정액 할인을 한 줄로 붙일 때 쓰는 이카운트 품목코드.
+  // 비어 있으면 할인이 있는 주문은 전송을 막는다(할인이 빠진 채로 넘어가면 세금계산서 금액이 틀어지므로).
+  discountProductCode: text("discount_product_code").notNull().default(""),
   useTestEndpoint: integer("use_test_endpoint").notNull().default(1), // 1=sboapi, 0=oapi
   autoSendSales: integer("auto_send_sales").notNull().default(0),
   autoSendPayments: integer("auto_send_payments").notNull().default(0),
@@ -635,11 +643,22 @@ const adminOrderItemSchema = z.object({
 });
 
 // ② 관리자 대리 주문 생성 페이로드 (requireAdmin) — 거래처 지정
+// 정액 할인 입력값 — 0 이상의 정수. 상한(공급가액 초과 금지)은 서버에서 품목 합계를 안 뒤에 검사한다.
+const adminDiscountAmount = z
+  .number()
+  .int("할인 금액은 원 단위 정수로 입력해 주세요.")
+  .min(0, "할인 금액은 0원 이상이어야 합니다.")
+  .optional()
+  .default(0);
+const adminDiscountLabel = z.string().max(60, "할인 사유는 60자 이내로 입력해 주세요.").optional().default("");
+
 export const adminCreateOrderSchema = z.object({
   items: z.array(adminOrderItemSchema).min(1, "주문 품목을 선택해 주세요."),
   desiredDate: z.string().optional().default(""),
   note: z.string().optional().default(""),
   quickRequest: z.boolean().optional().default(false),
+  discountAmount: adminDiscountAmount,
+  discountLabel: adminDiscountLabel,
   customerId: z.number().int().min(1, "거래처를 선택해 주세요."),
 });
 export type AdminCreateOrderInput = z.infer<typeof adminCreateOrderSchema>;
@@ -650,6 +669,8 @@ export const adminUpdateOrderItemsSchema = z.object({
   desiredDate: z.string().optional().default(""),
   note: z.string().optional().default(""),
   quickRequest: z.boolean().optional().default(false),
+  discountAmount: adminDiscountAmount,
+  discountLabel: adminDiscountLabel,
 });
 export type AdminUpdateOrderItemsInput = z.infer<typeof adminUpdateOrderItemsSchema>;
 
@@ -1283,6 +1304,7 @@ export const ecountSettingsInputSchema = z.object({
   zone: z.string().optional().default(""),
   warehouseCode: z.string().min(1, "창고코드 필수"),
   deliverFieldCode: z.string().optional().default(""),
+  discountProductCode: z.string().optional().default(""),
   // 아래 스위치들은 기본값을 주지 않는다.
   // 기본값이 있으면 화면이 값을 안 보냈을 때 조용히 그 값으로 덮어써진다.
   //  - useTestEndpoint 가 true 로 되돌아가면 이후 전표가 전부 이카운트 테스트 서버로 새고,

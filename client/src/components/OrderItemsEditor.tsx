@@ -41,6 +41,11 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
 
   // 관리자 수정 시: 이 주문 거래처의 등록단가(커스텀) + 매장 내부 계정 여부를 반영해 단가 결정
   const isAdmin = mode === "admin";
+  // 정액 할인 — 기존 주문에 걸린 값을 초기값으로
+  const [discountInput, setDiscountInput] = useState(
+    ((order as any).discountAmount ?? 0) > 0 ? String((order as any).discountAmount) : "",
+  );
+  const [discountLabel, setDiscountLabel] = useState(((order as any).discountLabel ?? "") as string);
   const { data: adminPrices } = useQuery<CustomerPrice[]>({
     queryKey: [`/api/admin/customers/${order.customerId}/prices`],
     enabled: isAdmin,
@@ -91,7 +96,12 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const [addProductId, setAddProductId] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  const supplyAmount = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const itemsTotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  // 정액 할인(관리자 전용) — 공급가액에서 빼므로 부가세도 함께 줄어든다
+  const discountRaw = Math.max(0, Math.round(Number(discountInput.replace(/[^0-9]/g, "")) || 0));
+  const discountTooBig = isAdmin && discountRaw > itemsTotal;
+  const discount = isAdmin ? Math.min(discountRaw, itemsTotal) : 0;
+  const supplyAmount = itemsTotal - discount;
   const vat = Math.round(supplyAmount * 0.1);
   const total = supplyAmount + vat;
 
@@ -168,7 +178,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
     : items
         .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get(i.productId) ?? 0 }))
         .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
-  const blocked = belowMin || minViolations.length > 0;
+  const blocked = belowMin || minViolations.length > 0 || discountTooBig;
 
   async function submit() {
     if (blocked) {
@@ -192,6 +202,8 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
       desiredDate,
       note,
       quickRequest,
+      // 할인은 관리자만 건드릴 수 있다. 거래처 수정 요청에는 아예 싣지 않는다.
+      ...(isAdmin ? { discountAmount: discountRaw, discountLabel: discountLabel.trim() } : {}),
     };
     const url = mode === "admin" ? `/api/admin/orders/${order.id}` : `/api/orders/${order.id}`;
     try {
@@ -367,8 +379,56 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
         퀵 요청
       </label>
 
+      {/* 정액 할인 (관리자 전용) */}
+      {isAdmin && (
+        <div className="space-y-2 border-t border-border pt-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+            <div className="space-y-1.5">
+              <Label className="text-xs">할인 금액 (공급가액에서 차감)</Label>
+              <Input
+                inputMode="numeric"
+                value={discountInput}
+                onChange={(e) => setDiscountInput(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="예: 200000"
+                data-testid="input-edit-discount"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">할인 사유 (선택)</Label>
+              <Input
+                value={discountLabel}
+                onChange={(e) => setDiscountLabel(e.target.value)}
+                placeholder="예: 8월 프로모션"
+                maxLength={60}
+                data-testid="input-edit-discount-label"
+              />
+            </div>
+          </div>
+          {discountTooBig ? (
+            <p className="text-xs text-destructive">할인 금액이 품목 합계({won(itemsTotal)})보다 큽니다.</p>
+          ) : discount > 0 ? (
+            <p className="text-xs leading-relaxed text-muted-foreground break-keep">
+              공급가액에서 {won(discount)}을 빼므로 부가세도 {won(Math.round(discount * 0.1))} 줄어듭니다.
+              거래처가 실제로 덜 내는 금액은 <strong className="text-foreground">{won(discount + Math.round(discount * 0.1))}</strong>입니다.
+            </p>
+          ) : null}
+        </div>
+      )}
+
       {/* 합계 */}
       <div className="space-y-2 border-t border-border pt-4 text-sm">
+        {discount > 0 && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>품목 합계</span>
+            <span className="tabular text-foreground">{won(itemsTotal)}</span>
+          </div>
+        )}
+        {discount > 0 && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>할인{discountLabel.trim() ? ` (${discountLabel.trim()})` : ""}</span>
+            <span className="tabular text-foreground">− {won(discount)}</span>
+          </div>
+        )}
         <div className="flex justify-between text-muted-foreground">
           <span>공급가액</span>
           <span className="tabular text-foreground">{won(supplyAmount)}</span>

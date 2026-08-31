@@ -5,6 +5,7 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -35,6 +36,9 @@ export default function AdminOrderNew() {
   const [desiredDate, setDesiredDate] = useState("");
   const [note, setNote] = useState("");
   const [quickRequest, setQuickRequest] = useState(false);
+  // 정액 할인 — 문자열로 들고 있다가 보낼 때만 숫자로 바꾼다 (입력 중 0이 끼는 것 방지)
+  const [discountInput, setDiscountInput] = useState("");
+  const [discountLabel, setDiscountLabel] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // 거래처 목록 (승인/활성 거래처)
@@ -105,7 +109,12 @@ export default function AdminOrderNew() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, productById, priceMap]);
 
-  const supplyAmount = cartRows.reduce((s, r) => s + r.amount, 0);
+  const itemsTotal = cartRows.reduce((s, r) => s + r.amount, 0);
+  // 할인은 공급가액에서 뺀다 → 부가세도 줄어든 공급가액 기준
+  const discountRaw = Math.max(0, Math.round(Number(discountInput.replace(/[^0-9]/g, "")) || 0));
+  const discountTooBig = discountRaw > itemsTotal;
+  const discount = Math.min(discountRaw, itemsTotal);
+  const supplyAmount = itemsTotal - discount;
   const vat = Math.round(supplyAmount * 0.1);
   const totalAmount = supplyAmount + vat;
 
@@ -187,6 +196,8 @@ export default function AdminOrderNew() {
         desiredDate,
         note,
         quickRequest,
+        discountAmount: discountRaw,
+        discountLabel: discountLabel.trim(),
       };
       const res = await apiRequest("POST", "/api/admin/orders", payload);
       const data = await res.json();
@@ -356,7 +367,55 @@ export default function AdminOrderNew() {
               ))}
 
               {cartRows.length > 0 && (
-                <div className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
+                <div className="mt-4 space-y-3 border-t border-border pt-3 text-sm">
+                  {/* 정액 할인 */}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                    <div className="space-y-1">
+                      <Label className="text-xs">할인 금액 (공급가액에서 차감)</Label>
+                      <Input
+                        inputMode="numeric"
+                        value={discountInput}
+                        onChange={(e) => setDiscountInput(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="예: 200000"
+                        data-testid="input-order-discount"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">할인 사유 (선택)</Label>
+                      <Input
+                        value={discountLabel}
+                        onChange={(e) => setDiscountLabel(e.target.value)}
+                        placeholder="예: 8월 프로모션"
+                        maxLength={60}
+                        data-testid="input-order-discount-label"
+                      />
+                    </div>
+                  </div>
+                  {discountTooBig && (
+                    <p className="text-xs text-destructive">
+                      할인 금액이 품목 합계({won(itemsTotal)})보다 큽니다.
+                    </p>
+                  )}
+                  {discount > 0 && !discountTooBig && (
+                    <p className="text-xs leading-relaxed text-muted-foreground break-keep">
+                      공급가액에서 {won(discount)}을 빼므로 부가세도 {won(Math.round(discount * 0.1))} 줄어듭니다.
+                      거래처가 실제로 덜 내는 금액은 <strong className="text-foreground">{won(discount + Math.round(discount * 0.1))}</strong>입니다.
+                    </p>
+                  )}
+
+                  <div className="space-y-1">
+                  {discount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">품목 합계</span>
+                      <span className="text-foreground">{won(itemsTotal)}</span>
+                    </div>
+                  )}
+                  {discount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">할인</span>
+                      <span className="text-foreground">− {won(discount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">공급가액</span>
                     <span className="text-foreground">{won(supplyAmount)}</span>
@@ -368,6 +427,7 @@ export default function AdminOrderNew() {
                   <div className="flex justify-between font-semibold">
                     <span className="text-foreground">합계</span>
                     <span className="text-foreground">{won(totalAmount)}</span>
+                  </div>
                   </div>
                 </div>
               )}

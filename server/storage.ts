@@ -461,6 +461,11 @@ for (const [table, col] of [
   ["orders", "ecount_sent_count INTEGER NOT NULL DEFAULT 0"],
   // 홀세일 문의 유형 (원두 납품 / 카페 컨설팅 / 둘 다)
   ["wholesale_inquiries", "inquiry_type TEXT NOT NULL DEFAULT 'wholesale'"],
+  // 주문 정액 할인 (공급가액에서 차감)
+  ["orders", "discount_amount INTEGER NOT NULL DEFAULT 0"],
+  ["orders", "discount_label TEXT NOT NULL DEFAULT ''"],
+  // 판매전표에 할인을 한 줄로 붙일 때 쓰는 이카운트 품목코드
+  ["ecount_settings", "discount_product_code TEXT NOT NULL DEFAULT ''"],
   ["customers", "admin_role TEXT NOT NULL DEFAULT 'owner'"],
   ["orders", "quick_request INTEGER NOT NULL DEFAULT 0"],
   ["orders", "cancelled_at INTEGER"],
@@ -2538,6 +2543,7 @@ export class DatabaseStorage implements IStorage {
         zone: patch.zone ?? "",
         warehouseCode: patch.warehouseCode ?? "",
         deliverFieldCode: patch.deliverFieldCode ?? "",
+        discountProductCode: patch.discountProductCode ?? "",
         useTestEndpoint: patch.useTestEndpoint ?? 1,
         autoSendSales: patch.autoSendSales ?? 0,
         autoSendPayments: patch.autoSendPayments ?? 0,

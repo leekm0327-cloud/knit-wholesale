@@ -28,6 +28,9 @@ interface Snapshot {
 export function Invoice({ order }: { order: Order }) {
   const items: OrderItem[] = JSON.parse(order.items);
   const snap: Snapshot = JSON.parse(order.customerSnapshot);
+  // 정액 할인 — 공급가액에서 이미 빠진 금액. 명세서에는 '품목 합계 → 할인 → 공급가액' 순으로 보여준다.
+  const discount = Math.max(0, (order as any).discountAmount ?? 0);
+  const discountLabel = ((order as any).discountLabel ?? "").trim();
 
   return (
     <div className="print-card mx-auto w-full max-w-3xl rounded-none border bg-white p-7 text-[#222] sm:p-10">
@@ -97,6 +100,18 @@ export function Invoice({ order }: { order: Order }) {
       {/* 합계 */}
       <div className="mt-5 flex justify-end">
         <div className="w-full max-w-xs space-y-1.5 text-sm">
+          {discount > 0 && (
+            <div className="flex justify-between text-[#777]">
+              <span>품목 합계</span>
+              <span className="tabular">{won(order.supplyAmount + discount)}</span>
+            </div>
+          )}
+          {discount > 0 && (
+            <div className="flex justify-between text-[#222]" data-testid="invoice-discount">
+              <span>할인{discountLabel ? ` (${discountLabel})` : ""}</span>
+              <span className="tabular">− {won(discount)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-[#777]">
             <span>공급가액</span>
             <span className="tabular">{won(order.supplyAmount)}</span>
