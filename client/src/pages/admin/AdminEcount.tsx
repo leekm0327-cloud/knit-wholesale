@@ -140,8 +140,30 @@ export default function AdminEcount() {
         <div className="eyebrow">ERP Integration</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">ECOUNT 연동</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          이카운트 API 인증키를 저장하고 5개 API(거래처등록·품목등록·판매입력·구매입력·회계자동분개)를 1회 호출로 검증합니다. 수금·입금보고서·채권채무는 판매·회계자동분개 전표를 통해 ECOUNT에서 자동으로 생성됩니다.
+          이카운트 API 인증키를 저장하고 연결 상태를 확인합니다. 수금·입금보고서·채권채무는 판매·회계자동분개 전표를 통해 ECOUNT에서 자동으로 생성됩니다.
         </p>
+
+        {/* 지금 어느 서버로 나가고 있는지 — 잘못 켜두면 전표가 통째로 엉뚱한 곳에 쌓인다 */}
+        {!isLoading && data && (
+          <Card
+            className={`mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 p-4 ${
+              data.useTestEndpoint ? "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20" : "border-teal-600/40 bg-teal-50/40 dark:bg-teal-950/20"
+            }`}
+            data-testid="card-ecount-endpoint"
+          >
+            <Badge className={data.useTestEndpoint ? "bg-amber-600 text-white hover:bg-amber-600" : "bg-teal-700 text-white hover:bg-teal-700"}>
+              {data.useTestEndpoint ? "테스트 서버" : "정식 서버"}
+            </Badge>
+            <span className="text-sm font-semibold text-foreground">
+              {data.useTestEndpoint ? "sboapi — 이카운트 테스트 환경으로 전송됩니다" : "oapi — 실제 장부에 전표가 쌓입니다"}
+            </span>
+            <span className="w-full text-xs leading-relaxed text-muted-foreground break-keep">
+              {data.useTestEndpoint
+                ? "이 상태에서는 주문·발주를 보내도 실제 이카운트 장부에는 아무것도 남지 않습니다. 실제 운영 중이라면 아래 '테스트 엔드포인트 사용'을 꺼 주세요."
+                : "보낸 전표는 이카운트에서 직접 지워야 취소됩니다. 전송 전에 대상을 한 번 더 확인해 주세요."}
+            </span>
+          </Card>
+        )}
 
         {/* 안내 카드 */}
         <Card className="mb-6 border-amber-300/50 bg-amber-50/40 p-4 dark:bg-amber-950/20">
@@ -151,12 +173,13 @@ export default function AdminEcount() {
               <p className="font-semibold text-foreground">검증 절차 안내</p>
               <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
                 <li>아래 정보를 입력 후 <strong className="text-foreground">저장</strong> (Zone은 비워두면 자동 조회됩니다)</li>
-                <li><strong className="text-foreground">검증 실행</strong> 클릭 → 6개 메뉴 호출 → 결과 표시</li>
+                <li><strong className="text-foreground">검증 실행</strong> 클릭 → 거래처등록·품목등록 호출 → 결과 표시</li>
                 <li>ECOUNT 본사 화면에서 <em>API인증현황</em> 이 "검증됨"으로 바뀌면 정식 키 발급 신청</li>
               </ol>
-              <p className="pt-1 text-xs text-muted-foreground">
-                테스트 데이터는 <code className="rounded bg-background px-1 font-mono">ZZ_API_TEST</code> 코드로 들어갑니다.
-                검증 후 이카운트에서 직접 삭제해 주세요. 최신 인증키를 사용해 주세요(이전에 노출된 키는 재발급 권장).
+              <p className="pt-1 text-xs leading-relaxed text-muted-foreground break-keep">
+                검증은 <code className="rounded bg-background px-1 font-mono">ZZAPITEST</code> 코드의 거래처·품목만 확인하며,
+                <strong className="text-foreground"> 전표는 만들지 않습니다</strong> — 몇 번을 눌러도 지울 것이 생기지 않습니다.
+                최신 인증키를 사용해 주세요(이전에 노출된 키는 재발급 권장).
               </p>
             </div>
           </div>
@@ -237,7 +260,7 @@ export default function AdminEcount() {
             <div className="mt-5 space-y-3 border-t pt-4">
               <ToggleRow
                 label="테스트 엔드포인트 사용"
-                hint="ON: sboapi (테스트키), OFF: oapi (정식키). 테스트키 검증 단계에서는 ON으로 두세요."
+                hint="ON: sboapi (테스트 서버) — 실제 장부에 아무것도 남지 않습니다. OFF: oapi (정식 서버) — 실제 전표가 쌓입니다. 운영 중이라면 OFF."
                 value={form.useTestEndpoint}
                 onChange={(v) => setForm({ ...form, useTestEndpoint: v })}
               />

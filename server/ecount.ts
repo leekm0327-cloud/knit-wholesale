@@ -112,7 +112,9 @@ function shortUrl(url: string): string {
   }
 }
 
-async function post(url: string, body: any, timeoutMs = 15000, retries = 1): Promise<any> {
+// 기본값은 '재시도 없음'. 이카운트 등록 API는 멱등이 아니라서(같은 요청인지 알려줄 키가 없다)
+// 재시도하면 전표가 한 건 더 생긴다. 재시도는 로그인·Zone 조회처럼 안전한 호출에서만 명시적으로 켠다.
+async function post(url: string, body: any, timeoutMs = 15000, retries = 0): Promise<any> {
   let lastErr: any;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const ctrl = new AbortController();
@@ -156,7 +158,7 @@ async function post(url: string, body: any, timeoutMs = 15000, retries = 1): Pro
 export async function fetchZone(comCode: string, useTest: boolean): Promise<string> {
   const url = `${zoneLookupHost(useTest)}/OAPI/V2/Zone`;
   try {
-    const res = await post(url, { COM_CODE: comCode });
+    const res = await post(url, { COM_CODE: comCode }, 15000, 1); // 조회 전용 — 재시도 안전
     const zone = res?.Data?.ZONE;
     if (!zone) throw new Error("Zone 응답에 ZONE 값이 없습니다: " + JSON.stringify(res).slice(0, 200));
     return zone;
@@ -174,7 +176,7 @@ export async function login(s: EcountSettings, apiKey: string): Promise<string> 
       API_CERT_KEY: apiKey,
       ZONE: s.zone,
       LAN_TYPE: "ko-KR",
-    });
+    }, 15000, 1); // 세션 발급 — 재시도해도 전표가 생기지 않음
     const sid = res?.Data?.Datas?.SESSION_ID ?? res?.Data?.SESSION_ID;
     if (!sid) {
       const expireDate = res?.Data?.Datas?.ExpireDate ?? res?.Data?.ExpireDate;
@@ -348,12 +350,15 @@ async function verifyPurchase(ctx: CallCtx) {
   return post(url, body);
 }
 
+// 연결 검증 단계.
+// 판매전표·구매전표·회계자동분개는 '검증용'이라는 이름과 달리 이카운트 장부에 진짜 전표를 만든다.
+// (거래처 'API검증용 삭제예정', 품목 ZZAPITEST, 1원짜리로 매번 새로 쌓였다.)
+// 검증을 누를 때마다 손으로 지워야 하는 전표가 생기므로 뺐다.
+// 거래처·품목 등록은 같은 코드로 덮어쓰는 upsert라 여러 번 눌러도 늘어나지 않고,
+// 인증·권한이 제대로 붙었는지는 이 두 단계로 충분히 확인된다.
 const VERIFY_STEPS: Array<[string, (ctx: CallCtx) => Promise<any>]> = [
   ["거래처등록", verifyCustomers],
   ["품목등록", verifyProducts],
-  ["판매전표", verifySales],
-  ["구매전표", verifyPurchase],
-  ["회계자동분개", verifyInvoiceAuto],
 ];
 
 // 거래처등록 응답에서 실제 적용된 거래처코드(CUST) 추출

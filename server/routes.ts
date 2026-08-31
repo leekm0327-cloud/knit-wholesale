@@ -2986,24 +2986,30 @@ export async function registerRoutes(
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
     }
     const d = parsed.data;
+    // 스위치는 값이 안 오면 '기존 값 유지'. 예전처럼 기본값으로 덮어쓰면
+    // 테스트 서버로 되돌아가거나 판매전표 자동 전송이 조용히 꺼진다.
+    const prev = await storage.getEcountSettings();
+    const keep = (v: boolean | undefined, before: number | undefined, fallback: number) =>
+      v === undefined ? (before ?? fallback) : v ? 1 : 0;
+    const useTest = keep(d.useTestEndpoint, prev?.useTestEndpoint, 1);
     const patch: any = {
       comCode: d.comCode,
       userId: d.userId,
       zone: d.zone ?? "",
       warehouseCode: d.warehouseCode,
       deliverFieldCode: (d.deliverFieldCode ?? "").trim(),
-      useTestEndpoint: d.useTestEndpoint ? 1 : 0,
-      autoSendSales: d.autoSendSales ? 1 : 0,
-      autoSendPayments: d.autoSendPayments ? 1 : 0,
-      autoSendCustomer: d.autoSendCustomer ? 1 : 0,
-      autoSendProduct: d.autoSendProduct ? 1 : 0,
+      useTestEndpoint: useTest,
+      autoSendSales: keep(d.autoSendSales, prev?.autoSendSales, 0),
+      autoSendPayments: keep(d.autoSendPayments, prev?.autoSendPayments, 0),
+      autoSendCustomer: keep(d.autoSendCustomer, prev?.autoSendCustomer, 1),
+      autoSendProduct: keep(d.autoSendProduct, prev?.autoSendProduct, 1),
     };
     if (d.apiCertKey && d.apiCertKey.trim().length > 0) {
       patch.apiCertKeyEnc = encrypt(d.apiCertKey.trim());
     }
     if (!patch.zone) {
       try {
-        patch.zone = await fetchZone(d.comCode, d.useTestEndpoint ?? true);
+        patch.zone = await fetchZone(d.comCode, useTest === 1);
       } catch (e: any) {
         return res.status(400).json({ message: `Zone 자동 조회 실패: ${e?.message ?? e}` });
       }

@@ -1283,11 +1283,16 @@ export const ecountSettingsInputSchema = z.object({
   zone: z.string().optional().default(""),
   warehouseCode: z.string().min(1, "창고코드 필수"),
   deliverFieldCode: z.string().optional().default(""),
-  useTestEndpoint: z.boolean().optional().default(true),
-  autoSendSales: z.boolean().optional().default(false),
-  autoSendPayments: z.boolean().optional().default(false),
-  autoSendCustomer: z.boolean().optional().default(true),
-  autoSendProduct: z.boolean().optional().default(true),
+  // 아래 스위치들은 기본값을 주지 않는다.
+  // 기본값이 있으면 화면이 값을 안 보냈을 때 조용히 그 값으로 덮어써진다.
+  //  - useTestEndpoint 가 true 로 되돌아가면 이후 전표가 전부 이카운트 테스트 서버로 새고,
+  //  - autoSendSales 가 false 로 되돌아가면 판매전표 자동 전송이 조용히 꺼진다.
+  // 값이 안 오면 저장 시 '기존 값 유지'로 처리한다(routes.ts).
+  useTestEndpoint: z.boolean().optional(),
+  autoSendSales: z.boolean().optional(),
+  autoSendPayments: z.boolean().optional(),
+  autoSendCustomer: z.boolean().optional(),
+  autoSendProduct: z.boolean().optional(),
 });
 export type EcountSettingsInput = z.infer<typeof ecountSettingsInputSchema>;
 
