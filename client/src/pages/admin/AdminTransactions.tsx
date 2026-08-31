@@ -67,6 +67,7 @@ interface TransactionResult {
   endDate: string;
   orders: TransactionOrder[];
   payments: TransactionPayment[];
+  openingBalance: number;
   totalAmount: number;
   paidAmount: number;
   unpaidAmount: number;
@@ -270,7 +271,7 @@ export default function AdminTransactions() {
             </div>
 
             {/* 공급자 / 공급받는자 */}
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
               <PartyBox
                 title="공급자"
                 rows={[
@@ -295,16 +296,28 @@ export default function AdminTransactions() {
             </div>
 
             {/* 금액 요약 */}
-            <div className="mt-4 grid grid-cols-2 border border-border sm:grid-cols-5">
-              <AmtCell label="공급가액" value={won(supplyTotal)} />
-              <AmtCell label="세액(부가세)" value={won(vatTotal)} />
-              <AmtCell label="합계금액" value={won(result.totalAmount)} strong />
-              <AmtCell label="입금액" value={won(result.paidAmount)} tone="pos" />
-              <AmtCell label="미수 잔액" value={won(result.unpaidAmount)} tone={result.unpaidAmount > 0 ? "neg" : undefined} />
+            {/* 결제 요약 — 왼쪽에 계산 과정, 오른쪽에 결론.
+                받는 사람이 가장 먼저 알고 싶은 건 '그래서 얼마를 보내야 하나'다. */}
+            <div className="txn-summary mt-5 grid grid-cols-1 border border-border sm:grid-cols-[1fr_auto]">
+              <div className="divide-y divide-border">
+                <SumRow label="전월 이월" value={won(result.openingBalance)} />
+                <SumRow label="당월 거래" value={`+ ${won(result.totalAmount)}`} />
+                <SumRow label="입금액" value={`− ${won(result.paidAmount)}`} />
+              </div>
+              {/* 결론이지만 소리치지는 않게 — 색을 반전하는 대신 크기와 여백으로만 구분한다 */}
+              <div className="flex flex-col items-end justify-center gap-1.5 border-t border-border bg-muted/30 px-6 py-4 sm:min-w-[230px] sm:border-l sm:border-t-0">
+                <div className="text-[11px] text-muted-foreground">
+                  {result.unpaidAmount < 0 ? "과입금액" : "미수 잔액"}
+                </div>
+                <div className="font-display text-xl font-semibold tabular text-foreground" data-testid="text-txn-balance">
+                  {won(Math.abs(result.unpaidAmount))}
+                </div>
+              </div>
             </div>
 
             {/* 거래 명세 테이블 */}
-            <div className="mt-5 table-scroll">
+            <h2 className="mb-2 mt-7 text-xs font-bold text-muted-foreground">거래 명세</h2>
+            <div className="table-scroll">
               {result.orders.length === 0 ? (
                 <div className="border border-border py-16 text-center text-sm text-muted-foreground">
                   해당 기간에 거래 내역이 없습니다.
@@ -323,17 +336,27 @@ export default function AdminTransactions() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {result.orders.map((order) =>
-                      order.parsedItems.map((item, itemIdx) => {
+                    {result.orders.map((order, orderIdx) => {
+                      // 주문 한 건이 여러 줄로 펼쳐지므로, 건이 바뀌는 지점에만 진한 선을 둔다.
+                      // (예전에는 첫 줄만 날짜가 있고 구분이 없어 어디까지가 한 건인지 읽기 어려웠다)
+                      const ymd = (order.ecountDate && order.ecountDate.trim())
+                        ? order.ecountDate.replace(/-/g, ".")
+                        : fmtDate(order.createdAt).split(" ")[0];
+                      return order.parsedItems.map((item, itemIdx) => {
                         const lineVat = Math.round(item.amount * 0.1);
+                        const isFirst = itemIdx === 0;
                         return (
-                          <tr key={`${order.id}-${itemIdx}`}>
-                            <td className="px-2 py-2 text-xs text-muted-foreground">
-                              {itemIdx === 0
-                                ? (order.ecountDate && order.ecountDate.trim()
-                                    ? order.ecountDate.replace(/-/g, ".")
-                                    : fmtDate(order.createdAt).split(" ")[0])
-                                : ""}
+                          <tr
+                            key={`${order.id}-${itemIdx}`}
+                            className={isFirst && orderIdx > 0 ? "border-t border-foreground/25" : ""}
+                          >
+                            <td className="whitespace-nowrap px-2 py-2 align-top text-xs text-muted-foreground">
+                              {isFirst && (
+                                <>
+                                  <span className="tabular text-foreground">{ymd.slice(5)}</span>
+                                  <span className="ml-1.5 text-[10px] text-muted-foreground/70">{order.orderNo.slice(-4)}</span>
+                                </>
+                              )}
                             </td>
                             <td className="px-2 py-2 text-xs text-foreground">{item.name}</td>
                             <td className="px-2 py-2 text-right text-xs tabular text-foreground">{item.qty}</td>
@@ -343,8 +366,8 @@ export default function AdminTransactions() {
                             <td className="px-2 py-2 text-right text-xs font-medium tabular text-foreground">{won(item.amount + lineVat)}</td>
                           </tr>
                         );
-                      })
-                    )}
+                      });
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-foreground bg-muted/20">
@@ -359,8 +382,8 @@ export default function AdminTransactions() {
             </div>
 
             {/* 입금 내역 */}
-            <div className="mt-6">
-              <h2 className="mb-2 text-sm font-bold text-foreground">입금 내역</h2>
+            <div className="mt-7">
+              <h2 className="mb-2 text-xs font-bold text-muted-foreground">입금 내역</h2>
               {(!result.payments || result.payments.length === 0) ? (
                 <div className="border border-border py-6 text-center text-xs text-muted-foreground">
                   해당 기간에 입금 내역이 없습니다.
@@ -398,12 +421,12 @@ export default function AdminTransactions() {
             </div>
 
             {/* 입금계좌 안내 */}
-            <div className="mt-5 border border-border bg-muted/20 px-3 py-2.5 text-[11px] text-foreground">
+            <div className="txn-account mt-5 border border-border bg-muted/20 px-3 py-2.5 text-[11px] text-foreground">
               <span className="font-semibold">입금계좌</span> · {SELLER.bankName} {SELLER.bankAccount} (예금주 : {SELLER.bankHolder})
             </div>
 
             {/* 확인 문구 + 발행 */}
-            <div className="mt-6 flex flex-col items-center gap-1 text-center">
+            <div className="txn-foot mt-6 flex flex-col items-center gap-1 text-center">
               <p className="text-xs text-muted-foreground">위와 같이 거래하였음을 확인합니다.</p>
               <p className="mt-1 text-sm font-semibold text-foreground">{todayStr()}</p>
               <p className="text-sm font-bold text-foreground">{SELLER.name}</p>
@@ -419,11 +442,17 @@ export default function AdminTransactions() {
       {/* 인쇄 전용 레이아웃 보정 — 거래명세서(A4) */}
       <style>{`
         @media print {
-          @page { size: A4; margin: 12mm; }
+          @page { size: A4; margin: 10mm; }
           .txn-doc {
             max-width: none !important; border: 1px solid #333 !important;
-            padding: 10mm !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            padding: 7mm !important; -webkit-print-color-adjust: exact; print-color-adjust: exact;
           }
+          /* A4 한 장에 담기게 세로 간격을 조인다 — 마지막 확인 문구만 2페이지로 넘어가면 보기 흉하다 */
+          .txn-doc h2 { margin-top: 10px !important; margin-bottom: 4px !important; }
+          .txn-doc .txn-summary { margin-top: 10px !important; }
+          .txn-doc .txn-summary > div > div { padding-top: 5px !important; padding-bottom: 5px !important; }
+          .txn-doc .txn-account { margin-top: 10px !important; padding-top: 5px !important; padding-bottom: 5px !important; }
+          .txn-doc .txn-foot { margin-top: 12px !important; break-inside: avoid; page-break-inside: avoid; }
           .txn-doc table { width: 100%; border-collapse: collapse; font-size: 10px; }
           .txn-doc th, .txn-doc td {
             padding: 3px 5px !important;
@@ -436,8 +465,16 @@ export default function AdminTransactions() {
           .txn-doc h2 { font-size: 12px; }
           /* 공급자/공급받는자 2단 유지 */
           .txn-doc .sm\\:grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; }
-          /* 금액 요약 5칸 유지 */
-          .txn-doc .sm\\:grid-cols-5 { display: grid !important; grid-template-columns: repeat(5, 1fr) !important; }
+          /* 결제 요약: 계산과정 + 잔액 2단 유지 */
+          .txn-doc .txn-summary {
+            display: grid !important;
+            grid-template-columns: 1fr auto !important;
+          }
+          .txn-doc .txn-summary > :last-child {
+            border-left: 1px solid #ddd !important; border-top: 0 !important;
+            /* 화면용 min-width(230px)를 그대로 두면 인쇄 폭을 넘겨 문서 테두리 밖으로 삐져나간다 */
+            min-width: 180px !important; padding-left: 14px !important; padding-right: 14px !important;
+          }
         }
       `}</style>
     </AdminLayout>
@@ -447,16 +484,27 @@ export default function AdminTransactions() {
 // 공급자/공급받는자 정보 박스
 function PartyBox({ title, rows }: { title: string; rows: [string, string][] }) {
   return (
-    <div className="border border-border">
+    <div className="flex h-full flex-col border border-border">
       <div className="border-b border-border bg-muted/40 px-3 py-1.5 text-xs font-bold text-foreground">{title}</div>
-      <div className="divide-y divide-border/60">
+      <div className="flex flex-1 flex-col divide-y divide-border/60">
         {rows.map(([k, v]) => (
-          <div key={k} className="flex text-[11px]">
-            <div className="w-[74px] shrink-0 bg-muted/20 px-2.5 py-1.5 font-medium text-muted-foreground">{k}</div>
-            <div className="flex-1 break-words px-2.5 py-1.5 text-foreground">{v || "—"}</div>
+          <div key={k} className="flex flex-1 items-stretch text-[11px]">
+            {/* 라벨은 줄바꿈 금지 — '대표 / 담당'이 '대표 / 담 / 당'으로 깨지던 문제 */}
+            <div className="w-[88px] shrink-0 whitespace-nowrap bg-muted/20 px-2.5 py-1.5 font-medium text-muted-foreground">{k}</div>
+            <div className="flex-1 break-keep px-2.5 py-1.5 text-foreground">{v || "—"}</div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// 결제 요약 한 줄 (전월 이월 / 당월 거래 / 입금)
+function SumRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-6 px-4 py-2.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="font-display text-sm font-medium tabular text-foreground">{value}</span>
     </div>
   );
 }
