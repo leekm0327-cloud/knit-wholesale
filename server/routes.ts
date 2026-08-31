@@ -102,6 +102,9 @@ async function recomputeOrderItems(
   // true면 할인이 품목 합계보다 클 때 거절하지 않고 합계까지 줄여서 맞춘다.
   // (거래처가 품목을 줄여 재저장하는 경우처럼, 관리자가 넣은 할인을 이유로 저장을 막으면 안 되는 곳에서 쓴다.)
   clampDiscount = false,
+  // 관리자가 직접 넣거나 고치는 주문은 최소 주문 수량 규칙을 적용하지 않는다.
+  // (대표가 사정을 알고 넣는 주문이라 시스템이 막을 이유가 없다. 거래처 본인 주문에는 그대로 적용된다.)
+  skipMinQty = false,
 ): Promise<
   | { ok: true; items: any[]; supplyAmount: number; vat: number; totalAmount: number; discountAmount: number }
   | { ok: false; message: string }
@@ -133,8 +136,8 @@ async function recomputeOrderItems(
     }
     const prod = await storage.getProduct(it.productId);
     if (!prod) return { ok: false, message: `상품을 찾을 수 없습니다: ${it.productId}` };
-    // 매장 내부 계정은 상품별 최소수량 검증도 생략(내부 소비용)
-    if (!isStore) {
+    // 매장 내부 계정과 관리자 입력은 상품별 최소수량 검증을 생략
+    if (!isStore && !skipMinQty) {
       const minQ = (prod as any).minOrderQty ?? 0;
       if (minQ > 0 && it.qty > 0 && it.qty < minQ) {
         return { ok: false, message: `'${prod.name}'은(는) 최소 ${minQ}개부터 주문 가능합니다. (현재 ${it.qty}개)` };
@@ -813,20 +816,17 @@ export async function registerRoutes(
     if (!customer) return res.status(404).json({ message: "거래처를 찾을 수 없습니다." });
 
     // 거래처 등록단가로 금액 재계산 (기존 서버 로직 재사용, 중복 구현 금지)
-    const recomputed = await recomputeOrderItems(customer.id, parsed.data.items, parsed.data.discountAmount);
+    // 관리자 대리 주문에는 최소 주문 규칙(원두 5kg, 상품별 최소수량)을 적용하지 않는다.
+    // 거래처 사정에 맞춰 대표가 직접 넣는 주문이라 거래처 종류를 가리지 않고 자유롭게 입력할 수 있어야 한다.
+    // 거래처가 직접 넣는 주문(POST /api/orders)에는 규칙이 그대로 살아 있다.
+    const recomputed = await recomputeOrderItems(
+      customer.id,
+      parsed.data.items,
+      parsed.data.discountAmount,
+      false,
+      true, // skipMinQty
+    );
     if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
-
-    // A-4: 도매 원두 최소 5kg(수량 5개) 검증 — 카테고리 관리의 '원두(isBean)' 기준
-    const beanKeys2 = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
-    if (beanKeys2.size === 0) ["blend", "decaf", "single"].forEach((k) => beanKeys2.add(k));
-    const beanQtyTotal = recomputed.items
-      .filter((i: any) => beanKeys2.has(i.category))
-      .reduce((s: number, i: any) => s + i.qty, 0);
-    // 매장 내부 계정은 도매 최소주문(5kg) 규칙에서 제외 (내부 소비용)
-    // 음수 라인이 섞인 주문은 손상·반품 차감이므로 최소 주문량 규칙을 적용하지 않는다
-    const hasDeduction = recomputed.items.some((i: any) => i.qty < 0);
-    if (!(customer as any).isStore && !hasDeduction && beanQtyTotal > 0 && beanQtyTotal < 5)
-      return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
 
     const order = await storage.createOrder({
       orderNo: genOrderNo(),
@@ -2273,7 +2273,15 @@ export async function registerRoutes(
       const parsed = adminUpdateOrderItemsSchema.safeParse(req.body);
       if (!parsed.success)
         return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
-      const recomputed = await recomputeOrderItems(order.customerId, parsed.data.items, parsed.data.discountAmount);
+      // 관리자 수정도 대리 주문과 같은 원칙 — 최소 주문 규칙을 적용하지 않는다.
+      // (대리 주문으로 넣은 것을 나중에 고치려는데 규칙에 걸려 저장이 안 되면 앞뒤가 안 맞는다)
+      const recomputed = await recomputeOrderItems(
+        order.customerId,
+        parsed.data.items,
+        parsed.data.discountAmount,
+        false,
+        true, // skipMinQty
+      );
       if (!recomputed.ok) return res.status(400).json({ message: recomputed.message });
       patch.items = JSON.stringify(recomputed.items);
       patch.discountAmount = recomputed.discountAmount;

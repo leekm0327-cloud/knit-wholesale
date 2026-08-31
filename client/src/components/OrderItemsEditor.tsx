@@ -182,10 +182,12 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const minMap = new Map<number, number>((products ?? []).map((p) => [p.id, (p as any).minOrderQty ?? 0]));
   const isSampleOrder = (order as any).isSample === 1;
   const beanQty = items.filter((i) => beanKeys.has(i.category)).reduce((s, i) => s + i.qty, 0);
-  // 차감(음수) 라인이 있는 주문은 손상·반품 처리이므로 최소 주문량 규칙을 적용하지 않는다
+  // 차감(음수) 라인이 있는 주문은 손상·반품 처리이므로 최소 주문량 규칙을 적용하지 않는다.
+  // 관리자가 고치는 주문도 마찬가지 — 대리 주문과 같은 원칙으로 최소 주문 규칙을 적용하지 않는다.
   const hasDeduction = items.some((i) => i.qty < 0);
-  const belowMin = !isSampleOrder && !hasDeduction && beanQty > 0 && beanQty < 5;
-  const minViolations = hasDeduction
+  const skipMinRules = isAdmin || isSampleOrder || hasDeduction;
+  const belowMin = !skipMinRules && beanQty > 0 && beanQty < 5;
+  const minViolations = skipMinRules
     ? []
     : items
         .map((i) => ({ name: i.name, qty: i.qty, min: i.productId == null ? 0 : (minMap.get(i.productId) ?? 0) }))

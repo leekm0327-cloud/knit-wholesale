@@ -22,7 +22,6 @@ import { useToast } from "@/hooks/use-toast";
 import type { Customer, Product, CustomerPrice } from "@shared/schema";
 import { Plus, Trash2, Loader2, ShoppingCart } from "lucide-react";
 
-const BEAN_CATEGORIES = ["blend", "decaf", "single"];
 
 // productId 가 null 이면 단발성(직접입력) 품목 — 이름과 단가를 그때그때 적는다.
 type CartLine = { productId: number | null; qty: number; name?: string; unitPrice?: number };
@@ -51,7 +50,6 @@ export default function AdminOrderNew() {
     queryKey: ["/api/products"],
   });
   // 카테고리(원두 여부)
-  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
   // 선택 거래처의 등록 단가 오버라이드
   const numericCustomerId = customerId ? Number(customerId) : 0;
   const { data: prices } = useQuery<CustomerPrice[]>({
@@ -139,28 +137,9 @@ export default function AdminOrderNew() {
   const vat = Math.round(supplyAmount * 0.1);
   const totalAmount = supplyAmount + vat;
 
-  // 원두 = 카테고리 관리의 isBean (싱글 오리진 포함). 로딩 전 폴백 포함.
-  const beanKeys = new Set(
-    categoryRows && categoryRows.length > 0
-      ? categoryRows.filter((c) => c.isBean).map((c) => c.key)
-      : BEAN_CATEGORIES,
-  );
-  // 원두 수량 합계 (샘플 제외 — 관리자 대리주문은 일반 도매)
-  const beanQtyTotal = cartRows
-    .filter((r) => beanKeys.has(r.category))
-    .reduce((s, r) => s + r.qty, 0);
-  // 매장 내부 계정은 도매 최소주문(5kg)·상품별 최소수량에서 제외 (내부 소비용)
-  // 차감(음수) 라인이 있으면 손상·반품 처리이므로 최소 주문량 규칙을 적용하지 않는다
-  const hasDeduction = cartRows.some((r) => r.qty < 0);
-  const beanShortage = !selectedIsStore && !hasDeduction && beanQtyTotal > 0 && beanQtyTotal < 5;
-
-  // 상품별 최소 주문 수량 위반
-  const minViolations = selectedIsStore
-    ? []
-    : cartRows
-        .map((r) => ({ name: r.name, qty: r.qty, min: r.minOrderQty }))
-        .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
-  const orderBlocked = beanShortage || minViolations.length > 0;
+  // 관리자 대리 주문에는 최소 주문 규칙(원두 5kg, 상품별 최소수량)을 적용하지 않는다.
+  // 거래처 사정에 맞춰 대표가 직접 넣는 주문이라 거래처 종류와 무관하게 자유롭게 담을 수 있다.
+  // 거래처가 주문 화면에서 직접 넣을 때는 규칙이 그대로 살아 있다.
 
   function addLine() {
     const pid = Number(addProductId);
@@ -200,15 +179,6 @@ export default function AdminOrderNew() {
     }
     if (cartRows.length === 0) {
       toast({ variant: "destructive", title: "주문 품목을 추가해 주세요." });
-      return;
-    }
-    if (beanShortage) {
-      toast({ variant: "destructive", title: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
-      return;
-    }
-    if (minViolations.length > 0) {
-      const v = minViolations[0];
-      toast({ variant: "destructive", title: `'${v.name}'은(는) 최소 ${v.min}개부터 주문 가능합니다.` });
       return;
     }
     if (cartRows.some((r) => r.custom && !r.name.trim())) {
@@ -423,16 +393,6 @@ export default function AdminOrderNew() {
                 </div>
               )}
 
-              {beanShortage && (
-                <p className="mt-3 text-sm text-destructive">
-                  원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQtyTotal}개.
-                </p>
-              )}
-              {minViolations.map((v) => (
-                <p key={v.name} className="mt-2 text-sm text-destructive">
-                  '{v.name}'은(는) 최소 {v.min}개부터 주문 가능합니다. 현재 {v.qty}개.
-                </p>
-              ))}
 
               {cartRows.length > 0 && (
                 <div className="mt-4 space-y-3 border-t border-border pt-3 text-sm">
@@ -537,7 +497,7 @@ export default function AdminOrderNew() {
               </Button>
               <Button
                 onClick={submit}
-                disabled={submitting || !numericCustomerId || cartRows.length === 0 || orderBlocked}
+                disabled={submitting || !numericCustomerId || cartRows.length === 0}
                 data-testid="button-admin-order-submit"
               >
                 {submitting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
