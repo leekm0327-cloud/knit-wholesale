@@ -619,13 +619,20 @@ async function upsertProductsOnEcount(
   items: OrderItem[],
   productCodeMap: Map<number, string>,
 ): Promise<{ ok: boolean; message: string; res: any; codes: string[] }> {
-  // 중복 productId 제거
+  // 중복 productId 제거.
+  // 단발성(직접입력) 품목은 상품 마스터에 없으므로 여기서 제외한다 — 전표에는 '기타' 품목코드로 실린다.
   const uniq = new Map<number, OrderItem>();
-  for (const it of items) if (!uniq.has(it.productId)) uniq.set(it.productId, it);
+  for (const it of items) {
+    if (it.productId == null) continue;
+    if (!uniq.has(it.productId)) uniq.set(it.productId, it);
+  }
   const list = Array.from(uniq.values());
+  if (list.length === 0) {
+    return { ok: true, message: "등록할 품목 없음 — 건너뜀", res: null, codes: [] };
+  }
 
   // 품목코드 빠진 상품 검증
-  const missing = list.filter((it) => !(productCodeMap.get(it.productId) || "").trim());
+  const missing = list.filter((it) => !(productCodeMap.get(it.productId!) || "").trim());
   if (missing.length > 0) {
     const names = missing.map((it) => it.name).join(", ");
     return {
@@ -636,19 +643,19 @@ async function upsertProductsOnEcount(
     };
   }
 
-  const codes = list.map((it) => productCodeMap.get(it.productId)!.trim());
+  const codes = list.map((it) => productCodeMap.get(it.productId!)!.trim());
 
   const url = `${ctx.host}/OAPI/V2/InventoryBasic/SaveBasicProduct?SESSION_ID=${ctx.sid}`;
   // 원칙: 품목코드만 확인/등록, PROD_DES(품목명)는 보내지 않음 — ECOUNT 마스터의 이름을 덼쓰지 않음.
   const ProductList = list.map((it, idx) => ({
     Line: String(idx + 1),
     BulkDatas: {
-      PROD_CD: productCodeMap.get(it.productId)!.trim(),
+      PROD_CD: productCodeMap.get(it.productId!)!.trim(),
       SIZE_FLAG: "",
       SIZE_DES: "",
       UNIT: "EA",
       PROD_TYPE: "3", // 3 = 상품
-      REMARKS_WIN: `니트커피 도매 자동 확인 (상품 ID ${it.productId})`,
+      REMARKS_WIN: `니트커피 도매 자동 확인 (상품 ID ${it.productId ?? "-"})`,
     },
   }));
   const body = { ProductList };
@@ -689,12 +696,18 @@ async function saveSaleOnEcount(
       UPLOAD_SER_NO: "1",
       CUST: custCode,
       WH_CD: ctx.s.warehouseCode,
-      PROD_CD: (productCodeMap.get(it.productId) || "").trim(),
+      // 단발성(직접입력) 품목은 상품 마스터가 없으므로 설정해 둔 '기타' 품목코드로 실어 보낸다.
+      PROD_CD: it.productId == null
+        ? (ctx.s.miscProductCode || "").trim()
+        : (productCodeMap.get(it.productId) || "").trim(),
       QTY: String(it.qty),
       PRICE: String(it.unitPrice),
       SUPPLY_AMT: String(it.amount),
       VAT_AMT: String(Math.round(it.amount * 0.1)),
-      REMARKS_WIN: `도매주문 ${order.orderNo}`,
+      // 이카운트에는 '기타' 품목으로만 보이므로, 적요에 실제 품목명을 남겨 둔다
+      REMARKS_WIN: it.productId == null
+        ? `도매주문 ${order.orderNo} · ${it.name}`
+        : `도매주문 ${order.orderNo}`,
     },
   }));
   // 정액 할인은 품목 라인을 건드리지 않고 맨 아래에 음수 한 줄로 붙인다.
@@ -809,6 +822,24 @@ export async function sendOrderToEcount(orderId: number): Promise<{
     }
   }
 
+  // 1.3) 단발성(직접입력) 품목이 있는데 '기타' 품목코드가 없으면 전송을 막는다.
+  //  그냥 보내면 PROD_CD 가 빈 값이라 이카운트가 통째로 거절하거나, 금액이 빠진 전표가 남는다.
+  {
+    let miscNames: string[] = [];
+    try {
+      miscNames = (JSON.parse(order.items) as OrderItem[])
+        .filter((it) => it.productId == null)
+        .map((it) => it.name);
+    } catch { /* noop */ }
+    if (miscNames.length > 0 && !(ctx.s.miscProductCode || "").trim()) {
+      const msg =
+        `이 주문에는 단발성 품목(${miscNames.join(", ")})이 있는데 '기타 품목코드'가 설정되지 않았습니다. ` +
+        "관리자 → ECOUNT 연동에서 단발성 품목용 이카운트 품목코드를 먼저 입력해 주세요.";
+      steps.push({ step: "사전 검증", ok: false, message: msg });
+      return { ok: false, steps };
+    }
+  }
+
   // 1.4) 할인이 걸린 주문인데 할인 품목코드가 없으면 전송을 막는다.
   //  할인 줄만 빠진 채로 넘어가면 이카운트 금액이 실제보다 크고, 그대로 세금계산서가 발행된다.
   {
@@ -828,7 +859,10 @@ export async function sendOrderToEcount(orderId: number): Promise<{
   const productCodeMap = new Map<number, string>();
   {
     const items: OrderItem[] = JSON.parse(order.items);
-    const uniqIds = Array.from(new Set(items.map((it) => it.productId)));
+    // 단발성 품목(productId null)은 상품 마스터 조회 대상이 아니다
+    const uniqIds = Array.from(new Set(items.map((it) => it.productId))).filter(
+      (pid): pid is number => pid != null,
+    );
     for (const pid of uniqIds) {
       const p = await storage.getProduct(pid);
       productCodeMap.set(pid, (p?.ecountCode || "").trim());

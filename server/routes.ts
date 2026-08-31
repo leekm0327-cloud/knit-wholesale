@@ -95,7 +95,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100
 // 반환: { items, supplyAmount, vat, totalAmount } 또는 에러 메시지
 async function recomputeOrderItems(
   customerId: number,
-  rawItems: Array<{ productId: number; name: string; category: string; unitPrice: number; qty: number; amount: number }>,
+  // productId 가 null/undefined 면 단발성(직접입력) 품목 — 상품 마스터를 안 거치고 적어 넣은 이름·단가를 그대로 쓴다.
+  rawItems: Array<{ productId?: number | null; name: string; category?: string; unitPrice: number; qty: number; amount: number }>,
   // 정액 할인(양수). 공급가액에서 빼고 부가세를 다시 계산한다.
   discountAmount = 0,
   // true면 할인이 품목 합계보다 클 때 거절하지 않고 합계까지 줄여서 맞춘다.
@@ -111,6 +112,25 @@ async function recomputeOrderItems(
   const overrideMap = new Map(overrides.map((o) => [o.productId, o.price]));
   const items: any[] = [];
   for (const it of rawItems) {
+    // 단발성 품목 — 이름과 단가를 그대로 쓴다.
+    // 카테고리를 비워 두므로 원두 최소주문(5kg) 계산과 공장 자동발주에서 자연히 빠진다.
+    if (it.productId == null) {
+      const name = (it.name || "").trim();
+      if (!name) return { ok: false, message: "단발성 품목의 이름을 입력해 주세요." };
+      const unitPrice = Math.round(it.unitPrice || 0);
+      if (!Number.isFinite(unitPrice) || unitPrice < 0)
+        return { ok: false, message: `'${name}'의 단가를 0원 이상으로 입력해 주세요.` };
+      items.push({
+        productId: null,
+        name,
+        productName: name,
+        category: "",
+        unitPrice,
+        qty: it.qty,
+        amount: unitPrice * it.qty,
+      });
+      continue;
+    }
     const prod = await storage.getProduct(it.productId);
     if (!prod) return { ok: false, message: `상품을 찾을 수 없습니다: ${it.productId}` };
     // 매장 내부 계정은 상품별 최소수량 검증도 생략(내부 소비용)
@@ -2987,6 +3007,7 @@ export async function registerRoutes(
         warehouseCode: "",
         deliverFieldCode: "",
         discountProductCode: "",
+        miscProductCode: "",
         useTestEndpoint: true,
         autoSendSales: false,
         autoSendPayments: false,
@@ -3004,6 +3025,7 @@ export async function registerRoutes(
       warehouseCode: s.warehouseCode,
       deliverFieldCode: s.deliverFieldCode ?? "",
       discountProductCode: s.discountProductCode ?? "",
+      miscProductCode: s.miscProductCode ?? "",
       useTestEndpoint: !!s.useTestEndpoint,
       autoSendSales: !!s.autoSendSales,
       autoSendPayments: !!s.autoSendPayments,
@@ -3034,6 +3056,7 @@ export async function registerRoutes(
       warehouseCode: d.warehouseCode,
       deliverFieldCode: (d.deliverFieldCode ?? "").trim(),
       discountProductCode: (d.discountProductCode ?? "").trim(),
+      miscProductCode: (d.miscProductCode ?? "").trim(),
       useTestEndpoint: useTest,
       autoSendSales: keep(d.autoSendSales, prev?.autoSendSales, 0),
       autoSendPayments: keep(d.autoSendPayments, prev?.autoSendPayments, 0),

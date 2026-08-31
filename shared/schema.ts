@@ -176,6 +176,9 @@ export const ecountSettings = sqliteTable("ecount_settings", {
   // 판매전표에 정액 할인을 한 줄로 붙일 때 쓰는 이카운트 품목코드.
   // 비어 있으면 할인이 있는 주문은 전송을 막는다(할인이 빠진 채로 넘어가면 세금계산서 금액이 틀어지므로).
   discountProductCode: text("discount_product_code").notNull().default(""),
+  // 단발성(직접입력) 품목을 판매전표에 실을 때 쓰는 이카운트 품목코드.
+  // 비어 있으면 단발성 품목이 섞인 주문은 전송을 막는다.
+  miscProductCode: text("misc_product_code").notNull().default(""),
   useTestEndpoint: integer("use_test_endpoint").notNull().default(1), // 1=sboapi, 0=oapi
   autoSendSales: integer("auto_send_sales").notNull().default(0),
   autoSendPayments: integer("auto_send_payments").notNull().default(0),
@@ -634,10 +637,11 @@ const adminOrderQty = z
   .refine((v) => v !== 0, "수량은 0일 수 없습니다.");
 
 const adminOrderItemSchema = z.object({
-  productId: z.number(),
+  // 단발성 품목은 productId 없이 이름과 단가만 들어온다.
+  productId: z.number().int().positive().nullable().optional(),
   name: z.string(),
-  category: z.string(),
-  unitPrice: z.number(),
+  category: z.string().optional().default(""),
+  unitPrice: z.number().int("단가는 원 단위 정수로 입력해 주세요.").min(0, "단가는 0원 이상이어야 합니다."),
   qty: adminOrderQty,
   amount: z.number(),
 });
@@ -1305,6 +1309,7 @@ export const ecountSettingsInputSchema = z.object({
   warehouseCode: z.string().min(1, "창고코드 필수"),
   deliverFieldCode: z.string().optional().default(""),
   discountProductCode: z.string().optional().default(""),
+  miscProductCode: z.string().optional().default(""),
   // 아래 스위치들은 기본값을 주지 않는다.
   // 기본값이 있으면 화면이 값을 안 보냈을 때 조용히 그 값으로 덮어써진다.
   //  - useTestEndpoint 가 true 로 되돌아가면 이후 전표가 전부 이카운트 테스트 서버로 새고,
@@ -1365,7 +1370,8 @@ export type CustomerBalance = {
 
 // 파싱된 헬퍼 타입
 export type OrderItem = {
-  productId: number;
+  // null = 단발성(직접입력) 품목. 상품 마스터에 없고 이름·단가를 그때그때 적어 넣는다.
+  productId: number | null;
   name: string;
   category: string;
   unitPrice: number;

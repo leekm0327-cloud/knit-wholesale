@@ -19,7 +19,8 @@ import type { Order, OrderItem, Product, Customer, CustomerPrice } from "@shared
 import { Plus, Minus, Trash2, Loader2, X } from "lucide-react";
 
 interface EditItem {
-  productId: number;
+  // null = 단발성(직접입력) 품목
+  productId: number | null;
   name: string;
   category: string;
   unitPrice: number;
@@ -107,37 +108,48 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
 
   // 관리자는 손상·반품 차감을 위해 음수 수량을 넣을 수 있다. 0은 의미가 없어 건너뛴다.
   // 거래처가 직접 고칠 때는 예전처럼 1 미만으로 내려가지 않는다.
-  function setQty(productId: number, qty: number) {
+  // 줄은 상품 ID가 아니라 '몇 번째 줄'로 다룬다.
+  // 단발성(직접입력) 품목은 상품 ID가 없고, 같은 이름을 두 줄 넣을 수도 있기 때문이다.
+  function setQty(idx: number, qty: number) {
     if (isAdmin) {
       if (qty === 0) return;
     } else if (qty < 1) {
       return;
     }
-    setItems((prev) => prev.map((i) => (i.productId === productId ? { ...i, qty } : i)));
+    setItems((prev) => prev.map((i, n) => (n === idx ? { ...i, qty } : i)));
   }
 
   // 수량 칸에 "-"만 찍힌 중간 상태를 허용하려고 입력 중 문자열을 따로 들고 있는다
   const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
-  function clearDraft(productId: number) {
+  function clearDraft(idx: number) {
     setQtyDraft((d) => {
-      if (!(productId in d)) return d;
+      if (!(idx in d)) return d;
       const n = { ...d };
-      delete n[productId];
+      delete n[idx];
       return n;
     });
   }
 
   // +/- 버튼은 관리자 모드에서 0을 건너뛴다 (1 → -1, -1 → 1)
-  function stepQty(productId: number, delta: number) {
-    const cur = items.find((i) => i.productId === productId)?.qty ?? 0;
+  function stepQty(idx: number, delta: number) {
+    const cur = items[idx]?.qty ?? 0;
     let next = cur + delta;
     if (isAdmin && next === 0) next = cur + delta * 2;
-    clearDraft(productId);
-    setQty(productId, next);
+    clearDraft(idx);
+    setQty(idx, next);
   }
 
-  function removeItem(productId: number) {
-    setItems((prev) => prev.filter((i) => i.productId !== productId));
+  function removeItem(idx: number) {
+    setItems((prev) => prev.filter((_, n) => n !== idx));
+    setQtyDraft({});
+  }
+
+  // 단발성(직접입력) 품목 — 상품 마스터에 없는 것을 이름·단가만 적어 한 번 파는 경우
+  function addCustomLine() {
+    setItems((prev) => [...prev, { productId: null, name: "", category: "", unitPrice: 0, qty: 1 }]);
+  }
+  function updateCustomLine(idx: number, patch: Partial<EditItem>) {
+    setItems((prev) => prev.map((i, n) => (n === idx ? { ...i, ...patch } : i)));
   }
 
   function addProduct() {
@@ -176,7 +188,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
   const minViolations = hasDeduction
     ? []
     : items
-        .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get(i.productId) ?? 0 }))
+        .map((i) => ({ name: i.name, qty: i.qty, min: i.productId == null ? 0 : (minMap.get(i.productId) ?? 0) }))
         .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
   const blocked = belowMin || minViolations.length > 0 || discountTooBig;
 
@@ -189,11 +201,15 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
       toast({ title: "주문 품목을 선택해 주세요.", variant: "destructive" });
       return;
     }
+    if (items.some((i) => i.productId == null && !i.name.trim())) {
+      toast({ title: "단발성 품목의 이름을 입력해 주세요.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     const body = {
       items: items.map((i) => ({
         productId: i.productId,
-        name: i.name,
+        name: i.name.trim(),
         category: i.category,
         unitPrice: i.unitPrice,
         qty: i.qty,
@@ -237,28 +253,53 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
 
       {/* 품목 리스트 */}
       <div className="space-y-2.5">
-        {items.map((i) => (
+        {items.map((i, idx) => {
+          const custom = i.productId == null;
+          return (
           <div
-            key={i.productId}
+            key={idx}
             className="flex flex-col gap-2 border border-border p-3 sm:flex-row sm:items-center"
-            data-testid={`row-edit-${i.productId}`}
+            data-testid={`row-edit-${idx}`}
           >
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-foreground">{i.name}</span>
-                <span className="shrink-0 border border-border px-1.5 py-0.5 font-ui text-[10px] tracking-wide text-muted-foreground">
-                  {CATEGORY_LABEL[i.category] ?? i.category}
-                </span>
-              </div>
-              <div className="mt-0.5 text-xs text-muted-foreground">단가 {won(i.unitPrice)}</div>
+              {custom ? (
+                /* 단발성 품목 — 이름과 단가를 직접 적는다 */
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_120px]">
+                  <Input
+                    value={i.name}
+                    onChange={(e) => updateCustomLine(idx, { name: e.target.value })}
+                    placeholder="품목명 (예: 드립백 세트)"
+                    data-testid={`input-edit-custom-name-${idx}`}
+                  />
+                  <Input
+                    inputMode="numeric"
+                    value={i.unitPrice ? String(i.unitPrice) : ""}
+                    onChange={(e) =>
+                      updateCustomLine(idx, { unitPrice: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })
+                    }
+                    placeholder="단가"
+                    data-testid={`input-edit-custom-price-${idx}`}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{i.name}</span>
+                    <span className="shrink-0 border border-border px-1.5 py-0.5 font-ui text-[10px] tracking-wide text-muted-foreground">
+                      {CATEGORY_LABEL[i.category] ?? i.category}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">단가 {won(i.unitPrice)}</div>
+                </>
+              )}
             </div>
             <div className="flex items-center justify-between gap-3 sm:justify-end">
               <div className="flex items-center border border-border">
                 <button
-                  onClick={() => stepQty(i.productId, -1)}
+                  onClick={() => stepQty(idx, -1)}
                   className="px-2 py-1.5 text-muted-foreground hover-elevate"
                   aria-label="수량 감소"
-                  data-testid={`button-edit-minus-${i.productId}`}
+                  data-testid={`button-edit-minus-${idx}`}
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </button>
@@ -266,27 +307,27 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={qtyDraft[i.productId] ?? String(i.qty)}
+                    value={qtyDraft[idx] ?? String(i.qty)}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (!/^-?\d*$/.test(v)) return;
-                      setQtyDraft((d) => ({ ...d, [i.productId]: v }));
+                      setQtyDraft((d) => ({ ...d, [idx]: v }));
                       const n = Number(v);
-                      if (v !== "" && v !== "-" && Number.isInteger(n) && n !== 0) setQty(i.productId, n);
+                      if (v !== "" && v !== "-" && Number.isInteger(n) && n !== 0) setQty(idx, n);
                     }}
-                    onBlur={() => clearDraft(i.productId)}
+                    onBlur={() => clearDraft(idx)}
                     className={`w-14 border-x border-border bg-transparent py-1.5 text-center text-sm font-semibold tabular outline-none ${i.qty < 0 ? "text-destructive" : "text-foreground"}`}
                     aria-label="수량"
-                    data-testid={`input-edit-qty-${i.productId}`}
+                    data-testid={`input-edit-qty-${idx}`}
                   />
                 ) : (
                   <span className="w-8 text-center text-sm font-semibold tabular">{i.qty}</span>
                 )}
                 <button
-                  onClick={() => stepQty(i.productId, +1)}
+                  onClick={() => stepQty(idx, +1)}
                   className="px-2 py-1.5 text-muted-foreground hover-elevate"
                   aria-label="수량 증가"
-                  data-testid={`button-edit-plus-${i.productId}`}
+                  data-testid={`button-edit-plus-${idx}`}
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
@@ -295,16 +336,17 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
                 {won(i.unitPrice * i.qty)}
               </div>
               <button
-                onClick={() => removeItem(i.productId)}
+                onClick={() => removeItem(idx)}
                 className="p-1.5 text-muted-foreground hover-elevate"
                 aria-label="삭제"
-                data-testid={`button-edit-remove-${i.productId}`}
+                data-testid={`button-edit-remove-${idx}`}
               >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
         {items.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">
             품목이 없습니다. 아래에서 품목을 추가해 주세요.
@@ -341,6 +383,11 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
         >
           <Plus className="mr-1.5 h-4 w-4" /> 추가
         </Button>
+        {isAdmin && (
+          <Button variant="ghost" onClick={addCustomLine} data-testid="button-add-custom-line">
+            <Plus className="mr-1.5 h-4 w-4" /> 단발성 품목
+          </Button>
+        )}
       </div>
 
       {/* 희망 납품일 / 요청사항 */}

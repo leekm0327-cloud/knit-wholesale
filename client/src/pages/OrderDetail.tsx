@@ -64,6 +64,11 @@ export default function OrderDetail() {
     let added = 0;
     const skipped: string[] = [];
     for (const it of items) {
+      // 단발성(직접입력) 품목은 상품 마스터에 없으므로 '다시 담기'에서 제외한다
+      if (it.productId == null) {
+        skipped.push(it.name);
+        continue;
+      }
       const prod = productMap.get(it.productId);
       // 현재 판매 중인 상품만 담기 (품절/삭제된 상품은 제외)
       if (!prod || prod.available === 0) {

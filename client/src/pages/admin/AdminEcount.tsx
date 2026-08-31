@@ -19,6 +19,7 @@ interface EcountSettingsView {
   warehouseCode: string;
   deliverFieldCode: string;
   discountProductCode: string;
+  miscProductCode: string;
   useTestEndpoint: boolean;
   autoSendSales: boolean;
   autoSendPayments: boolean;
@@ -50,6 +51,7 @@ export default function AdminEcount() {
     warehouseCode: "100",
     deliverFieldCode: "",
     discountProductCode: "",
+    miscProductCode: "",
     useTestEndpoint: true,
     autoSendSales: false,
     autoSendPayments: false,
@@ -71,6 +73,7 @@ export default function AdminEcount() {
         warehouseCode: data.warehouseCode || "100",
         deliverFieldCode: data.deliverFieldCode ?? "",
         discountProductCode: data.discountProductCode ?? "",
+        miscProductCode: data.miscProductCode ?? "",
         useTestEndpoint: data.useTestEndpoint,
         autoSendSales: data.autoSendSales,
         autoSendPayments: data.autoSendPayments,
@@ -92,6 +95,7 @@ export default function AdminEcount() {
         warehouseCode: form.warehouseCode,
         deliverFieldCode: form.deliverFieldCode,
         discountProductCode: form.discountProductCode,
+        miscProductCode: form.miscProductCode,
         useTestEndpoint: form.useTestEndpoint,
         autoSendSales: form.autoSendSales,
         autoSendPayments: form.autoSendPayments,
@@ -271,6 +275,20 @@ export default function AdminEcount() {
                   주문에 정액 할인이 걸리면 판매전표 맨 아래에 이 품목코드로 <strong>음수 한 줄</strong>을 붙입니다.
                   이카운트 품목등록에 할인용 품목을 하나 만들어 두고 그 코드를 입력하세요.
                   비어 있으면 할인이 걸린 주문은 전송이 막힙니다 — 할인 줄이 빠진 채로 넘어가면 세금계산서가 실제보다 크게 발행되기 때문입니다.
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <Field
+                  label="기타 품목코드 (단발성 품목)"
+                  placeholder="예: ETC"
+                  value={form.miscProductCode}
+                  onChange={(v) => setForm({ ...form, miscProductCode: v })}
+                  testId="ecount-misc-product"
+                />
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground break-keep">
+                  대리 주문에서 상품 관리에 없는 <strong>단발성 품목</strong>(이름·단가 직접 입력)을 넣으면 이 품목코드로 전표에 실립니다.
+                  이카운트에는 '기타'로만 보이므로 실제 품목명은 전표 적요에 함께 들어갑니다.
+                  비어 있으면 단발성 품목이 섞인 주문은 전송이 막힙니다.
                 </p>
               </div>
             </div>

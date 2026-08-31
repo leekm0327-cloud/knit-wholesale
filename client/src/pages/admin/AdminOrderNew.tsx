@@ -24,7 +24,8 @@ import { Plus, Trash2, Loader2, ShoppingCart } from "lucide-react";
 
 const BEAN_CATEGORIES = ["blend", "decaf", "single"];
 
-type CartLine = { productId: number; qty: number };
+// productId 가 null 이면 단발성(직접입력) 품목 — 이름과 단가를 그때그때 적는다.
+type CartLine = { productId: number | null; qty: number; name?: string; unitPrice?: number };
 
 export default function AdminOrderNew() {
   const [, navigate] = useLocation();
@@ -93,12 +94,32 @@ export default function AdminOrderNew() {
 
   const cartRows = useMemo(() => {
     return lines
-      .map((l) => {
+      .map((l, idx) => {
+        if (l.productId == null) {
+          const unitPrice = Math.max(0, Math.round(l.unitPrice ?? 0));
+          return {
+            idx,
+            custom: true as const,
+            productId: null,
+            name: l.name ?? "",
+            category: "",
+            minOrderQty: 0,
+            qty: l.qty,
+            unitPrice,
+            amount: unitPrice * l.qty,
+            hasCustomPrice: false,
+          };
+        }
         const product = productById.get(l.productId);
         if (!product) return null;
         const unitPrice = unitPriceOf(product);
         return {
-          product,
+          idx,
+          custom: false as const,
+          productId: product.id,
+          name: product.name,
+          category: product.category,
+          minOrderQty: (product as any).minOrderQty ?? 0,
           qty: l.qty,
           unitPrice,
           amount: unitPrice * l.qty,
@@ -126,7 +147,7 @@ export default function AdminOrderNew() {
   );
   // 원두 수량 합계 (샘플 제외 — 관리자 대리주문은 일반 도매)
   const beanQtyTotal = cartRows
-    .filter((r) => beanKeys.has(r.product.category))
+    .filter((r) => beanKeys.has(r.category))
     .reduce((s, r) => s + r.qty, 0);
   // 매장 내부 계정은 도매 최소주문(5kg)·상품별 최소수량에서 제외 (내부 소비용)
   // 차감(음수) 라인이 있으면 손상·반품 처리이므로 최소 주문량 규칙을 적용하지 않는다
@@ -137,7 +158,7 @@ export default function AdminOrderNew() {
   const minViolations = selectedIsStore
     ? []
     : cartRows
-        .map((r) => ({ name: r.product.name, qty: r.qty, min: (r.product as any).minOrderQty ?? 0 }))
+        .map((r) => ({ name: r.name, qty: r.qty, min: r.minOrderQty }))
         .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
   const orderBlocked = beanShortage || minViolations.length > 0;
 
@@ -151,16 +172,25 @@ export default function AdminOrderNew() {
     });
     setAddProductId("");
   }
-  // 수량 칸에 "-"만 찍힌 중간 상태를 허용하려고 입력 중 문자열을 따로 들고 있는다
+  // 단발성(직접입력) 품목 — 상품 관리에 등록하지 않고 이번 주문에만 파는 것
+  function addCustomLine() {
+    setLines((prev) => [...prev, { productId: null, qty: 1, name: "", unitPrice: 0 }]);
+  }
+  function updateCustomLine(idx: number, patch: Partial<CartLine>) {
+    setLines((prev) => prev.map((l, n) => (n === idx ? { ...l, ...patch } : l)));
+  }
+  // 수량 칸에 "-"만 찍힌 중간 상태를 허용하려고 입력 중 문자열을 따로 들고 있는다.
+  // 줄은 상품 ID가 아니라 '몇 번째 줄'로 다룬다 — 단발성 품목은 ID가 없기 때문.
   const [qtyDraft, setQtyDraft] = useState<Record<number, string>>({});
 
   // 관리자 대리 주문은 손상·반품 차감을 위해 음수 수량을 허용한다. 0만 막는다.
-  function setQty(productId: number, qty: number) {
+  function setQty(idx: number, qty: number) {
     if (qty === 0 || !Number.isInteger(qty)) return;
-    setLines((prev) => prev.map((l) => (l.productId === productId ? { ...l, qty } : l)));
+    setLines((prev) => prev.map((l, n) => (n === idx ? { ...l, qty } : l)));
   }
-  function removeLine(productId: number) {
-    setLines((prev) => prev.filter((l) => l.productId !== productId));
+  function removeLine(idx: number) {
+    setLines((prev) => prev.filter((_, n) => n !== idx));
+    setQtyDraft({});
   }
 
   async function submit() {
@@ -181,14 +211,18 @@ export default function AdminOrderNew() {
       toast({ variant: "destructive", title: `'${v.name}'은(는) 최소 ${v.min}개부터 주문 가능합니다.` });
       return;
     }
+    if (cartRows.some((r) => r.custom && !r.name.trim())) {
+      toast({ variant: "destructive", title: "단발성 품목의 이름을 입력해 주세요." });
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
         customerId: numericCustomerId,
         items: cartRows.map((r) => ({
-          productId: r.product.id,
-          name: r.product.name,
-          category: r.product.category,
+          productId: r.productId,
+          name: r.name.trim(),
+          category: r.category,
           unitPrice: r.unitPrice,
           qty: r.qty,
           amount: r.amount,
@@ -286,12 +320,21 @@ export default function AdminOrderNew() {
                   <Plus className="mr-1.5 h-4 w-4" />
                   담기
                 </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={addCustomLine}
+                  data-testid="button-admin-order-add-custom"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  단발성 품목
+                </Button>
               </div>
-              {!numericCustomerId && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  거래처를 먼저 선택하면 해당 거래처 등록 단가로 미리보기됩니다.
-                </p>
-              )}
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground break-keep">
+                {!numericCustomerId && "거래처를 먼저 선택하면 해당 거래처 등록 단가로 미리보기됩니다. "}
+                상품 관리에 없는 것을 이번 주문에만 팔 때는 <strong className="text-foreground">단발성 품목</strong>으로
+                이름과 단가를 직접 적으세요. 원두로 잡히지 않으므로 5kg 최소주문 계산과 공장 자동발주에는 들어가지 않습니다.
+              </p>
             </Card>
 
             {/* 담긴 품목 */}
@@ -306,37 +349,62 @@ export default function AdminOrderNew() {
                 <div className="space-y-2">
                   {cartRows.map((r) => (
                     <div
-                      key={r.product.id}
+                      key={r.idx}
                       className="flex flex-wrap items-center gap-2 rounded-md border border-border p-3"
-                      data-testid={`row-admin-order-item-${r.product.id}`}
+                      data-testid={`row-admin-order-item-${r.idx}`}
                     >
                       <div className="min-w-[160px] flex-1">
-                        <div className="text-sm font-medium text-foreground">{r.product.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {won(r.unitPrice)}
-                          {r.hasCustomPrice ? " · 등록단가" : ""}
-                        </div>
+                        {r.custom ? (
+                          /* 단발성 품목 — 이름과 단가를 직접 적는다 */
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_110px]">
+                            <Input
+                              value={r.name}
+                              onChange={(e) => updateCustomLine(r.idx, { name: e.target.value })}
+                              placeholder="품목명 (예: 드립백 세트)"
+                              data-testid={`input-admin-custom-name-${r.idx}`}
+                            />
+                            <Input
+                              inputMode="numeric"
+                              value={r.unitPrice ? String(r.unitPrice) : ""}
+                              onChange={(e) =>
+                                updateCustomLine(r.idx, {
+                                  unitPrice: Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
+                                })
+                              }
+                              placeholder="단가"
+                              data-testid={`input-admin-custom-price-${r.idx}`}
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-sm font-medium text-foreground">{r.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {won(r.unitPrice)}
+                              {r.hasCustomPrice ? " · 등록단가" : ""}
+                            </div>
+                          </>
+                        )}
                       </div>
                       <Input
                         type="text"
                         inputMode="numeric"
-                        value={qtyDraft[r.product.id] ?? String(r.qty)}
+                        value={qtyDraft[r.idx] ?? String(r.qty)}
                         onChange={(e) => {
                           const v = e.target.value;
                           if (!/^-?\d*$/.test(v)) return;
-                          setQtyDraft((d) => ({ ...d, [r.product.id]: v }));
+                          setQtyDraft((d) => ({ ...d, [r.idx]: v }));
                           const n = Number(v);
-                          if (v !== "" && v !== "-" && Number.isInteger(n) && n !== 0) setQty(r.product.id, n);
+                          if (v !== "" && v !== "-" && Number.isInteger(n) && n !== 0) setQty(r.idx, n);
                         }}
                         onBlur={() =>
                           setQtyDraft((d) => {
                             const nd = { ...d };
-                            delete nd[r.product.id];
+                            delete nd[r.idx];
                             return nd;
                           })
                         }
                         className={`w-20 ${r.qty < 0 ? "text-destructive" : ""}`}
-                        data-testid={`input-admin-order-qty-${r.product.id}`}
+                        data-testid={`input-admin-order-qty-${r.idx}`}
                       />
                       <div className="w-24 text-right text-sm font-medium text-foreground">
                         {won(r.amount)}
@@ -345,8 +413,8 @@ export default function AdminOrderNew() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeLine(r.product.id)}
-                        data-testid={`button-admin-order-remove-${r.product.id}`}
+                        onClick={() => removeLine(r.idx)}
+                        data-testid={`button-admin-order-remove-${r.idx}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
