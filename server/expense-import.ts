@@ -518,4 +518,125 @@ export function registerExpenseImportRoutes(app: Express) {
       res.json({ message: "지웠습니다. 다음부터 다시 여쭤봅니다." });
     }),
   );
+
+  // ===== 중복 정리 =====
+  // 같은 명세서를 두 번 올렸거나, 은행 내역과 카드 내역에 같은 결제가 이중으로 들어온 경우를 찾는다.
+  // 지우는 건 사람이 고른다 — 같은 날 같은 금액을 두 번 결제하는 일도 실제로 있기 때문에 자동 삭제하지 않는다.
+  app.get(
+    "/api/admin/expense-duplicates",
+    requireOwner,
+    safe((req, res) => {
+      const from = String(req.query.from ?? "2000-01-01").slice(0, 10);
+      const to = String(req.query.to ?? "2099-12-31").slice(0, 10);
+      // strict: 날짜 + 금액 + 내용(정규화)  /  loose: 날짜 + 금액 (내용이 달라도 묶는다)
+      const loose = String(req.query.mode ?? "strict") === "loose";
+      const includeLedger = String(req.query.ledger ?? "1") !== "0";
+
+      type Row = {
+        source: "expense" | "ledger";
+        id: number;
+        date: string;
+        amount: number;
+        memo: string;
+        category: string;
+        createdAt: number;
+      };
+      const rows: Row[] = [];
+
+      for (const r of sqlite
+        .prepare(
+          "SELECT id, expense_date AS d, amount, memo, category, created_at AS c FROM expenses WHERE expense_date >= ? AND expense_date <= ?",
+        )
+        .all(from, to) as any[]) {
+        rows.push({ source: "expense", id: r.id, date: r.d, amount: r.amount, memo: r.memo ?? "", category: r.category ?? "", createdAt: r.c ?? 0 });
+      }
+      if (includeLedger) {
+        for (const r of sqlite
+          .prepare(
+            "SELECT id, date AS d, amount, memo, created_at AS c FROM personal_ledger WHERE type = 'expense' AND date >= ? AND date <= ?",
+          )
+          .all(from, to) as any[]) {
+          rows.push({ source: "ledger", id: r.id, date: r.d, amount: r.amount, memo: r.memo ?? "", category: "가계부", createdAt: r.c ?? 0 });
+        }
+      }
+
+      const groups = new Map<string, { key: string; date: string; amount: number; rows: Row[] }>();
+      for (const r of rows) {
+        const key = loose ? `${r.date}|${r.amount}` : `${r.date}|${r.amount}|${merchantKey(r.memo)}`;
+        const g = groups.get(key) ?? { key, date: r.date, amount: r.amount, rows: [] as Row[] };
+        g.rows.push(r);
+        groups.set(key, g);
+      }
+
+      // 2건 이상만. 각 묶음은 먼저 저장된 것이 앞에 오게 정렬해 '첫 건을 남긴다'가 자연스럽게 되도록 한다.
+      const all: Array<{ key: string; date: string; amount: number; rows: Row[] }> = [];
+      groups.forEach((g) => all.push(g));
+      const dup = all
+        .filter((g) => g.rows.length > 1)
+        .map((g) => ({
+          ...g,
+          rows: g.rows.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0) || a.id - b.id),
+        }))
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : b.amount - a.amount));
+
+      // 한 묶음에서 첫 건을 뺀 나머지가 '지워도 되는 것'
+      const extraCount = dup.reduce((s, g) => s + g.rows.length - 1, 0);
+      const extraAmount = dup.reduce((s, g) => s + g.amount * (g.rows.length - 1), 0);
+
+      res.json({ groups: dup, summary: { groups: dup.length, extraCount, extraAmount } });
+    }),
+  );
+
+  app.post(
+    "/api/admin/expense-duplicates/delete",
+    requireOwner,
+    safe(async (req, res) => {
+      const expenseIds: number[] = Array.isArray(req.body?.expenseIds)
+        ? req.body.expenseIds.map((v: any) => Number(v)).filter((n: number) => Number.isInteger(n) && n > 0)
+        : [];
+      const ledgerIds: number[] = Array.isArray(req.body?.ledgerIds)
+        ? req.body.ledgerIds.map((v: any) => Number(v)).filter((n: number) => Number.isInteger(n) && n > 0)
+        : [];
+      if (expenseIds.length === 0 && ledgerIds.length === 0)
+        return res.status(400).json({ message: "지울 항목을 선택해 주세요." });
+
+      // 지우기 전에 무엇을 지우는지 기록해 둔다 — 잘못 지웠을 때 되짚을 수 있어야 한다.
+      const detail: string[] = [];
+      for (const id of expenseIds) {
+        const r = sqlite.prepare("SELECT expense_date AS d, amount, memo FROM expenses WHERE id = ?").get(id) as any;
+        if (r) detail.push(`지출#${id} ${r.d} ${r.amount}원 ${r.memo ?? ""}`);
+      }
+      for (const id of ledgerIds) {
+        const r = sqlite.prepare("SELECT date AS d, amount, memo FROM personal_ledger WHERE id = ?").get(id) as any;
+        if (r) detail.push(`가계부#${id} ${r.d} ${r.amount}원 ${r.memo ?? ""}`);
+      }
+
+      let removed = 0;
+      for (const id of expenseIds) {
+        await storage.deleteExpense(id);
+        removed += 1;
+      }
+      for (const id of ledgerIds) {
+        await storage.deletePersonalLedger(id);
+        removed += 1;
+      }
+
+      try {
+        const actor = await storage.getCustomer((req as any).session?.userId ?? 0);
+        await storage.logActivity({
+          actorUserId: (req as any).session?.userId ?? 0,
+          actorEmail: actor?.email ?? "",
+          actorRole: "owner",
+          action: "expense.dedupe",
+          targetType: "expense",
+          targetId: "",
+          summary: `중복 지출 ${removed}건 삭제 — ${detail.slice(0, 20).join(" / ")}${detail.length > 20 ? ` 외 ${detail.length - 20}건` : ""}`,
+        });
+      } catch {
+        /* 기록 실패가 삭제를 되돌리지는 않는다 */
+      }
+
+      res.json({ removed, message: `${removed}건을 지웠습니다.` });
+    }),
+  );
 }
