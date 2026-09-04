@@ -13,6 +13,8 @@ import path from "node:path";
 import type { Express, Request, Response, NextFunction } from "express";
 import { sqlite, DB_PATH, storage } from "./storage";
 import { sendKakaoMemo, isKakaoConfigured } from "./kakao";
+import { buildCustomerActivity } from "./customer-activity";
+import { effectiveOrderYmd } from "@shared/orderDate";
 
 const KST = 9 * 60 * 60 * 1000;
 
@@ -160,7 +162,142 @@ async function runBackupJob(config: JobConfig): Promise<string> {
   }`;
 }
 
+// ===== ECOUNT 전송 점검 =====
+//
+// 세금계산서는 이카운트에 쌓인 판매전표를 근거로 월 단위로 일괄 발행한다.
+// 그래서 "처리완료인데 전표가 안 넘어간 주문"이 월말까지 남아 있으면 그대로 세금계산서에서 빠진다.
+// 매일 아침 그런 주문을 세어 0이 아니면 카카오와 알림센터로 알린다.
+
+type EcountCheck = {
+  unsentOrders: { orderNo: string; businessName: string; ymd: string; totalAmount: number; id: number }[];
+  dupOrders: { orderNo: string; businessName: string; count: number; id: number }[];
+  unsentPurchases: number;
+  productsWithoutCode: string[];
+};
+
+async function inspectEcount(sinceYmd: string): Promise<EcountCheck> {
+  const [orders, customers, purchases, products] = await Promise.all([
+    storage.listOrders(),
+    storage.listCustomers(),
+    storage.listPurchases(),
+    storage.listProducts(),
+  ]);
+  const custById = new Map(customers.map((c) => [c.id, c]));
+  const storeIds = new Set(customers.filter((c) => (c as any).isStore).map((c) => c.id));
+  const isStoreOrder = (o: any) =>
+    typeof o.isStoreOrder === "number" && o.isStoreOrder >= 0 ? o.isStoreOrder === 1 : storeIds.has(o.customerId);
+
+  const unsentOrders: EcountCheck["unsentOrders"] = [];
+  const dupOrders: EcountCheck["dupOrders"] = [];
+  for (const o of orders) {
+    if (o.status !== "done") continue;
+    if (o.isSample === 1 || o.totalAmount <= 0) continue; // 무료 샘플은 전표 대상이 아니다
+    if (isStoreOrder(o)) continue; // 매장 내부 이동은 세금계산서 대상이 아니다
+    const ymd = effectiveOrderYmd(o as any);
+    if (ymd < sinceYmd) continue;
+    const name = custById.get(o.customerId)?.businessName ?? "(삭제된 거래처)";
+    if (!o.ecountSentAt) unsentOrders.push({ orderNo: o.orderNo, businessName: name, ymd, totalAmount: o.totalAmount, id: o.id });
+    else if ((o.ecountSentCount ?? 0) >= 2) dupOrders.push({ orderNo: o.orderNo, businessName: name, count: o.ecountSentCount, id: o.id });
+  }
+  unsentOrders.sort((a, b) => (a.ymd < b.ymd ? -1 : 1));
+
+  const unsentPurchases = purchases.filter((p) => !p.ecountSentAt && p.purchaseDate >= sinceYmd).length;
+  const productsWithoutCode = products
+    .filter((p) => p.available === 1 && !(p as any).ecountCode)
+    .map((p) => p.name);
+  return { unsentOrders, dupOrders, unsentPurchases, productsWithoutCode };
+}
+
+async function runEcountCheckJob(config: JobConfig): Promise<string> {
+  const lookbackDays = Math.min(120, Math.max(7, Number(config.lookbackDays) || 45));
+  const sinceYmd = new Date(Date.now() + KST - lookbackDays * 86_400_000).toISOString().slice(0, 10);
+  const r = await inspectEcount(sinceYmd);
+
+  const parts: string[] = [];
+  if (r.unsentOrders.length) {
+    const head = r.unsentOrders.slice(0, 5).map((o) => `${o.ymd.slice(5)} ${o.businessName} ${o.orderNo}`).join(", ");
+    parts.push(`미전송 판매전표 ${r.unsentOrders.length}건 (${head}${r.unsentOrders.length > 5 ? " 외" : ""})`);
+  }
+  if (r.dupOrders.length) parts.push(`중복 전송 ${r.dupOrders.length}건 (${r.dupOrders.map((o) => o.orderNo).join(", ")})`);
+  if (r.productsWithoutCode.length) parts.push(`이카운트 품목코드 없는 상품 ${r.productsWithoutCode.length}개 (${r.productsWithoutCode.slice(0, 3).join(", ")})`);
+  if (r.unsentPurchases) parts.push(`미전송 구매전표(발주) ${r.unsentPurchases}건`);
+
+  const problem = r.unsentOrders.length + r.dupOrders.length + r.productsWithoutCode.length > 0;
+  if (!problem) {
+    return `이상 없음 — 최근 ${lookbackDays}일 판매전표 모두 전송됨${r.unsentPurchases ? ` (발주 미전송 ${r.unsentPurchases}건은 수동 전송 대상)` : ""}`;
+  }
+  const message = parts.join(" · ");
+  // 문제가 있을 때는 notify 설정과 무관하게 알린다. 이 작업의 존재 이유가 그것이다.
+  storage
+    .createNotification({
+      type: "ecount_fail",
+      title: "ECOUNT 전송 점검 — 확인 필요",
+      body: message.slice(0, 200),
+      link: "/admin/orders",
+    })
+    .catch(() => {});
+  await sendKakaoMemo(`[니트커피] ECOUNT 점검\n${message}`.slice(0, 190), "https://wholesale.knitcoffee.co.kr/#/admin/orders").catch(() => {});
+  return message;
+}
+
+// ===== 미주문 거래처 알림 =====
+//
+// 거래처별 평소 주문 주기(중앙값)를 계산해 주기를 훌쩍 넘긴 곳을 모아 알린다.
+// 계산은 미주문 거래처 화면과 같은 함수를 쓴다. 화면에 들어가야만 보이던 것을 밀어주는 것뿐이다.
+
+async function runInactiveCustomersJob(config: JobConfig): Promise<string> {
+  const weekday = String(config.weekday ?? "1"); // 0=일 … 6=토, "*"=매일
+  const today = kstNow().getUTCDay();
+  if (weekday !== "*" && String(today) !== weekday) {
+    const names = ["일", "월", "화", "수", "목", "금", "토"];
+    return `오늘은 실행 요일이 아님 (${names[Number(weekday)] ?? weekday}요일에 실행)`;
+  }
+  const days = Math.min(90, Math.max(7, Number(config.days) || 14));
+  const beanOnly = config.beanOnly !== false;
+  const result = buildCustomerActivity(days, beanOnly);
+  const overdue = result.rows.filter((r) => r.overdue);
+  const silent = result.rows.filter((r) => !r.overdue && r.daysSince >= days);
+  if (overdue.length === 0 && silent.length === 0) return `이상 없음 — ${days}일 넘게 주문 없는 거래처 없음`;
+
+  const lines: string[] = [];
+  for (const r of overdue.slice(0, 8)) lines.push(`${r.businessName} ${r.daysSince}일 (평소 ${r.cycleDays}일)`);
+  const message =
+    `주기 넘긴 거래처 ${overdue.length}곳` +
+    (silent.length ? ` · ${days}일 이상 미주문 ${silent.length}곳` : "") +
+    (lines.length ? `\n${lines.join("\n")}` : "");
+  storage
+    .createNotification({
+      type: "inactive_customers",
+      title: `미주문 거래처 ${overdue.length + silent.length}곳`,
+      body: lines.slice(0, 3).join(" · ") || `${days}일 이상 미주문 ${silent.length}곳`,
+      link: "/admin/customer-activity",
+    })
+    .catch(() => {});
+  await sendKakaoMemo(`[니트커피] 미주문 거래처\n${message}`.slice(0, 190), "https://wholesale.knitcoffee.co.kr/#/admin/customer-activity").catch(() => {});
+  return message.replace(/\n/g, " / ");
+}
+
 const JOBS: JobDef[] = [
+  {
+    key: "ecount_check",
+    name: "ECOUNT 전송 점검",
+    description:
+      "매일 아침, 처리완료됐는데 이카운트 판매전표가 안 넘어간 주문·중복 전송된 주문·품목코드 없는 상품을 세어 하나라도 있으면 카카오와 알림센터로 알립니다. 세금계산서 일괄 발행 전에 빠진 전표를 잡기 위한 것입니다.",
+    defaultHour: 8,
+    defaultMinute: 30,
+    defaultConfig: { lookbackDays: 45, notify: "fail" },
+    run: runEcountCheckJob,
+  },
+  {
+    key: "inactive_customers",
+    name: "미주문 거래처 알림",
+    description:
+      "정한 요일에 거래처별 평소 주문 주기를 계산해, 주기를 훌쩍 넘긴 거래처와 오래 주문이 없는 거래처를 카카오와 알림센터로 알립니다. '미주문 거래처' 화면과 같은 계산입니다.",
+    defaultHour: 9,
+    defaultMinute: 0,
+    defaultConfig: { weekday: "1", days: 14, beanOnly: true, notify: "fail" },
+    run: runInactiveCustomersJob,
+  },
   {
     key: "backup",
     name: "자동 백업",

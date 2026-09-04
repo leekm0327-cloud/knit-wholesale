@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { KakaoChannelButton } from "@/components/KakaoChannelButton";
 import { EspressoLogCharts } from "@/components/EspressoLogCharts";
@@ -11,8 +11,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import { won } from "@/lib/format";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Product } from "@shared/schema";
-import { Plus, Minus, ShoppingCart, Star, ChevronDown } from "lucide-react";
+import type { Product, Order } from "@shared/schema";
+import { reorderItems, lastRealOrder, summarizeItems } from "@/lib/reorder";
+import { Plus, Minus, ShoppingCart, Star, ChevronDown, RotateCcw } from "lucide-react";
 import { fmtDate } from "@/lib/format";
 
 // ③ 소식 카드 요약 타입
@@ -148,6 +149,23 @@ export default function Catalog() {
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const { add, items: cartItems } = useCart();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+  // 지난 주문 그대로 담기 — 매주 같은 걸 시키는 도매 특성상 가장 빠른 발주 경로
+  const { data: myOrders } = useQuery<Order[]>({ queryKey: ["/api/orders/mine"] });
+  const lastOrder = useMemo(() => lastRealOrder(myOrders), [myOrders]);
+  function reorderLast() {
+    if (!lastOrder) return;
+    const r = reorderItems(lastOrder, products, add);
+    if (!r || r.added === 0) {
+      toast({ title: "담을 수 있는 품목이 없습니다", description: "지난 주문 품목이 품절이거나 판매 종료되었습니다.", variant: "destructive" });
+      return;
+    }
+    toast({
+      title: "장바구니에 담았습니다",
+      description: `지난 주문 ${r.added}개 품목을 담았습니다.` + (r.skipped.length ? ` (제외: ${r.skipped.join(", ")})` : "") + " 수량은 장바구니에서 고칠 수 있습니다.",
+    });
+    navigate("/cart");
+  }
 
   function setQty(productId: number, qty: number) {
     setQtyMap((prev) => ({ ...prev, [productId]: Math.max(0, qty) }));
@@ -315,6 +333,26 @@ export default function Catalog() {
             </button>
           </div>
         </div>
+
+        {/* 지난 주문 그대로 담기 */}
+        {lastOrder && (
+          <div
+            className="mb-4 flex flex-col gap-3 rounded-lg border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            data-testid="card-reorder-last"
+          >
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">지난 주문</div>
+              <div className="mt-0.5 truncate text-sm text-foreground">
+                <span className="text-muted-foreground">{fmtDate(lastOrder.createdAt).split(" ")[0]}</span>
+                {" · "}
+                {summarizeItems(lastOrder)}
+              </div>
+            </div>
+            <Button variant="outline" onClick={reorderLast} className="shrink-0" data-testid="button-reorder-last">
+              <RotateCcw className="mr-1.5 h-4 w-4" /> 그대로 담기
+            </Button>
+          </div>
+        )}
 
         {/* 출고 안내 박스 */}
         <div

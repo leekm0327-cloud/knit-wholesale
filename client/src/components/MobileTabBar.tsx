@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 // 핵심 4개(발주·주문내역·내정보·더보기)만 노출하고, 나머지는 '더보기' 시트로.
 const MORE_ITEMS = [
   { href: "/chat", label: "니트커피 문의 (1:1 채팅)" },
+  { href: "/statement", label: "거래내역서" },
   { href: "/sample", label: "샘플 신청" },
   { href: "/visit-setup", label: "커피 세팅" },
   { href: "/board", label: "게시판" },

@@ -33,6 +33,25 @@
   `SOLAPI_API_KEY`, `SOLAPI_API_SECRET` 등은 **Railway 환경변수**로 이강민님이 직접 설정합니다.
   Claude는 값을 보지도, 요구하지도 않습니다.
 
+### 알림 (2026-09-04 확장)
+- 대표님 알림은 **문자(`sendOwnerSms`) + 카카오 메모 + 알림센터** 3채널이 기본입니다. 알림톡 설정의 `alertOn`·`alertPhone`을 그대로 씁니다.
+  샘플 신청(`sample_request`) · 거래처 주문 취소(`order_cancelled`) · 직원 연차 신청(`staff_leave`) · ECOUNT 실패(`ecount_fail`) · 미주문 거래처(`inactive_customers`).
+- 거래처에게 가는 메일(Resend): 주문 접수 확인(`sendOrderAcceptedEmail`, 합쳐진 경우 포함) · 처리완료 · 품목 수정.
+  알림톡 템플릿이 필요한 것은 아직 메일만 보냅니다. **송장번호 관련 알림·표시는 두지 않습니다**(송장을 입력하기 어려운 운영 환경, 2026-09-04 결정).
+- 직원 연차 승인·반려 결과는 직원 휴대폰으로 문자(`sendPlainSms`).
+- 알림센터 아이콘은 `NotificationBell.tsx`의 `ICON_BY_TYPE`에 type별로 등록합니다.
+
+### 자동화 (`server/automation.ts` JOBS)
+- `ecount_check` — 매일 08:30: 처리완료·비매장·비샘플 주문 중 판매전표 미전송/중복, 품목코드 없는 상품을 세어 있으면 카톡+알림센터.
+- `inactive_customers` — 정한 요일 09:00: 주문 주기 넘긴 거래처(`buildCustomerActivity`)를 카톡+알림센터.
+- `backup` — 기존.
+- 켜는 것은 관리자 → 자동화 화면에서 합니다. 켜는 순간 돌지 않고 다음날부터 돕니다.
+
+### 거래처 화면 (2026-09-04 추가)
+- `/statement` 거래처용 월별 거래내역서 — `GET /api/account/transactions`, 관리자 거래내역서와 같은 `StatementDoc` 컴포넌트를 씁니다(인쇄 CSS 공유).
+- 카탈로그 상단 '지난 주문 그대로 담기' — `client/src/lib/reorder.ts`, 주문 상세의 '다시 담기'와 같은 규칙.
+- 장바구니에 희망 배송일 입력. 관리자 주문 목록·상세와 인보이스에 표시됩니다.
+
 ### 직원 근태
 - 퇴근 버튼은 오늘 출근 기록이 없으면 **어제 출근·미퇴근 기록을 닫습니다**(자정 넘긴 마감 대응, `staff-storage.ts clockOut`).
 - 근태 요약의 `openDays` = 출근만 있고 퇴근 없는 날 수. 관리자 화면에 "퇴근 없음" 배지로 표시됩니다.

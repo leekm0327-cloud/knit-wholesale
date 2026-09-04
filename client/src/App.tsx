@@ -32,6 +32,7 @@ import InvoicePage from "@/pages/InvoicePage";
 import Chat from "@/pages/Chat";
 import QuoteView from "@/pages/QuoteView";
 import Help from "@/pages/Help";
+import Statement from "@/pages/Statement";
 import AdminLogin from "@/pages/admin/AdminLogin";
 import Dashboard from "@/pages/admin/Dashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
@@ -143,6 +144,9 @@ function AppRouter() {
       </Route>
       <Route path="/board">
         <RequireCustomer><Board /></RequireCustomer>
+      </Route>
+      <Route path="/statement">
+        <RequireCustomer><Statement /></RequireCustomer>
       </Route>
       <Route path="/news">
         <RequireCustomer><News /></RequireCustomer>

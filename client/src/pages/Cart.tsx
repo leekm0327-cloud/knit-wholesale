@@ -19,6 +19,7 @@ export default function Cart() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [note, setNote] = useState("");
+  const [desiredDate, setDesiredDate] = useState("");
   const [quickRequest, setQuickRequest] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -99,7 +100,7 @@ export default function Cart() {
           qty: i.qty,
           amount: i.unitPrice * i.qty,
         })),
-        desiredDate: "",
+        desiredDate,
         note,
         quickRequest: quickRequest,
       });
@@ -205,6 +206,19 @@ export default function Cart() {
               ))}
 
               <Card className="space-y-4 p-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="desiredDate" className="text-xs">희망 배송일 <span className="font-normal text-muted-foreground">(선택)</span></Label>
+                  <Input
+                    id="desiredDate"
+                    type="date"
+                    value={desiredDate}
+                    min={new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)}
+                    onChange={(e) => setDesiredDate(e.target.value)}
+                    className="w-44"
+                    data-testid="input-desired-date"
+                  />
+                  <p className="text-[11px] text-muted-foreground break-keep">비워두면 가장 빠른 출고일에 보내드립니다. 물량에 따라 희망일을 맞추지 못할 수 있습니다.</p>
+                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="note" className="text-xs">요청사항</Label>
                   <Textarea

@@ -194,6 +194,11 @@ export default function AdminOrderDetail() {
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-foreground">주문 관리</h2>
                 <div className="flex items-center gap-2">
+                  {(order as any).desiredDate && (
+                    <Badge variant="outline" className="border-foreground text-foreground" data-testid="badge-desired-date">
+                      희망 {String((order as any).desiredDate).slice(5).replace("-", "/")}
+                    </Badge>
+                  )}
                   {(order as any).quickRequest === 1 && (
                     <Badge className="bg-amber-500 text-white hover:bg-amber-600" data-testid="badge-quick-request">
                       ⚡ 퀵 요청

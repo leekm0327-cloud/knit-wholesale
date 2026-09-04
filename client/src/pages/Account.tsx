@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
 import { LoadError } from "@/components/LoadError";
@@ -25,6 +26,7 @@ const METHOD_LABEL: Record<string, string> = {
 export default function Account() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     businessName: "",
@@ -133,8 +135,16 @@ export default function Account() {
                 </div>
               </div>
             )}
-            <div className="border-t bg-muted/30 px-5 py-2.5 text-[11px] text-muted-foreground">
-              입금은 관리자가 확인 후 반영됩니다.
+            <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-5 py-2.5 text-[11px] text-muted-foreground">
+              <span>입금은 관리자가 확인 후 반영됩니다.</span>
+              <button
+                type="button"
+                onClick={() => navigate("/statement")}
+                className="shrink-0 font-medium text-foreground underline-offset-2 hover:underline"
+                data-testid="link-statement"
+              >
+                월별 거래내역서 →
+              </button>
             </div>
           </Card>
         )}

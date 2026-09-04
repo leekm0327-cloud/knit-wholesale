@@ -10,9 +10,9 @@ import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
 import { registerCustomerActivityRoutes } from "./customer-activity";
 import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
-import { registerAlimtalkRoutes, sendOrderReceived, sendOrderAlertSms } from "./alimtalk";
+import { registerAlimtalkRoutes, sendOrderReceived, sendOrderAlertSms, sendOwnerSms } from "./alimtalk";
 import { registerExpenseImportRoutes } from "./expense-import";
-import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail } from "./email";
+import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail, sendOrderAcceptedEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo, sendKakaoMemoDetailed } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
@@ -762,6 +762,18 @@ export async function registerRoutes(
         "https://wholesale.knitcoffee.co.kr/#/admin/orders",
       ).catch((e) => console.warn("[kakao] 주문 추가 알림 실패:", e?.message ?? e));
 
+      // 거래처에게도 접수 확인 (합쳐진 최종 내용으로)
+      sendOrderAcceptedEmail({
+        orderId: todayPending.id,
+        orderNo: todayPending.orderNo,
+        businessName: customer.businessName,
+        taxEmail: customer.taxEmail || customer.email,
+        items: mergedItems.map((i: any) => ({ name: i.productName ?? i.name, qty: i.qty })),
+        totalAmount: newTotalAmount,
+        merged: true,
+        desiredDate: mergedDesired,
+      }, process.env.PUBLIC_URL || (req.headers.origin as string)).catch((e) => console.error("[email] 접수 확인 메일 실패:", e));
+
       storage.createNotification({
         type: "order_merged",
         title: `주문 추가 · ${customer.businessName}`,
@@ -829,6 +841,18 @@ export async function registerRoutes(
       `[니트커피] 새 도매 주문이 접수되었습니다.\n주문번호: ${order.orderNo}\n거래처: ${customer.businessName}\n금액: ${(supplyAmount + vat).toLocaleString("ko-KR")}원`,
       "https://wholesale.knitcoffee.co.kr/#/admin",
     ).catch((e) => console.warn("[kakao] 주문 알림 발송 실패:", e?.message ?? e));
+
+    // 거래처에게 접수 확인 메일 — 입금 계좌·거래명세서 링크 포함
+    sendOrderAcceptedEmail({
+      orderId: order.id,
+      orderNo: order.orderNo,
+      businessName: customer.businessName,
+      taxEmail: customer.taxEmail || customer.email,
+      items: newItems.map((i: any) => ({ name: i.productName ?? i.name, qty: i.qty })),
+      totalAmount: supplyAmount + vat,
+      merged: false,
+      desiredDate: parsed.data.desiredDate ?? "",
+    }, process.env.PUBLIC_URL || (req.headers.origin as string)).catch((e) => console.error("[email] 접수 확인 메일 실패:", e));
 
     storage.createNotification({
       type: "order_new",
@@ -991,6 +1015,37 @@ export async function registerRoutes(
       summary: `샘플 신청: ${customer.businessName} (${items.map((i) => i.name).join(", ")})`,
     });
 
+    // 무료 샘플은 가장 뜨거운 리드다. 일반 주문과 같은 4채널로 대표님께 즉시 알린다.
+    // (예전에는 아무 알림도 없어 관리자 주문 목록을 직접 봐야만 알 수 있었다)
+    const itemText = items.map((i) => i.name.replace(" (샘플 500g)", "")).join(", ");
+    sendNewOrderEmail({
+      orderNo: order.orderNo,
+      businessName: `🎁 무료샘플 · ${customer.businessName}`,
+      managerName: customer.managerName,
+      phone: customer.phone,
+      supplyAmount: 0,
+      vat: 0,
+      totalAmount: 0,
+      items,
+      desiredDate: "",
+      note: `샘플 신청 (각 500g) · 배송지: ${customer.defaultAddress || "(미입력 — 확인 필요)"}`,
+      createdAt: order.createdAt,
+    }).catch((e) => console.error("[email] 샘플 신청 알림 메일 실패:", e));
+    sendOwnerSms(
+      `[니트커피] 무료샘플 신청\n${customer.businessName.slice(0, 10)}\n${itemText.slice(0, 40)}`,
+      { businessName: customer.businessName, ref: order.orderNo, detail: "샘플 신청 문자 발송" },
+    ).catch((e) => console.warn("[alert] 샘플 신청 문자 실패:", e?.message ?? e));
+    sendKakaoMemo(
+      `[니트커피] 🎁 무료 샘플 신청이 들어왔습니다.\n거래처: ${customer.businessName}\n담당: ${customer.managerName} / ${customer.phone}\n원두: ${itemText}\n배송지: ${customer.defaultAddress || "(미입력 — 확인 필요)"}`,
+      `https://wholesale.knitcoffee.co.kr/#/admin/orders/${order.id}`,
+    ).catch((e) => console.warn("[kakao] 샘플 신청 알림 실패:", e?.message ?? e));
+    storage.createNotification({
+      type: "sample_request",
+      title: `무료 샘플 신청 · ${customer.businessName}`,
+      body: `${itemText}${customer.defaultAddress ? "" : " · 배송지 미입력"}`,
+      link: `/admin/orders/${order.id}`,
+    }).catch((e) => console.error("[notif] 샘플 신청 알림 저장 실패:", e));
+
     res.json({ ...order, orderId: order.id });
   });
 
@@ -1081,6 +1136,24 @@ export async function registerRoutes(
       targetId: String(updated.id),
       summary: `거래처가 주문 #${updated.orderNo} 취소`,
     });
+
+    // 취소도 대표님께 알린다. 이미 공장에 카톡 발주를 넣은 뒤라면 놓치면 안 되는 정보다.
+    const cust = await storage.getCustomer(updated.customerId);
+    const bizName = cust?.businessName ?? "(거래처)";
+    sendOwnerSms(
+      `[니트커피] 주문 취소\n${bizName.slice(0, 10)} ${updated.totalAmount.toLocaleString("ko-KR")}원\n${updated.orderNo}`,
+      { businessName: bizName, ref: updated.orderNo, detail: "주문 취소 문자 발송" },
+    ).catch((e) => console.warn("[alert] 주문 취소 문자 실패:", e?.message ?? e));
+    sendKakaoMemo(
+      `[니트커피] 거래처가 주문을 취소했습니다.\n주문번호: ${updated.orderNo}\n거래처: ${bizName}\n금액: ${updated.totalAmount.toLocaleString("ko-KR")}원\n공장에 이미 발주했다면 취소 연락이 필요합니다.`,
+      `https://wholesale.knitcoffee.co.kr/#/admin/orders/${updated.id}`,
+    ).catch((e) => console.warn("[kakao] 주문 취소 알림 실패:", e?.message ?? e));
+    storage.createNotification({
+      type: "order_cancelled",
+      title: `주문 취소 · ${bizName}`,
+      body: `${updated.orderNo} · ${updated.totalAmount.toLocaleString("ko-KR")}원`,
+      link: `/admin/orders/${updated.id}`,
+    }).catch((e) => console.error("[notif] 주문취소 알림 저장 실패:", e));
 
     res.json(updated);
   });
@@ -3072,6 +3145,31 @@ export async function registerRoutes(
   });
 
   // ===== #32 거래내역서 =====
+  // 거래처 본인의 월별 거래내역서 — 관리자 화면과 같은 계산(storage.listTransactions)을 본인 것만 연다.
+  // 부기 담당자에게 넘길 문서를 거래처가 직접 뽑을 수 있게 하는 것이 목적이다.
+  app.get("/api/account/transactions", requireAuth, async (req, res) => {
+    const customer = await storage.getCustomer(req.session.userId!);
+    if (!customer || customer.role !== "customer") return res.status(403).json({ message: "거래처 계정만 조회할 수 있습니다." });
+    const startDate = typeof req.query.startDate === "string" ? req.query.startDate : "";
+    const endDate = typeof req.query.endDate === "string" ? req.query.endDate : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))
+      return res.status(400).json({ message: "시작일과 종료일이 필요합니다." });
+    const result = await storage.listTransactions(customer.id, startDate, endDate);
+    res.json({
+      customer: {
+        id: customer.id,
+        businessName: customer.businessName,
+        managerName: customer.managerName,
+        phone: customer.phone,
+        bizRegNo: customer.bizRegNo,
+        address: customer.defaultAddress,
+      },
+      startDate,
+      endDate,
+      ...result,
+    });
+  });
+
   app.get("/api/admin/transactions", requireAdmin, async (req, res) => {
     const customerId = Number(req.query.customerId);
     const startDate = typeof req.query.startDate === "string" ? req.query.startDate : "";

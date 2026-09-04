@@ -402,6 +402,25 @@ export async function sendOrderAlertSms(args: {
   totalAmount: number;
   added?: boolean;
 }): Promise<void> {
+  // 상호가 길면 잘라 문자 한 통 안에 들어가게 한다
+  const name = args.businessName.length > 10 ? `${args.businessName.slice(0, 10)}…` : args.businessName;
+  const head = args.added ? "주문 추가" : "새 주문";
+  await sendOwnerSms(`[니트커피] ${head}\n${name} ${won(args.totalAmount)}원\n${args.orderNo}`, {
+    businessName: args.businessName,
+    ref: args.orderNo,
+    detail: "주문 알림 문자 발송",
+  });
+}
+
+/**
+ * 대표님(알림 수신번호)에게 보내는 일반 문자.
+ * 주문 알림과 같은 설정(alertOn · alertPhone)을 따르므로 별도 설정이 필요 없다.
+ * 샘플 신청·주문 취소·연차 신청처럼 "카톡만으로는 놓치기 쉬운" 일에 쓴다.
+ */
+export async function sendOwnerSms(
+  text: string,
+  meta: { businessName?: string; ref?: string; detail?: string } = {},
+): Promise<void> {
   const s = getSettings();
   if (!s.alertOn) return;
   if (!isAlimtalkConfigured() || !s.sender) return;
@@ -412,26 +431,39 @@ export async function sendOrderAlertSms(args: {
     .filter((t) => isSendablePhone(t));
   if (targets.length === 0) return;
 
-  // 상호가 길면 잘라 문자 한 통 안에 들어가게 한다
-  const name = args.businessName.length > 10 ? `${args.businessName.slice(0, 10)}…` : args.businessName;
-  const head = args.added ? "주문 추가" : "새 주문";
-  const text = `[니트커피] ${head}\n${name} ${won(args.totalAmount)}원\n${args.orderNo}`;
+  for (const to of targets) await sendPlainSms(to, text, meta);
+}
 
-  for (const to of targets) {
-    try {
-      const data = await solapi("POST", "/messages/v4/send-many/detail", {
-        messages: [{ to, from: normalizePhone(s.sender), text }],
-      });
-      const failed: any[] = data?.failedMessageList ?? [];
-      if (failed.length > 0) {
-        const reason = failed[0]?.statusMessage || failed[0]?.statusCode || "발송 실패";
-        logSend({ kind: "alert", businessName: args.businessName, phone: to, status: "fail", detail: String(reason).slice(0, 200), ref: args.orderNo });
-      } else {
-        logSend({ kind: "alert", businessName: args.businessName, phone: to, status: "ok", detail: "주문 알림 문자 발송", ref: args.orderNo });
-      }
-    } catch (e: any) {
-      logSend({ kind: "alert", businessName: args.businessName, phone: to, status: "fail", detail: String(e?.message ?? e).slice(0, 200), ref: args.orderNo });
+/**
+ * 특정 번호로 보내는 일반 문자 (직원 연차 승인 안내 등).
+ * 발신번호·API 키는 알림톡 설정을 그대로 쓴다. 번호가 유효하지 않으면 조용히 건너뛴다.
+ */
+export async function sendPlainSms(
+  rawTo: string,
+  text: string,
+  meta: { businessName?: string; ref?: string; detail?: string } = {},
+): Promise<boolean> {
+  const s = getSettings();
+  if (!isAlimtalkConfigured() || !s.sender) return false;
+  const to = normalizePhone(rawTo || "");
+  if (!isSendablePhone(to)) return false;
+  const businessName = meta.businessName ?? "";
+  const ref = meta.ref ?? "";
+  try {
+    const data = await solapi("POST", "/messages/v4/send-many/detail", {
+      messages: [{ to, from: normalizePhone(s.sender), text }],
+    });
+    const failed: any[] = data?.failedMessageList ?? [];
+    if (failed.length > 0) {
+      const reason = failed[0]?.statusMessage || failed[0]?.statusCode || "발송 실패";
+      logSend({ kind: "alert", businessName, phone: to, status: "fail", detail: String(reason).slice(0, 200), ref });
+      return false;
     }
+    logSend({ kind: "alert", businessName, phone: to, status: "ok", detail: meta.detail ?? "알림 문자 발송", ref });
+    return true;
+  } catch (e: any) {
+    logSend({ kind: "alert", businessName, phone: to, status: "fail", detail: String(e?.message ?? e).slice(0, 200), ref });
+    return false;
   }
 }
 

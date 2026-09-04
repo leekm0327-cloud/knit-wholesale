@@ -221,6 +221,60 @@ export default function AdminAutomation() {
                     </div>
                   )}
 
+                  {job.key === "ecount_check" && (
+                    <div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">점검 범위 (최근 N일)</div>
+                      <Input
+                        type="number"
+                        min={7}
+                        max={120}
+                        defaultValue={Number(job.config.lookbackDays) || 45}
+                        onBlur={(e) =>
+                          saveMut.mutate({ key: job.key, patch: { config: { lookbackDays: Number(e.target.value) } } })
+                        }
+                        className="w-20"
+                        data-testid="lookback-ecount"
+                      />
+                    </div>
+                  )}
+
+                  {job.key === "inactive_customers" && (
+                    <>
+                      <div>
+                        <div className="mb-1 text-[11px] text-muted-foreground">실행 요일</div>
+                        <select
+                          value={String(job.config.weekday ?? "1")}
+                          onChange={(e) => saveMut.mutate({ key: job.key, patch: { config: { weekday: e.target.value } } })}
+                          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                          data-testid="weekday-inactive"
+                        >
+                          <option value="1">월요일</option>
+                          <option value="2">화요일</option>
+                          <option value="3">수요일</option>
+                          <option value="4">목요일</option>
+                          <option value="5">금요일</option>
+                          <option value="6">토요일</option>
+                          <option value="0">일요일</option>
+                          <option value="*">매일</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-[11px] text-muted-foreground">미주문 기준 (N일)</div>
+                        <Input
+                          type="number"
+                          min={7}
+                          max={90}
+                          defaultValue={Number(job.config.days) || 14}
+                          onBlur={(e) =>
+                            saveMut.mutate({ key: job.key, patch: { config: { days: Number(e.target.value) } } })
+                          }
+                          className="w-20"
+                          data-testid="days-inactive"
+                        />
+                      </div>
+                    </>
+                  )}
+
                   <div>
                     <div className="mb-1 text-[11px] text-muted-foreground">카카오 알림</div>
                     <select

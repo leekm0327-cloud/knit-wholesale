@@ -245,6 +245,9 @@ export default function AdminOrders() {
                           {o.quickRequest === 1 && (
                             <Badge variant="outline" className="shrink-0 border-foreground text-[10px] text-foreground">퀵</Badge>
                           )}
+                          {o.desiredDate && (
+                            <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">희망 {o.desiredDate.slice(5).replace("-", "/")}</Badge>
+                          )}
                           {o.isSample === 1 && (
                             <Badge className="shrink-0 bg-emerald-600 text-[10px] text-white hover:bg-emerald-600">샘플</Badge>
                           )}

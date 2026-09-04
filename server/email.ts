@@ -309,6 +309,70 @@ export async function sendOrderProcessedEmail(payload: OrderProcessedPayload, ba
   });
 }
 
+// ===== 주문 접수 확인 메일 (거래처) =====
+// 주문이 들어온 즉시 거래처에게 나간다. 예전에는 대표님만 알림을 받고 거래처는 화면 이동뿐이었다.
+// 입금 계좌와 인보이스 링크를 같이 보내 입금 지연을 줄인다.
+export interface OrderAcceptedPayload {
+  orderId: number;
+  orderNo: string;
+  businessName: string;
+  taxEmail: string;
+  items: Array<{ name: string; qty: number }>;
+  totalAmount: number;
+  merged: boolean;
+  desiredDate?: string;
+}
+
+export async function sendOrderAcceptedEmail(payload: OrderAcceptedPayload, baseUrl?: string) {
+  if (!payload.taxEmail || payload.taxEmail.trim() === "") {
+    console.log("[email] taxEmail 비어있음 — 접수 확인 메일 건너뜀", { orderNo: payload.orderNo });
+    return;
+  }
+  const invoiceUrl = `${baseUrl || process.env.PUBLIC_URL || "https://wholesale.knitcoffee.co.kr"}/#/invoice/${payload.orderId}`;
+  const itemLines = payload.items.map((i) => `  · ${escapeHtml(i.name)} × ${i.qty}`).join("<br>");
+  const itemText = payload.items.map((i) => `  · ${i.name} × ${i.qty}`).join("\n");
+  const head = payload.merged ? "오늘 접수 중인 주문에 추가되었습니다" : "주문이 접수되었습니다";
+  const desired = payload.desiredDate ? `<p style="margin:8px 0 0;">희망 배송일: ${escapeHtml(payload.desiredDate)}</p>` : "";
+
+  const html = `<!doctype html>
+<html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
+  <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #ebebeb;overflow:hidden;">
+    <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
+      ${LOGO_HTML}
+      <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">주문 접수 확인</div>
+    </div>
+    <div style="padding:24px 28px;font-size:14px;line-height:1.8;color:#222;">
+      <p>안녕하세요, ${escapeHtml(payload.businessName)}님.</p>
+      <p><strong>${escapeHtml(payload.orderNo)}</strong> — ${head}.<br>확인 후 처리완료 안내를 다시 드리겠습니다.</p>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">▣ 주문 항목</div>
+        <div>${itemLines}</div>
+        <p style="margin:10px 0 0;">합계 (부가세 포함): <strong>${fmtKRW(payload.totalAmount)}</strong></p>${desired}
+      </div>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">▣ 입금 계좌</div>
+        <p style="margin:0;">국민은행 098937-04-011092 (예금주: 이강민 니트커피)</p>
+      </div>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">▣ 거래명세서</div>
+        <a href="${invoiceUrl}" style="color:#111;font-weight:600;">${invoiceUrl}</a>
+      </div>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">문의</div>
+        <p style="margin:0;">· 카카오톡 채널: <a href="http://pf.kakao.com/_xiLQFG/chat" style="color:#111;">http://pf.kakao.com/_xiLQFG/chat</a><br>· 이메일: knitcoffee00@gmail.com</p>
+      </div>
+    </div>
+    <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #ebebeb;text-align:center;font-size:11px;color:#999;">— 니트커피</div>
+  </div>
+</body></html>`;
+  const text =
+    `안녕하세요, ${payload.businessName}님.\n\n${payload.orderNo} — ${head}.\n확인 후 처리완료 안내를 다시 드리겠습니다.\n\n` +
+    `▣ 주문 항목\n${itemText}\n  합계 (부가세 포함): ${fmtKRW(payload.totalAmount)}\n` +
+    (payload.desiredDate ? `  희망 배송일: ${payload.desiredDate}\n` : "") +
+    `\n▣ 입금 계좌\n  국민은행 098937-04-011092 (예금주: 이강민 니트커피)\n\n▣ 거래명세서\n  ${invoiceUrl}\n\n— 니트커피\n`;
+  await sendEmail({ to: payload.taxEmail, subject: `[니트커피] 주문 ${payload.orderNo} 접수 확인`, html, text });
+}
+
 // ===== 주문 수정 안내 메일 =====
 export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload, baseUrl?: string) {
   if (!payload.taxEmail || payload.taxEmail.trim() === "") {

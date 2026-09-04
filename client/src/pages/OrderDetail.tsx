@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
+import { reorderItems } from "@/lib/reorder";
 import type { Order, OrderItem, Product } from "@shared/schema";
 import { ArrowLeft, Pencil, XCircle, FileText, Loader2, RotateCcw } from "lucide-react";
 
@@ -50,45 +51,21 @@ export default function OrderDetail() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  // #2 이전 주문 품목을 장바구니에 다시 담기
+  // #2 이전 주문 품목을 장바구니에 다시 담기 (카탈로그의 '지난 주문 그대로 담기'와 같은 규칙)
   function reorder() {
     if (!order) return;
-    let items: OrderItem[] = [];
-    try {
-      items = JSON.parse(order.items) as OrderItem[];
-    } catch {
+    const r = reorderItems(order, products, add);
+    if (!r) {
       toast({ title: "불러오기 실패", description: "주문 품목을 읽을 수 없습니다.", variant: "destructive" });
       return;
     }
-    const productMap = new Map((products ?? []).map((p) => [p.id, p]));
-    let added = 0;
-    const skipped: string[] = [];
-    for (const it of items) {
-      // 단발성(직접입력) 품목은 상품 마스터에 없으므로 '다시 담기'에서 제외한다
-      if (it.productId == null) {
-        skipped.push(it.name);
-        continue;
-      }
-      const prod = productMap.get(it.productId);
-      // 현재 판매 중인 상품만 담기 (품절/삭제된 상품은 제외)
-      if (!prod || prod.available === 0) {
-        skipped.push(it.name);
-        continue;
-      }
-      // 가격은 현재 적용가(effectivePrice) 기준으로 담음
-      const unitPrice = (prod as any).effectivePrice ?? prod.price;
-      add({ productId: prod.id, name: prod.name, category: prod.category, unitPrice }, it.qty);
-      added += 1;
-    }
-    if (added === 0) {
+    if (r.added === 0) {
       toast({ title: "담을 수 있는 품목이 없습니다", description: "주문 품목이 모두 품절이거나 판매 종료되었습니다.", variant: "destructive" });
       return;
     }
     toast({
       title: "장바구니에 담았습니다",
-      description:
-        `${added}개 품목을 다시 담았습니다.` +
-        (skipped.length > 0 ? ` (품절/종료 제외: ${skipped.join(", ")})` : ""),
+      description: `${r.added}개 품목을 다시 담았습니다.` + (r.skipped.length > 0 ? ` (품절/종료 제외: ${r.skipped.join(", ")})` : ""),
     });
     navigate("/cart");
   }
@@ -166,6 +143,7 @@ export default function OrderDetail() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {STATUS_LABEL[order.status] ?? order.status} · 합계{" "}
                   {new Intl.NumberFormat("ko-KR").format(order.totalAmount)}원
+                  {order.desiredDate ? ` · 희망 배송일 ${order.desiredDate}` : ""}
                 </p>
               </div>
 

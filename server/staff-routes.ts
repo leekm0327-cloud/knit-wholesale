@@ -4,6 +4,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { staffStorage, seedOwnerStaff, importEspressoHistory, kstToday, kstMonthStart, toPublicStaff, workedMinutes, dateSpanDays } from "./staff-storage";
 import type { IStorage } from "./storage";
+import { sendOwnerSms, sendPlainSms } from "./alimtalk";
+import { sendKakaoMemo } from "./kakao";
 import {
   staffLoginSchema,
   insertStaffSchema,
@@ -573,6 +575,23 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       halfDay: !!parsed.data.halfDay,
       reason: parsed.data.reason ?? "",
     });
+
+    // 연차 신청은 대표님이 사이드바 배지를 눈으로 봐야만 알 수 있었다. 승인이 늦으면 근무표 사고로 이어진다.
+    const span = row.startDate === row.endDate ? row.startDate : `${row.startDate}~${row.endDate}`;
+    const half = row.halfDay ? " (반차)" : "";
+    sendOwnerSms(`[니트커피] 연차 신청\n${s.name} ${span}${half}`, { businessName: s.name, ref: `leave-${row.id}`, detail: "연차 신청 문자 발송" })
+      .catch((e) => console.warn("[alert] 연차 신청 문자 실패:", e?.message ?? e));
+    sendKakaoMemo(
+      `[니트커피] 연차 신청이 들어왔습니다.\n직원: ${s.name}\n기간: ${span}${half}${row.reason ? `\n사유: ${row.reason}` : ""}`,
+      "https://wholesale.knitcoffee.co.kr/#/admin/staff/leave",
+    ).catch((e) => console.warn("[kakao] 연차 신청 알림 실패:", e?.message ?? e));
+    (storage as any).createNotification({
+      type: "staff_leave",
+      title: `연차 신청 · ${s.name}`,
+      body: `${span}${half}${row.reason ? ` · ${row.reason}` : ""}`,
+      link: "/admin/staff/leave",
+    }).catch((e: any) => console.error("[notif] 연차 신청 알림 저장 실패:", e));
+
     res.json(row);
   });
 
@@ -629,6 +648,17 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
       id,
       `${row.staffName} 연차 ${row.startDate}~${row.endDate} ${parsed.data.status === "approved" ? "승인" : "반려"}`,
     );
+
+    // 결과는 직원 본인에게 문자로 알린다 (앱을 열어야만 알 수 있던 문제).
+    const staffRow = await staffStorage.getStaff(row.staffId);
+    if (staffRow?.phone) {
+      const span = row.startDate === row.endDate ? row.startDate : `${row.startDate}~${row.endDate}`;
+      const verdict = parsed.data.status === "approved" ? "승인되었습니다" : "반려되었습니다";
+      const memo = parsed.data.adminMemo ? `\n메모: ${parsed.data.adminMemo}` : "";
+      sendPlainSms(staffRow.phone, `[니트커피] ${row.staffName}님 연차 ${span}${row.halfDay ? "(반차)" : ""} 신청이 ${verdict}.${memo}`, {
+        businessName: row.staffName, ref: `leave-${row.id}`, detail: `연차 ${verdict} 문자 발송`,
+      }).catch((e) => console.warn("[alert] 연차 결과 문자 실패:", e?.message ?? e));
+    }
     res.json(row);
   });
 

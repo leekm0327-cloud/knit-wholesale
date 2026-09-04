@@ -139,6 +139,14 @@ export function Invoice({ order }: { order: Order }) {
         </div>
       </div>
 
+      {/* 희망 배송일 */}
+      {order.desiredDate && (
+        <div className="mt-4 rounded-none border border-[#e5e5e5] p-4">
+          <div className="mb-1 text-xs font-semibold text-[#777]">희망 배송일</div>
+          <p className="text-sm text-[#222]">{order.desiredDate}</p>
+        </div>
+      )}
+
       {/* 퀵 요청 */}
       {(order as any).quickRequest === 1 && (
         <div className="mt-4 rounded-none border border-amber-300 bg-amber-50 p-4">
