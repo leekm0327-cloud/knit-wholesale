@@ -184,8 +184,8 @@ export default function Login() {
         <p className="lead narrow">니트커피는 원두를 납품하는 홀세일 파트너이자, 여러 매장의 시작과 성장을 함께 한 컨설팅 파트너입니다.</p>
         <p className="lead narrow">여러 컨설팅 경험과 노하우를 통해 원두 뿐 아니라 매장에 필요한 부분을 함께 고민합니다.</p>
         <div className="cta-row">
-          <button type="button" className="btn" onClick={() => scrollTo("knit-start")}>무료 원두 샘플 신청</button>
-          <button type="button" className="btn ghost" onClick={() => scrollTo("knit-consulting")}>상담 문의</button>
+          <Link href="/register" className="btn" onClick={markSampleIntent}>무료 원두 샘플 신청</Link>
+          <Link href="/inquiry" className="btn ghost" onClick={() => markInquiryType("")}>상담 문의</Link>
         </div>
         <p className="note" style={{ marginTop: "14px" }}>블렌드 2종, 각 500g · 비용도 배송비도 없습니다.</p>
       </div>

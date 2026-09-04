@@ -41,6 +41,7 @@ const EMPTY = {
   region: "",
   volume: "",
   message: "",
+  website: "", // 허니팟 — 사람은 채우지 않는다
 };
 
 export default function Inquiry() {
@@ -91,11 +92,26 @@ export default function Inquiry() {
         <Card className="flex w-full max-w-md flex-col items-center gap-4 p-10 text-center" data-testid="card-inquiry-done">
           <CheckCircle2 className="h-12 w-12 text-teal-600" />
           <h2 className="font-display text-xl font-semibold text-foreground">문의가 접수되었습니다</h2>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            남겨주신 연락처로 담당자가 확인 후 연락드리겠습니다.<br />감사합니다.
+          <p className="text-sm leading-relaxed text-muted-foreground break-keep">
+            남겨주신 연락처로 영업일 기준 1일 안에 연락드리겠습니다.
+            {form.email.trim() ? <><br />접수 확인 메일을 {form.email.trim()} 으로 보내드렸습니다.</> : null}
           </p>
+          {inquiryType !== "consulting" && (
+            <div className="w-full rounded-lg border border-border bg-muted/30 px-4 py-3 text-left text-xs leading-relaxed text-muted-foreground break-keep">
+              기다리시는 동안 <span className="font-medium text-foreground">무료 원두 샘플</span>(블렌드 2종, 각 500g)을 먼저 받아보실 수 있습니다. 거래처 가입 후 바로 신청됩니다.
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap justify-center gap-2">
-            <Button variant="outline" onClick={() => navigate("/login")} data-testid="button-go-login">로그인으로</Button>
+            {inquiryType !== "consulting" ? (
+              <Button
+                onClick={() => { try { sessionStorage.setItem("knit.sampleIntent", "1"); } catch {} navigate("/register"); }}
+                data-testid="button-go-register"
+              >
+                가입하고 무료 샘플 받기
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => navigate("/")} data-testid="button-go-home">처음으로</Button>
+            )}
             <Button variant="ghost" onClick={() => { setForm(EMPTY); setDone(false); }}>
               추가 문의하기
             </Button>
@@ -159,6 +175,11 @@ export default function Inquiry() {
                   <Input value={form.volume} onChange={(e) => set("volume", e.target.value)} placeholder="예: 월 20kg 내외" data-testid="input-inq-volume" />
                 </div>
               )}
+              {/* 스팸 봇 방지용 함정 칸 — 사람에게는 보이지 않는다. 값이 차 있으면 서버가 조용히 버린다. */}
+              <div className="absolute -left-[9999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true">
+                <label htmlFor="inq-website">Website</label>
+                <input id="inq-website" name="website" tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => set("website", e.target.value)} />
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs">문의 내용 <span className="text-teal-600">*</span></Label>
                 <Textarea value={form.message} onChange={(e) => set("message", e.target.value)} rows={5} placeholder={MESSAGE_PLACEHOLDER[inquiryType]} data-testid="textarea-inq-message" />

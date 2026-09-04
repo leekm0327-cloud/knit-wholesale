@@ -12,7 +12,7 @@ import { registerCustomerActivityRoutes } from "./customer-activity";
 import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
 import { registerAlimtalkRoutes, sendOrderReceived, sendOrderAlertSms, sendOwnerSms } from "./alimtalk";
 import { registerExpenseImportRoutes } from "./expense-import";
-import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail, sendOrderAcceptedEmail } from "./email";
+import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdatedEmail, sendOrderMergedEmail, sendPasswordResetEmail, sendWholesaleInquiryEmail, sendVisitRequestEmail, sendNewCustomerEmail, sendOrderAcceptedEmail, sendInquiryConfirmationEmail, sendWelcomeEmail, sendApprovedEmail } from "./email";
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo, sendKakaoMemoDetailed } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
@@ -344,6 +344,13 @@ export async function registerRoutes(
       bizRegNo: customer.bizRegNo,
       bizVerified: !!bizVerified,
     }).catch((e) => console.error("[email] 거래처 가입 알림 메일 실패:", e));
+    // 가입자 본인에게 환영 메일 — 승인됐으면 다음 3단계, 아니면 승인받는 방법
+    sendWelcomeEmail({
+      email: customer.email,
+      businessName: customer.businessName,
+      managerName: customer.managerName,
+      bizVerified: !!bizVerified,
+    }, process.env.PUBLIC_URL || (req.headers.origin as string)).catch((e) => console.error("[email] 환영 메일 실패:", e));
     req.session.userId = customer.id;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
@@ -480,13 +487,30 @@ export async function registerRoutes(
       patch.taxEmail = patch.email;
     }
     // 사업자등록번호를 바꾸면 체크섬을 다시 검증해 승인 상태를 갱신
+    let selfVerified = false;
     if ("bizRegNo" in patch && patch.bizRegNo) {
       if (!isValidBizRegNo(patch.bizRegNo))
         return res.status(400).json({ message: "사업자등록번호 형식이 올바르지 않습니다." });
       patch.bizVerified = 1;
+      const before = await storage.getCustomer(req.session.userId!);
+      selfVerified = !!before && before.bizVerified !== 1 && before.role === "customer";
     }
     const updated = await storage.updateCustomer(req.session.userId!, patch);
     if (!updated) return res.status(404).json({ message: "사용자 없음" });
+    // 승인 대기였던 거래처가 사업자번호를 넣어 스스로 승인된 경우 — 대표님이 알 수 있게 남긴다
+    if (selfVerified) {
+      storage.createNotification({
+        type: "customer_register",
+        title: `거래처 승인 · ${updated.businessName}`,
+        body: `사업자등록번호 ${updated.bizRegNo} 입력으로 자동 승인`,
+        link: "/admin/customers",
+      }).catch((e) => console.error("[notif] 자가 승인 알림 저장 실패:", e));
+      storage.logActivity({
+        actorUserId: updated.id, actorEmail: updated.email, actorRole: "customer",
+        action: "customer.self_verify", targetType: "customer", targetId: String(updated.id),
+        summary: `거래처 '${updated.businessName}' 사업자번호 입력으로 자동 승인`,
+      }).catch(() => {});
+    }
     res.json(toPublic(updated));
   });
 
@@ -1375,6 +1399,14 @@ export async function registerRoutes(
       `[니트커피] 거래처 사업자 승인 완료\n상호: ${updated.businessName}\n이제 정상 주문/샘플 신청이 가능합니다.`,
       "https://wholesale.knitcoffee.co.kr/#/admin/customers",
     ).catch((e) => console.warn("[kakao] 승인 알림 발송 실패:", e?.message ?? e));
+    // 승인 사실은 거래처에게 알려야 의미가 있다 (예전에는 대표님 본인에게만 카톡이 갔다)
+    if (customer.bizVerified !== 1) {
+      sendApprovedEmail({
+        email: updated.email,
+        businessName: updated.businessName,
+        managerName: updated.managerName,
+      }, process.env.PUBLIC_URL || (req.headers.origin as string)).catch((e) => console.error("[email] 승인 안내 메일 실패:", e));
+    }
     res.json(toPublic(updated));
   });
 
@@ -3722,7 +3754,22 @@ export async function registerRoutes(
 
   // ===== 홀세일 납품 문의 =====
   // 공개(비회원) 제출
+  // 문의 폼 스팸 방지 — 로그인 없이 열린 유일한 쓰기 API라 IP당 시간당 횟수를 제한한다.
+  const inquiryHits = new Map<string, number[]>();
+  function inquiryAllowed(ip: string): boolean {
+    const now = Date.now();
+    const arr = (inquiryHits.get(ip) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+    if (arr.length >= 5) { inquiryHits.set(ip, arr); return false; }
+    arr.push(now); inquiryHits.set(ip, arr);
+    return true;
+  }
+
   app.post("/api/inquiry", async (req, res) => {
+    // 허니팟: 사람에게 보이지 않는 'website' 칸이 차 있으면 봇이다. 성공한 척 응답하고 버린다.
+    if (typeof req.body?.website === "string" && req.body.website.trim()) return res.json({ ok: true, id: 0 });
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+    if (!inquiryAllowed(ip))
+      return res.status(429).json({ message: "문의가 너무 많이 접수되었습니다. 잠시 후 다시 시도하거나 카카오톡 채널로 연락해 주세요." });
     const parsed = insertInquirySchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
@@ -3749,6 +3796,22 @@ export async function registerRoutes(
       body: `${d.contactName || "-"} · ${d.phone}`,
       link: "/admin/inquiries",
     }).catch((e) => console.error("[notif] 문의 알림 저장 실패:", e));
+    // 문의는 주문과 달리 즉시성 채널이 없어 놓치기 쉬웠다 — 문자·카톡도 같이 보낸다
+    const kindLabel = INQUIRY_TYPE_LABELS[d.inquiryType] ?? "문의";
+    sendOwnerSms(`[니트커피] ${kindLabel} 문의\n${d.businessName.slice(0, 10)} ${d.phone}`, { businessName: d.businessName, ref: `inquiry-${item.id}`, detail: "문의 접수 문자 발송" })
+      .catch((e) => console.warn("[alert] 문의 문자 실패:", e?.message ?? e));
+    sendKakaoMemo(
+      `[니트커피] ${kindLabel} 문의가 들어왔습니다.\n상호: ${d.businessName}\n담당: ${d.contactName || "-"} / ${d.phone}${d.region ? `\n지역: ${d.region}` : ""}${d.volume ? `\n예상 물량: ${d.volume}` : ""}\n${d.message.slice(0, 80)}`,
+      "https://wholesale.knitcoffee.co.kr/#/admin/inquiries",
+    ).catch((e) => console.warn("[kakao] 문의 알림 실패:", e?.message ?? e));
+    // 문의한 사람에게 접수 확인 메일 (이메일을 적은 경우만)
+    sendInquiryConfirmationEmail({
+      email: d.email ?? "",
+      businessName: d.businessName,
+      contactName: d.contactName ?? "",
+      inquiryType: d.inquiryType,
+      message: d.message,
+    }, process.env.PUBLIC_URL || (req.headers.origin as string)).catch((e) => console.error("[email] 문의 확인 메일 실패:", e));
     res.json({ ok: true, id: item.id });
   });
   // 관리자 목록

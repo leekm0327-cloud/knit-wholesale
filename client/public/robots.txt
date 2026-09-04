@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Sitemap: https://wholesale.knitcoffee.co.kr/sitemap.xml

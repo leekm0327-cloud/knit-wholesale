@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -162,19 +163,18 @@ export default function SampleRequest() {
         {eligLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : !eligible ? (
-          <Card className="flex flex-col items-center gap-3 py-16 text-center" data-testid="card-not-eligible">
+          <Card className="flex flex-col items-center gap-3 px-6 py-12 text-center" data-testid="card-not-eligible">
             <PackageCheck className="h-10 w-10 text-muted-foreground/50" />
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground break-keep">
               {eligibility?.reason || "현재 샘플을 신청할 수 없습니다."}
             </p>
-            {!eligibility?.bizVerified && (
-              <p className="text-xs text-muted-foreground">
-                사업자등록번호 검증 후 승인되면 샘플 신청이 가능합니다.
-              </p>
+            {!eligibility?.bizVerified ? (
+              <BizVerifyForm />
+            ) : (
+              <Button variant="outline" onClick={() => navigate("/catalog")} data-testid="button-go-catalog">
+                카탈로그로 이동
+              </Button>
             )}
-            <Button variant="outline" onClick={() => navigate("/catalog")} data-testid="button-go-catalog">
-              카탈로그로 이동
-            </Button>
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
@@ -301,6 +301,69 @@ export default function SampleRequest() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// 승인 대기 상태에서 그 자리에서 사업자등록번호를 넣어 바로 승인받는 폼.
+// (예전에는 "승인되면 신청 가능합니다"라는 문구와 카탈로그 버튼뿐이라 여기서 이탈했다)
+function BizVerifyForm() {
+  const { toast } = useToast();
+  const [bizRegNo, setBizRegNo] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const v = bizRegNo.trim();
+    if (!v) return;
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", "/api/auth/me", { bizRegNo: v });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/sample/eligibility"] }),
+      ]);
+      toast({ title: "승인되었습니다", description: "이제 샘플을 신청하실 수 있습니다." });
+    } catch (err: any) {
+      toast({ title: "확인 실패", description: errMsg(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="mt-2 w-full max-w-sm space-y-4">
+      <form onSubmit={submit} className="space-y-2 text-left">
+        <label htmlFor="bizRegNo" className="text-xs font-medium text-foreground">사업자등록번호를 입력하면 바로 승인됩니다</label>
+        <div className="flex gap-2">
+          <Input
+            id="bizRegNo"
+            value={bizRegNo}
+            onChange={(e) => setBizRegNo(e.target.value)}
+            placeholder="000-00-00000"
+            inputMode="numeric"
+            data-testid="input-biz-verify"
+          />
+          <Button type="submit" disabled={saving || !bizRegNo.trim()} data-testid="button-biz-verify">
+            {saving && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            확인
+          </Button>
+        </div>
+        <p className="text-[11px] leading-relaxed text-muted-foreground break-keep">
+          사업자등록번호가 있는 카페·매장이면 자동으로 승인됩니다. 입력한 번호는 거래명세서와 세금계산서에 쓰입니다.
+        </p>
+      </form>
+      <div className="border-t pt-4 text-[11px] leading-relaxed text-muted-foreground break-keep">
+        아직 사업자등록 전이거나 개인이시면{" "}
+        <a
+          href="https://pf.kakao.com/_xiLQFG/chat"
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-foreground underline underline-offset-2"
+          data-testid="link-kakao-approve"
+        >
+          카카오톡 채널
+        </a>
+        로 알려주세요. 확인 후 직접 승인해 드립니다 (보통 당일 처리).
+      </div>
     </div>
   );
 }

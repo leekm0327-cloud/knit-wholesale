@@ -373,6 +373,104 @@ export async function sendOrderAcceptedEmail(payload: OrderAcceptedPayload, base
   await sendEmail({ to: payload.taxEmail, subject: `[니트커피] 주문 ${payload.orderNo} 접수 확인`, html, text });
 }
 
+// ===== 예비 고객 · 신규 거래처 메일 =====
+// 문의·가입·승인 세 시점에 상대방에게 나가는 확인 메일. 예전에는 대표님만 알림을 받고 상대는 아무것도 못 받았다.
+
+const CONTACT_HTML = `<div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">문의</div>
+        <p style="margin:0;">· 카카오톡 채널: <a href="http://pf.kakao.com/_xiLQFG/chat" style="color:#111;">http://pf.kakao.com/_xiLQFG/chat</a><br>· 이메일: knitcoffee00@gmail.com · 전화 070-7717-0613</p>
+      </div>`;
+const CONTACT_TEXT = `문의는 아래로 부탁드립니다.\n  · 카카오톡 채널: http://pf.kakao.com/_xiLQFG/chat\n  · 이메일: knitcoffee00@gmail.com · 전화 070-7717-0613\n`;
+
+function shell(title: string, bodyHtml: string): string {
+  return `<!doctype html>
+<html lang="ko"><body style="margin:0;padding:32px 16px;background:#f6f6f6;font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#222;">
+  <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #ebebeb;overflow:hidden;">
+    <div style="padding:28px 28px 24px;border-bottom:1px solid #ebebeb;">
+      ${LOGO_HTML}
+      <div style="margin-top:14px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#111;">${title}</div>
+    </div>
+    <div style="padding:24px 28px;font-size:14px;line-height:1.8;color:#222;">${bodyHtml}${CONTACT_HTML}</div>
+    <div style="padding:16px 28px;background:#fafafa;border-top:1px solid #ebebeb;text-align:center;font-size:11px;color:#999;">— 니트커피</div>
+  </div>
+</body></html>`;
+}
+
+const INQUIRY_TYPE_TEXT: Record<string, string> = { wholesale: "원두 납품", consulting: "카페 컨설팅", both: "원두 납품 · 카페 컨설팅" };
+
+/** 문의 접수 확인 — 문의 폼에 이메일을 적은 사람에게 */
+export async function sendInquiryConfirmationEmail(p: {
+  email: string; businessName: string; contactName?: string; inquiryType: string; message: string;
+}, baseUrl?: string) {
+  if (!p.email || !p.email.trim()) return;
+  const base = baseUrl || process.env.PUBLIC_URL || "https://wholesale.knitcoffee.co.kr";
+  const kind = INQUIRY_TYPE_TEXT[p.inquiryType] ?? "문의";
+  const who = p.contactName?.trim() ? `${p.businessName} ${p.contactName}` : p.businessName;
+  const sampleHtml = p.inquiryType === "consulting" ? "" : `
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">▣ 기다리시는 동안</div>
+        <p style="margin:0;">무료 원두 샘플(블렌드 2종, 각 500g)을 먼저 받아보실 수 있습니다. 거래처 가입 후 바로 신청됩니다.<br>
+        <a href="${base}/#/register" style="color:#111;font-weight:600;">가입하고 샘플 신청하기</a></p>
+      </div>`;
+  const html = shell("문의 접수 확인", `
+      <p>안녕하세요, ${escapeHtml(who)}님.</p>
+      <p><strong>${escapeHtml(kind)}</strong> 문의가 접수되었습니다. 영업일 기준 1일 안에 남겨주신 연락처로 연락드리겠습니다.</p>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">▣ 남겨주신 내용</div>
+        <p style="margin:0;white-space:pre-wrap;">${escapeHtml(p.message)}</p>
+      </div>${sampleHtml}`);
+  const text =
+    `안녕하세요, ${who}님.\n\n${kind} 문의가 접수되었습니다. 영업일 기준 1일 안에 남겨주신 연락처로 연락드리겠습니다.\n\n` +
+    `▣ 남겨주신 내용\n${p.message}\n\n` +
+    (p.inquiryType === "consulting" ? "" : `▣ 기다리시는 동안\n  무료 원두 샘플(블렌드 2종, 각 500g)을 먼저 받아보실 수 있습니다.\n  ${base}/#/register\n\n`) +
+    CONTACT_TEXT + `\n— 니트커피\n`;
+  await sendEmail({ to: p.email, subject: `[니트커피] ${kind} 문의가 접수되었습니다`, html, text });
+}
+
+/** 가입 환영 — 승인 여부에 따라 다음 단계가 다르다 */
+export async function sendWelcomeEmail(p: {
+  email: string; businessName: string; managerName: string; bizVerified: boolean; sampleIntent?: boolean;
+}, baseUrl?: string) {
+  if (!p.email || !p.email.trim()) return;
+  const base = baseUrl || process.env.PUBLIC_URL || "https://wholesale.knitcoffee.co.kr";
+  const steps = p.bizVerified
+    ? `<ol style="margin:0;padding-left:18px;">
+        <li>무료 원두 샘플 신청 — 블렌드 2종, 각 500g · <a href="${base}/#/sample" style="color:#111;font-weight:600;">${base}/#/sample</a></li>
+        <li>원두 정보와 권장 레시피 확인 — <a href="${base}/#/catalog" style="color:#111;">카탈로그</a></li>
+        <li>첫 주문 — 원두 5kg부터, 평일 12시 이전 주문은 당일 출고</li>
+      </ol>`
+    : `<p style="margin:0;">사업자등록번호가 확인되지 않아 <strong>승인 대기</strong> 상태입니다.<br>
+        내 정보 또는 샘플 신청 화면에서 사업자등록번호를 입력하시면 바로 승인되고, 사업자등록 전이시면 카카오톡 채널로 알려주시면 확인 후 직접 승인해 드립니다 (보통 당일).</p>`;
+  const html = shell("니트커피 거래처 가입을 환영합니다", `
+      <p>안녕하세요, ${escapeHtml(p.businessName)} ${escapeHtml(p.managerName)}님.</p>
+      <p>니트커피 도매 거래처로 가입해 주셔서 감사합니다. 로그인은 <strong>상호명 + 비밀번호</strong>로 하시면 됩니다.</p>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:#888;margin-bottom:10px;">▣ ${p.bizVerified ? "다음 단계" : "승인 안내"}</div>
+        ${steps}
+      </div>`);
+  const text =
+    `안녕하세요, ${p.businessName} ${p.managerName}님.\n\n니트커피 도매 거래처로 가입해 주셔서 감사합니다. 로그인은 상호명 + 비밀번호로 하시면 됩니다.\n\n` +
+    (p.bizVerified
+      ? `▣ 다음 단계\n  1. 무료 원두 샘플 신청 (블렌드 2종, 각 500g): ${base}/#/sample\n  2. 원두 정보·권장 레시피 확인: ${base}/#/catalog\n  3. 첫 주문 — 원두 5kg부터, 평일 12시 이전 주문은 당일 출고\n\n`
+      : `▣ 승인 안내\n  사업자등록번호가 확인되지 않아 승인 대기 상태입니다.\n  내 정보 또는 샘플 신청 화면에서 사업자등록번호를 입력하시면 바로 승인됩니다.\n  사업자등록 전이시면 카카오톡 채널로 알려주세요.\n\n`) +
+    CONTACT_TEXT + `\n— 니트커피\n`;
+  await sendEmail({ to: p.email, subject: `[니트커피] 거래처 가입을 환영합니다`, html, text });
+}
+
+/** 대표님이 직접 승인했을 때 — 거래처에게 */
+export async function sendApprovedEmail(p: { email: string; businessName: string; managerName: string }, baseUrl?: string) {
+  if (!p.email || !p.email.trim()) return;
+  const base = baseUrl || process.env.PUBLIC_URL || "https://wholesale.knitcoffee.co.kr";
+  const html = shell("거래처 승인이 완료되었습니다", `
+      <p>안녕하세요, ${escapeHtml(p.businessName)} ${escapeHtml(p.managerName)}님.</p>
+      <p>거래처 승인이 완료되었습니다. 이제 무료 원두 샘플 신청과 주문이 가능합니다.</p>
+      <div style="margin-top:20px;padding:16px;background:#f9f9f9;border:1px solid #ebebeb;">
+        <p style="margin:0;">· 무료 샘플 신청: <a href="${base}/#/sample" style="color:#111;font-weight:600;">${base}/#/sample</a><br>· 원두 발주: <a href="${base}/#/catalog" style="color:#111;">${base}/#/catalog</a></p>
+      </div>`);
+  const text = `안녕하세요, ${p.businessName} ${p.managerName}님.\n\n거래처 승인이 완료되었습니다. 이제 무료 원두 샘플 신청과 주문이 가능합니다.\n\n  · 무료 샘플 신청: ${base}/#/sample\n  · 원두 발주: ${base}/#/catalog\n\n` + CONTACT_TEXT + `\n— 니트커피\n`;
+  await sendEmail({ to: p.email, subject: `[니트커피] 거래처 승인이 완료되었습니다`, html, text });
+}
+
 // ===== 주문 수정 안내 메일 =====
 export async function sendOrderUpdatedEmail(payload: OrderUpdatedPayload, baseUrl?: string) {
   if (!payload.taxEmail || payload.taxEmail.trim() === "") {
