@@ -1902,6 +1902,7 @@ export type CreatePrepTask = z.infer<typeof createPrepTaskSchema>;
 
 /** 확인자 목록과 내 확인 여부를 붙인 인수인계 한 건 */
 export type HandoverRow = Handover & {
+  pending?: { staffId: number; staffName: string }[]; // 아직 확인하지 않은 재직자 (쓴 사람 제외)
   readers: { staffId: number; staffName: string; readAt: number }[];
   readByMe: boolean;
   mine: boolean;

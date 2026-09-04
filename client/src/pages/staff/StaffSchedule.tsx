@@ -57,13 +57,14 @@ function weeksOfMonth(year: number, month: number): Date[][] {
   return weeks;
 }
 
-/** 이름을 좁은 칸에 넣기 위해 성을 뺀 이름만 (3자 이상일 때) */
-function shortName(name: string): string {
-  const n = name.trim();
-  return n.length >= 3 ? n.slice(1) : n;
+/** 좁은 칸에 넣을 이름 — 성을 떼면 '김직원'이 '직원'이 되어 오히려 헷갈린다. 이름 전체를 쓰고 글자 크기로 맞춘다. */
+function cellName(name: string): string {
+  return name.trim() || "-";
 }
 
 type ShiftResponse = { shifts: Shift[]; staff: { id: number; name: string; position: string }[] };
+
+import { StaffCalendarCard } from "@/components/StaffCalendar";
 
 export default function StaffSchedule() {
   const { data: me } = useStaff();
@@ -71,6 +72,8 @@ export default function StaffSchedule() {
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
 
   const weeks = useMemo(() => weeksOfMonth(cursor.y, cursor.m), [cursor]);
+  // 이번 주·다음 주만 펼치고 나머지는 접는다. 한 달 5주를 다 그리면 화면이 세로로 너무 길었다.
+  const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set());
   const from = ymd(weeks[0][0]);
   const to = ymd(weeks[weeks.length - 1][6]);
   const todayStr = ymd(today);
@@ -159,19 +162,47 @@ export default function StaffSchedule() {
             SHIFT_SLOTS.some((slot) => cellMap.get(`${ymd(d)}|${slot}`)?.staffId === me?.id),
           ).length;
           const hasToday = week.some((d) => ymd(d) === todayStr);
+          const weekKey = ymd(week[0]);
+          const weekEnd = ymd(week[6]);
+          // 기본 펼침: 이번 주, 다음 주. 지난 주와 그 뒤는 접어두고 탭하면 연다.
+          const nextWeekStart = ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + (7 - ((today.getDay() + 6) % 7))));
+          const defaultOpen = hasToday || weekKey === nextWeekStart;
+          const isOpen = openWeeks.has(weekKey) ? !defaultOpen : defaultOpen;
+          const isPast = weekEnd < todayStr;
+          // 이 주에 배정이 하나도 없는 파트 묶음은 숨긴다 (빈 CLOSE·PART 줄이 매주 반복되던 문제)
+          const groupsToShow = PART_GROUPS.filter((g) =>
+            g.slots.some((slot) => week.some((d) => cellMap.has(`${ymd(d)}|${slot}`))),
+          );
+          const toggle = () =>
+            setOpenWeeks((prev) => {
+              const n = new Set(prev);
+              if (n.has(weekKey)) n.delete(weekKey); else n.add(weekKey);
+              return n;
+            });
 
           return (
-            <div key={ymd(week[0])}>
-              <div className="s-sect flex items-baseline justify-between" style={{ margin: "16px 4px 8px" }}>
-                <span className="text-[13px] font-medium" style={{ color: "var(--s-muted)" }}>
+            <div key={weekKey}>
+              <button
+                type="button"
+                onClick={toggle}
+                className="s-sect flex w-full items-baseline justify-between text-left"
+                style={{ margin: "16px 4px 8px", width: "calc(100% - 8px)" }}
+                data-testid={`toggle-week-${weekKey}`}
+              >
+                <span className="text-[13px] font-medium" style={{ color: isPast ? "var(--s-faint)" : "var(--s-muted)" }}>
                   {week[0].getMonth() + 1}.{week[0].getDate()} – {week[6].getMonth() + 1}.{week[6].getDate()}
                   {hasToday && (
                     <span style={{ color: "var(--s-accent)", fontWeight: 600 }}> · 이번 주</span>
                   )}
+                  {weekKey === nextWeekStart && <span style={{ color: "var(--s-muted)" }}> · 다음 주</span>}
                 </span>
-                <span className="text-[12px] font-semibold">내 근무 {myCount}일</span>
-              </div>
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold" style={isPast ? { color: "var(--s-faint)" } : undefined}>
+                  내 근무 {myCount}일
+                  <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.8} style={{ transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+                </span>
+              </button>
 
+              {isOpen && (
               <div className="s-card" style={{ padding: "10px 9px 11px" }}>
                 {/* 날짜 머리 */}
                 <div style={GRID}>
@@ -204,8 +235,11 @@ export default function StaffSchedule() {
                   })}
                 </div>
 
-                {/* 파트 묶음 — 묶음 사이를 띄워 네 갈래가 한눈에 갈리게 */}
-                {PART_GROUPS.map((g, gi) => (
+                {groupsToShow.length === 0 && (
+                  <p className="pt-2 text-center text-[12px]" style={{ color: "var(--s-faint)" }}>아직 배정된 근무가 없습니다</p>
+                )}
+                {/* 파트 묶음 — 묶음 사이를 띄워 네 갈래가 한눈에 갈리게. 배정 없는 파트는 숨김 */}
+                {groupsToShow.map((g, gi) => (
                   <div key={g.key} style={{ ...GRID, marginTop: gi === 0 ? 2 : 11 }}>
                     <div
                       className="flex items-center justify-center text-[8px] font-bold leading-none"
@@ -225,7 +259,7 @@ export default function StaffSchedule() {
                         return (
                           <div
                             key={slot + ymd(d)}
-                            className="flex h-[25px] items-center justify-center truncate rounded-[7px] px-0.5 text-[10px] leading-none"
+                            className="flex h-[25px] items-center justify-center overflow-hidden rounded-[7px] px-0.5 text-[9px] leading-none"
                             style={
                               color
                                 ? mine
@@ -234,7 +268,7 @@ export default function StaffSchedule() {
                                 : { background: "var(--s-hair)" }
                             }
                           >
-                            {cell ? shortName(nameOf.get(cell.staffId) ?? "-") : ""}
+                            <span className="truncate">{cell ? cellName(nameOf.get(cell.staffId) ?? "-") : ""}</span>
                           </div>
                         );
                       }),
@@ -242,10 +276,14 @@ export default function StaffSchedule() {
                   </div>
                 ))}
               </div>
+              )}
             </div>
           );
         })
       )}
+
+      {/* 앞으로 2주 일정(단체 주문·행사·준비 작업) — 홈에 있던 것을 여기로 옮겼다. 홈은 오늘 것만 보여준다 */}
+      <StaffCalendarCard />
 
       {/* 범례 — 색은 사람을 가리킨다 */}
       <div className="s-sect" style={{ margin: "18px 4px 8px" }}>
@@ -260,7 +298,7 @@ export default function StaffSchedule() {
             <b className="font-semibold">내 근무</b>
           </span>
           {(data?.staff ?? [])
-            .filter((s) => s.id !== me?.id)
+            .filter((s) => s.id !== me?.id && (data?.shifts ?? []).some((sh) => sh.staffId === s.id))
             .map((s) => {
               const c = staffColor(s.id);
               return (

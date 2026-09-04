@@ -36,6 +36,11 @@ function fmtDay(iso: string): string {
 }
 
 export default function StaffDessert() {
+  useEffect(() => {
+    let flag = "";
+    try { flag = sessionStorage.getItem("knit.staffPrep") || ""; sessionStorage.removeItem("knit.staffPrep"); } catch {}
+    if (flag) setTimeout(() => document.getElementById("staff-prep-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+  }, []);
   const { toast } = useToast();
   const [date, setDate] = useState(today());
   const [kind, setKind] = useState<Kind>("produce");
@@ -122,7 +127,8 @@ export default function StaffDessert() {
         </button>
       </div>
 
-      {/* 이 날 해야 하는 준비 작업 */}
+      {/* 이 날 해야 하는 준비 작업 — '더보기 → 준비 작업'으로 들어오면 여기로 스크롤 */}
+      <div id="staff-prep-section" />
       <PrepTasks date={date} />
 
       {isLoading ? (

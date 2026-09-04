@@ -36,6 +36,7 @@ export default function StaffHandover() {
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [editBody, setEditBody] = useState("");
+  const [writing, setWriting] = useState(false);
 
   const key = `/api/staff/handover?date=${date}`;
   const { data, isLoading } = useQuery<HandoverDay>({ queryKey: [key] });
@@ -55,6 +56,7 @@ export default function StaffHandover() {
       await apiRequest("POST", "/api/staff/handover", { workDate: date, body: body.trim(), important });
       setBody("");
       setImportant(false);
+      setWriting(false);
       invalidate();
     } catch (err) {
       toast({ variant: "destructive", title: "등록 실패", description: errMsg(err) });
@@ -127,42 +129,20 @@ export default function StaffHandover() {
         </button>
       </div>
 
-      {/* 쓰기 */}
-      <div className="s-sect">남길 말</div>
-      <div className="s-card">
-        <textarea
-          className="s-input"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={3}
-          placeholder="다음 근무자가 알아야 할 것을 적어주세요."
-          data-testid="input-handover-body"
-        />
-        <div className="s-li" style={{ paddingBottom: 0 }}>
-          <span className="text-[13px]" style={{ color: "var(--s-muted)" }}>
-            꼭 확인해야 함
-          </span>
-          <button
-            onClick={() => setImportant((v) => !v)}
-            className="relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors"
-            style={{ background: important ? "var(--s-ink)" : "#dedcd6" }}
-            data-testid="toggle-handover-important"
-            aria-label="중요 표시"
-          >
-            <span
-              className="absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all"
-              style={{ left: important ? 21 : 3 }}
-            />
-          </button>
-        </div>
-        <button className="s-pill wide mt-3" onClick={submit} disabled={busy} data-testid="button-submit-handover">
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          등록
-        </button>
-      </div>
-
       {/* 목록 */}
-      <div className="s-sect">이날의 인수인계</div>
+      <div className="s-sect flex items-baseline justify-between">
+        <span>이날의 인수인계</span>
+        {!writing && (
+          <button
+            className="text-[12px] font-semibold"
+            style={{ color: "var(--s-accent)" }}
+            onClick={() => { setWriting(true); setTimeout(() => document.getElementById("handover-write")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50); }}
+            data-testid="button-open-write"
+          >
+            + 남길 말 쓰기
+          </button>
+        )}
+      </div>
 
       {isLoading ? (
         <div className="space-y-2.5">
@@ -234,10 +214,12 @@ export default function StaffHandover() {
               {/* 확인 */}
               <div className="mt-3 flex items-center justify-between gap-2 pt-2.5" style={{ borderTop: "1px solid var(--s-hair)" }}>
                 <div className="min-w-0 text-[11px]" style={{ color: "var(--s-muted)" }}>
-                  {r.readers.length === 0 ? (
+                  {(r.pending?.length ?? 0) > 0 ? (
+                    <span className="truncate">미확인 <b style={{ color: "var(--s-ink)", fontWeight: 600 }}>{r.pending!.map((x) => x.staffName).join(", ")}</b></span>
+                  ) : r.readers.length === 0 ? (
                     "아직 확인한 사람이 없습니다"
                   ) : (
-                    <span className="truncate">확인 {r.readers.map((x) => x.staffName).join(", ")}</span>
+                    <span className="truncate">모두 확인 ({r.readers.map((x) => x.staffName).join(", ")})</span>
                   )}
                 </div>
                 {r.mine ? (
@@ -268,6 +250,45 @@ export default function StaffHandover() {
         })
       )}
 
+      {/* 쓰기 — 읽는 게 먼저라 아래에 두고, 버튼을 눌러야 펼쳐진다 */}
+      {writing && (
+      <div className="s-card mt-2.5" id="handover-write">
+        <textarea
+          className="s-input"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={3}
+          placeholder="다음 근무자가 알아야 할 것을 적어주세요."
+          data-testid="input-handover-body"
+        />
+        <div className="s-li" style={{ paddingBottom: 0 }}>
+          <span className="text-[13px]" style={{ color: "var(--s-muted)" }}>
+            꼭 확인해야 함
+          </span>
+          <button
+            onClick={() => setImportant((v) => !v)}
+            className="relative h-[26px] w-[44px] shrink-0 rounded-full transition-colors"
+            style={{ background: important ? "var(--s-ink)" : "#dedcd6" }}
+            data-testid="toggle-handover-important"
+            aria-label="중요 표시"
+          >
+            <span
+              className="absolute top-[3px] h-5 w-5 rounded-full bg-white transition-all"
+              style={{ left: important ? 21 : 3 }}
+            />
+          </button>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button className="s-pill ghost" style={{ flex: "0 0 auto", padding: "0 18px" }} onClick={() => { setWriting(false); setBody(""); setImportant(false); }} data-testid="button-cancel-handover">
+            취소
+          </button>
+          <button className="s-pill wide" onClick={submit} disabled={busy} data-testid="button-submit-handover">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            등록
+          </button>
+        </div>
+      </div>
+      )}
       <p className="mt-4 px-2 text-center text-[11px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
         확인 버튼을 누르면 이름이 남습니다.
         <br />

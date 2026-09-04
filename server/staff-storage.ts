@@ -1251,7 +1251,9 @@ export class StaffStorage {
 
   /** 내가 아직 확인하지 않은, 남이 쓴 인수인계 수 */
   private countUnreadHandovers(date: string, staffId: number): number {
-    const rows = db.select().from(handovers).where(eq(handovers.workDate, date)).all();
+    // 어제 밤에 쓴 글을 오늘 아침 오픈 근무자가 놓치지 않도록 어제 것까지 본다
+    const yday = addDays(date, -1);
+    const rows = db.select().from(handovers).all().filter((r) => r.workDate === date || r.workDate === yday);
     if (rows.length === 0) return 0;
     const mine = new Set(
       db.select().from(handoverReads).where(eq(handoverReads.staffId, staffId)).all().map((r) => r.handoverId),
@@ -1261,12 +1263,14 @@ export class StaffStorage {
 
   /** 확인하지 않은 인수인계 본문 (홈 상단 강조용) */
   private unreadHandovers(date: string, staffId: number) {
+    // 어제 것까지 — 마감조가 남긴 글은 다음날 오픈조가 읽어야 의미가 있다
+    const yday = addDays(date, -1);
     const rows = db
       .select()
       .from(handovers)
-      .where(eq(handovers.workDate, date))
       .orderBy(desc(handovers.important), asc(handovers.createdAt))
-      .all();
+      .all()
+      .filter((r) => r.workDate === date || r.workDate === yday);
     if (rows.length === 0) return [];
     const mine = new Set(
       db.select().from(handoverReads).where(eq(handoverReads.staffId, staffId)).all().map((r) => r.handoverId),
@@ -1296,7 +1300,8 @@ export class StaffStorage {
       ? db.select().from(handoverReads).all().filter((r) => ids.has(r.handoverId))
       : [];
 
-    const staffCount = db.select().from(staff).all().filter((s) => s.active === 1).length;
+    const activeStaff = db.select().from(staff).all().filter((s) => s.active === 1);
+    const staffCount = activeStaff.length;
 
     return {
       date,
@@ -1306,9 +1311,15 @@ export class StaffStorage {
           .filter((x) => x.handoverId === r.id)
           .map((x) => ({ staffId: x.staffId, staffName: x.staffName, readAt: x.readAt }))
           .sort((a, b) => a.readAt - b.readAt);
+        const readIds = new Set(readers.map((x) => x.staffId));
+        // 아직 안 읽은 사람 — 쓴 사람 본인은 제외. "누가 못 봤는지"가 "누가 봤는지"보다 쓸모 있다.
+        const pending = activeStaff
+          .filter((s) => s.id !== r.staffId && !readIds.has(s.id))
+          .map((s) => ({ staffId: s.id, staffName: s.name }));
         return {
           ...r,
           readers,
+          pending,
           readByMe: readers.some((x) => x.staffId === staffId),
           mine: r.staffId === staffId,
         } satisfies HandoverRow;

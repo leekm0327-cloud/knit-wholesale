@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout, useStaff } from "@/components/StaffLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -9,6 +9,7 @@ import {
   ESPRESSO_RATINGS,
   espressoRatingLabel,
   type EspressoLog,
+  type EspressoStats,
 } from "@shared/schema";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
 
@@ -21,6 +22,7 @@ type Draft = {
   doseG: string;
   yieldG: string;
   timeSec: string;
+  grindSetting: string;
   waterTemp: string;
   grinderTemp: string;
   roomTemp: string;
@@ -42,6 +44,7 @@ function emptyDraft(): Draft {
     doseG: "",
     yieldG: "",
     timeSec: "",
+    grindSetting: "",
     waterTemp: "",
     grinderTemp: "",
     roomTemp: "",
@@ -75,6 +78,27 @@ export default function StaffEspresso() {
   const [busy, setBusy] = useState(false);
 
   const { data: logs, isLoading } = useQuery<EspressoLog[]>({ queryKey: ["/api/staff/espresso-logs"] });
+  // 요즘 세팅 — 공개 통계 API(전체 기간 · 긍정 평가 기준)를 그대로 쓴다. 서버가 30초 캐시한다.
+  const { data: stats } = useQuery<EspressoStats>({ queryKey: ["/api/espresso-log-stats"] });
+
+  // 원두별 가장 최근에 적힌 분쇄도 (이번 달 기록 중)
+  const latestGrind = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of logs ?? []) {
+      if (l.grindSetting && !m.has(l.beanName)) m.set(l.beanName, l.grindSetting);
+    }
+    return m;
+  }, [logs]);
+
+  // 오늘 입력한 습도가 있으면 그 구간, 없으면 가장 최근 기록의 습도 구간을 권장 레시피로 보여준다
+  const humidityHint = useMemo(() => {
+    if (!stats?.byHumidity?.length) return null;
+    const h = Number(d.roomHumidity) || (logs ?? []).find((l) => l.roomHumidity > 0)?.roomHumidity || 0;
+    if (!h) return null;
+    const idx = h < 50 ? 0 : h < 60 ? 1 : h < 70 ? 2 : h < 80 ? 3 : 4;
+    const row = stats.byHumidity[idx];
+    return row && row.count > 0 ? { h, row } : null;
+  }, [stats, logs, d.roomHumidity]);
 
   function set(patch: Partial<Draft>) {
     setD((prev) => ({ ...prev, ...patch }));
@@ -106,6 +130,7 @@ export default function StaffEspresso() {
         doseG: Number(d.doseG) || 0,
         yieldG: Number(d.yieldG) || 0,
         timeSec: Number(d.timeSec) || 0,
+        grindSetting: d.grindSetting.trim(),
         waterTemp: Number(d.waterTemp) || 0,
         grinderTemp: Number(d.grinderTemp) || 0,
         roomTemp: Number(d.roomTemp) || 0,
@@ -220,6 +245,16 @@ export default function StaffEspresso() {
               <Field label="추출량 (g)" value={d.yieldG} onChange={(v) => set({ yieldG: v })} placeholder="34" test="input-yield" />
               <Field label="시간 (초)" value={d.timeSec} onChange={(v) => set({ timeSec: v })} placeholder="27" test="input-time" />
             </div>
+            <div className="mt-3">
+              <label className="s-label">분쇄도 (그라인더 눈금)</label>
+              <input
+                className="s-input"
+                value={d.grindSetting}
+                onChange={(e) => set({ grindSetting: e.target.value })}
+                placeholder="예: 2.4 / 한 칸 곱게"
+                data-testid="input-grind"
+              />
+            </div>
           </div>
 
           {/* 환경 */}
@@ -310,6 +345,51 @@ export default function StaffEspresso() {
         </>
       )}
 
+      {/* 요즘 세팅 — 긍정 평가 기록의 원두별 평균 */}
+      {(stats?.byBeanRecipe?.length ?? 0) > 0 && (
+        <>
+          <div className="s-sect flex items-baseline justify-between">
+            <span>요즘 세팅</span>
+            <span className="text-[11px] font-normal" style={{ color: "var(--s-muted)" }}>
+              긍정 평가 기준 평균
+            </span>
+          </div>
+          <div className="s-card" data-testid="card-recipe">
+            {stats!.byBeanRecipe.slice(0, 4).map((b, i) => (
+              <div
+                key={b.bean}
+                className="flex items-center gap-2 py-2"
+                style={i > 0 ? { borderTop: "1px solid var(--s-hair)" } : undefined}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13.5px] font-semibold">{b.bean}</div>
+                  <div className="s-k mt-0.5">
+                    {b.count}회{latestGrind.get(b.bean) ? ` · 분쇄 ${latestGrind.get(b.bean)}` : ""}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[15px] font-semibold tracking-tight">
+                    {b.avgDose}g → {b.avgYield}g
+                  </div>
+                  <div className="text-[11px]" style={{ color: "var(--s-muted)" }}>
+                    {b.avgTime}초 · 1:{b.ratio}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {humidityHint && (
+              <div
+                className="mt-2 rounded-[10px] px-3 py-2 text-[12px] leading-relaxed"
+                style={{ background: "var(--s-accent-soft)", color: "var(--s-accent)" }}
+              >
+                습도 {humidityHint.row.label}일 때 잘 나온 세팅 · {humidityHint.row.avgDose}g → {humidityHint.row.avgYield}g,{" "}
+                {humidityHint.row.avgTime}초 ({humidityHint.row.count}회)
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="s-sect flex items-baseline justify-between">
         <span>이번 달 기록</span>
         {(logs?.length ?? 0) > 0 && (
@@ -387,7 +467,7 @@ export default function StaffEspresso() {
                   g
                 </span>
                 <span className="ml-auto text-[12px]" style={{ color: "var(--s-muted)" }}>
-                  {l.timeSec || 0}초{l.waterTemp ? ` · ${l.waterTemp}℃` : ""}
+                  {l.timeSec || 0}초{l.grindSetting ? ` · 분쇄 ${l.grindSetting}` : ""}{l.waterTemp ? ` · ${l.waterTemp}℃` : ""}
                 </span>
               </div>
 
