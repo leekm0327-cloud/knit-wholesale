@@ -246,12 +246,14 @@ export default function StaffSupply() {
           {list.length}건
         </span>
       </div>
-      <div className="s-card flex items-center justify-between">
-        <span className="text-[13px]" style={{ color: "var(--s-muted)" }}>
-          금액 합계
-        </span>
-        <span className="text-[19px] font-semibold tracking-tight">{won(monthTotal)}원</span>
-      </div>
+      {list.length > 0 && (
+        <div className="s-card flex items-center justify-between">
+          <span className="text-[13px]" style={{ color: "var(--s-muted)" }}>
+            금액 합계
+          </span>
+          <span className="text-[19px] font-semibold tracking-tight">{won(monthTotal)}원</span>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="mt-2.5 space-y-2.5">

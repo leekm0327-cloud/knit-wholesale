@@ -21,8 +21,8 @@ const PART_GROUPS = [
 
 const GRID: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "29px repeat(7, minmax(0, 1fr))",
-  gap: "3px",
+  gridTemplateColumns: "31px repeat(7, minmax(0, 1fr))",
+  gap: "2px",
 };
 
 function ymd(d: Date): string {
@@ -242,24 +242,26 @@ export default function StaffSchedule() {
                 {groupsToShow.map((g, gi) => (
                   <div key={g.key} style={{ ...GRID, marginTop: gi === 0 ? 2 : 11 }}>
                     <div
-                      className="flex items-center justify-center text-[8px] font-bold leading-none"
+                      className="flex items-center justify-center text-[9.5px] font-semibold leading-none break-keep"
                       style={{
                         gridRow: `span ${g.slots.length}`,
                         color: "var(--s-muted)",
-                        letterSpacing: "0.02em",
                       }}
                     >
-                      {g.label}
+                      {g.ko}
                     </div>
                     {g.slots.map((slot) =>
                       week.map((d) => {
                         const cell = cellMap.get(`${ymd(d)}|${slot}`);
                         const mine = !!cell && cell.staffId === me?.id;
                         const color = cell ? staffColor(cell.staffId) : null;
+                        const name = cell ? cellName(nameOf.get(cell.staffId) ?? "-") : "";
+                        // 세 글자까지는 10.5px, 네 글자 이상은 줄여서 칸(약 42px)에 맞춘다
+                        const fs = name.length >= 4 ? 9 : 10.5;
                         return (
                           <div
                             key={slot + ymd(d)}
-                            className="flex h-[25px] items-center justify-center overflow-hidden rounded-[7px] px-0.5 text-[9px] leading-none"
+                            className="flex h-[28px] items-center justify-center overflow-hidden rounded-[7px] leading-none"
                             style={
                               color
                                 ? mine
@@ -268,7 +270,7 @@ export default function StaffSchedule() {
                                 : { background: "var(--s-hair)" }
                             }
                           >
-                            <span className="truncate">{cell ? cellName(nameOf.get(cell.staffId) ?? "-") : ""}</span>
+                            <span style={{ fontSize: fs, letterSpacing: name.length >= 4 ? "-0.03em" : 0, whiteSpace: "nowrap" }}>{name}</span>
                           </div>
                         );
                       }),

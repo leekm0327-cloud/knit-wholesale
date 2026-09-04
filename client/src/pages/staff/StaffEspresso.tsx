@@ -362,13 +362,13 @@ export default function StaffEspresso() {
                 style={i > 0 ? { borderTop: "1px solid var(--s-hair)" } : undefined}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] font-semibold">{b.bean}</div>
+                  <div className="truncate text-[13px] font-medium">{b.bean}</div>
                   <div className="s-k mt-0.5">
                     {b.count}회{latestGrind.get(b.bean) ? ` · 분쇄 ${latestGrind.get(b.bean)}` : ""}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[15px] font-semibold tracking-tight">
+                  <div className="text-[13.5px] font-medium">
                     {b.avgDose}g → {b.avgYield}g
                   </div>
                   <div className="text-[11px]" style={{ color: "var(--s-muted)" }}>

@@ -18,6 +18,14 @@ type Res =
   | { enabled: false }
   | { enabled: true; balance: LeaveBalance | null; grants: LeaveGrant[]; requests: LeaveRequest[] };
 
+/** 2026-01-01 → 2026년 1월 1일 (같은 해면 1월 1일) */
+function koDate(iso: string, withYear = true): string {
+  if (!iso || iso.length < 10) return iso;
+  const y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7)), d = Number(iso.slice(8, 10));
+  const thisYear = new Date(Date.now() + 9 * 3600 * 1000).getUTCFullYear();
+  return withYear && y !== thisYear ? `${y}년 ${m}월 ${d}일` : `${m}월 ${d}일`;
+}
+
 function today(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
@@ -153,7 +161,7 @@ export default function StaffLeave() {
         </div>
         {bal?.hireDate && (
           <div className="mt-1 text-[11px]" style={{ color: "#7b7c76" }}>
-            입사일 {bal.hireDate}
+            입사일 {koDate(bal.hireDate)}
           </div>
         )}
       </div>
@@ -162,7 +170,7 @@ export default function StaffLeave() {
         <div className="s-card mt-2.5 flex items-center gap-2" style={{ padding: "12px 14px" }}>
           <AlertTriangle className="h-4 w-4 shrink-0" style={{ color: "#a2483f" }} strokeWidth={1.8} />
           <span className="text-[12.5px]">
-            {bal!.expiringDate}에 <b className="font-semibold">{d(bal!.expiringSoon)}일</b> 소멸 예정
+            {koDate(bal!.expiringDate)}에 <b className="font-semibold">{d(bal!.expiringSoon)}일</b> 소멸 예정
           </span>
         </div>
       )}
@@ -304,8 +312,8 @@ export default function StaffLeave() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[13.5px] font-semibold">
-                      {r.startDate}
-                      {r.startDate !== r.endDate ? ` ~ ${r.endDate}` : ""}
+                      {koDate(r.startDate)}
+                      {r.startDate !== r.endDate ? ` ~ ${koDate(r.endDate)}` : ""}
                     </span>
                     <span
                       className="rounded-full px-2 py-[3px] text-[10px] font-medium"
@@ -348,9 +356,9 @@ export default function StaffLeave() {
           {data.grants.map((g) => (
             <div key={g.id} className="s-li">
               <div className="min-w-0">
-                <div className="text-[13px]">{g.grantDate}</div>
+                <div className="text-[13px]">{koDate(g.grantDate)}</div>
                 <div className="s-k" style={{ fontSize: 10.5 }}>
-                  {LEAVE_GRANT_KIND_LABEL[g.kind] ?? g.kind} · {g.expiresAt} 소멸
+                  {LEAVE_GRANT_KIND_LABEL[g.kind] ?? g.kind} · {koDate(g.expiresAt)} 소멸
                 </div>
               </div>
               <span className="text-[13px] font-semibold">+{d(g.days)}일</span>

@@ -97,8 +97,9 @@ export default function StaffDessert() {
           폐기
         </button>
       </div>
-      <p className="mt-2 px-1 text-[11.5px]" style={{ color: "var(--s-muted)" }}>
-        {isProduce ? "만든 수량을 적어주세요. 베이킹 담당" : "폐기한 수량을 적어주세요. 마감 담당"}
+      <p className="mt-2 flex items-center justify-between px-1 text-[11.5px]" style={{ color: "var(--s-muted)" }}>
+        <span>{isProduce ? "만든 수량을 적어주세요." : "폐기한 수량을 적어주세요."}</span>
+        <span className="s-k" style={{ fontSize: 10.5 }}>{isProduce ? "베이킹 담당" : "마감 담당"}</span>
       </p>
 
       {/* 날짜 */}

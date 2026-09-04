@@ -156,26 +156,36 @@ export default function StaffHome() {
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            {/* 상태에 맞는 버튼 하나만 — 눌러야 할 버튼만 크게 */}
+            {!workedIn ? (
               <button
-                className="s-pill"
+                className="s-pill wide mt-3"
                 onClick={() => punch("clock-in")}
-                disabled={busy || workedIn}
+                disabled={busy}
                 data-testid="button-clock-in"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" strokeWidth={1.8} />}
-                {workedIn ? "출근 완료" : "출근"}
+                출근
               </button>
+            ) : !workedOut ? (
               <button
-                className="s-pill ghost"
+                className="s-pill wide mt-3"
                 onClick={() => punch("clock-out")}
-                disabled={busy || !workedIn || workedOut}
+                disabled={busy}
                 data-testid="button-clock-out"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" strokeWidth={1.8} />}
-                {workedOut ? "퇴근 완료" : "퇴근"}
+                퇴근
               </button>
-            </div>
+            ) : (
+              <div
+                className="mt-3 rounded-full px-3 py-2 text-center text-[12px] font-medium"
+                style={{ background: "var(--s-accent-soft)", color: "var(--s-accent)" }}
+                data-testid="badge-clock-done"
+              >
+                오늘 근무를 마쳤습니다
+              </div>
+            )}
 
             <div className="mt-3 flex justify-between text-[11px]" style={{ color: "var(--s-muted)" }}>
               <span>이번 주 {fmtMinutes(data?.weekMinutes ?? 0)}</span>

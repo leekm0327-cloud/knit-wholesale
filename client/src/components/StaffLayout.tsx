@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PublicStaff } from "@shared/schema";
 import {
   Loader2,
@@ -16,6 +16,7 @@ import {
   ShoppingCart,
   MoreHorizontal,
   ListChecks,
+  LogOut,
   X,
 } from "lucide-react";
 
@@ -146,6 +147,24 @@ export function StaffLayout({
                   </button>
                 );
               })}
+              <button
+                onClick={async () => {
+                  if (!confirm("로그아웃 할까요?")) return;
+                  try { await apiRequest("POST", "/api/staff/logout"); } catch { /* 세션이 이미 끊겨도 로그인으로 보낸다 */ }
+                  queryClient.setQueryData(["/api/staff/me"], null);
+                  queryClient.clear();
+                  setMoreOpen(false);
+                  navigate("/staff/login");
+                }}
+                className="mt-1 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left"
+                style={{ borderTop: "1px solid var(--s-hair)", borderRadius: 0 }}
+                data-testid="more-staff-logout"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: "var(--s-bg)" }}>
+                  <LogOut className="h-4 w-4" strokeWidth={1.6} />
+                </span>
+                <span className="text-[14px]" style={{ color: "var(--s-muted)" }}>로그아웃</span>
+              </button>
             </div>
           </div>
         </div>
