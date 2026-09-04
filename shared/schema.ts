@@ -1734,6 +1734,8 @@ export type AttendanceSummaryRow = {
   position: string;
   days: number;
   minutes: number;
+  /** 출근만 있고 퇴근이 없는 날 수 (근무시간 0으로 집계됨) */
+  openDays?: number;
 };
 
 // ============================================================

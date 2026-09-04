@@ -70,6 +70,7 @@ import type {
   InsertQuote,
 } from "@shared/schema";
 import { SECTORS, SECTOR_LABEL } from "@shared/schema";
+import { effectiveOrderYmd } from "@shared/orderDate";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq, desc, gt, and, asc, gte, lte, like } from "drizzle-orm";
@@ -2117,15 +2118,14 @@ export class DatabaseStorage implements IStorage {
     granularity: DashboardGranularity,
     sector: "all" | Sector = "all",
   ): Promise<DashboardSummary> {
-    // 날짜 문자열(YYYY-MM-DD) → KST 타임스탬프 범위 (주문 createdAt 비교용)
-    const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
-    const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
-
     // 원천 데이터 (기간 필터 적용)
+    // 주문은 유효 주문일자(관리자 지정 ecountDate → 없으면 생성일 KST) 기준. 거래명세서와 같은 기준.
     const allOrders = await this.listOrders();
-    const orderRows = allOrders.filter(
-      (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
-    );
+    const orderRows = allOrders.filter((o) => {
+      if (o.status === "cancelled") return false;
+      const ymd = effectiveOrderYmd(o as any);
+      return ymd >= from && ymd <= to;
+    });
     const storeSaleRows = await this.listStoreSales(from, to);
     // 발생주의: 공장 매입(발주)을 발주일 기준으로 홀세일 지출에 반영. (공장 '지급'은 지출로 잡지 않음)
     //  발주를 삭제하면 이 합산에서 자동으로 빠진다.
@@ -2211,7 +2211,7 @@ export class DatabaseStorage implements IStorage {
       bucketMap.set(key, cur);
     };
     if (includeWholesale) {
-      for (const o of orderRows) { if (!isStoreOrder(o)) bump(bucketKey(new Date(o.createdAt), granularity), "income", o.totalAmount); }
+      for (const o of orderRows) { if (!isStoreOrder(o)) bump(bucketKey(dateFromYmd(effectiveOrderYmd(o as any)), granularity), "income", o.totalAmount); }
     }
     for (const p of purchaseRowsForSector) bump(bucketKey(dateFromYmd(p.purchaseDate), granularity), "expense", p.totalAmount);
     for (const r of filteredStoreSales) bump(bucketKey(dateFromYmd(r.saleDate), granularity), "income", r.amount);
@@ -2247,11 +2247,13 @@ export class DatabaseStorage implements IStorage {
     const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
     const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
 
-    // 원천 데이터 (기간 필터)
+    // 원천 데이터 (기간 필터) — 주문은 유효 주문일자 기준 (거래명세서·대시보드와 동일)
     const allOrders = await this.listOrders();
-    const orderRows = allOrders.filter(
-      (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
-    );
+    const orderRows = allOrders.filter((o) => {
+      if (o.status === "cancelled") return false;
+      const ymd = effectiveOrderYmd(o as any);
+      return ymd >= from && ymd <= to;
+    });
     const storeSaleRows = await this.listStoreSales(from, to);
     const allPurchases = await this.listPurchases();
     const purchaseRows = allPurchases.filter((p) => p.purchaseDate >= from && p.purchaseDate <= to);
@@ -2380,11 +2382,12 @@ export class DatabaseStorage implements IStorage {
 
   // ===== 품목별 기간 집계 =====
   async getOrderItemSummary(from: string, to: string): Promise<ItemSummaryRow[]> {
-    const fromTs = new Date(`${from}T00:00:00+09:00`).getTime();
-    const toTs = new Date(`${to}T23:59:59+09:00`).getTime() + 999; // .999 ms + offset 조합이 일부 런타임에서 파싱 실패(NaN) → 안전 형식
-    const orders = (await this.listOrders()).filter(
-      (o) => o.status !== "cancelled" && o.createdAt >= fromTs && o.createdAt <= toTs,
-    );
+    // 유효 주문일자 기준 (거래명세서·대시보드와 동일)
+    const orders = (await this.listOrders()).filter((o) => {
+      if (o.status === "cancelled") return false;
+      const ymd = effectiveOrderYmd(o as any);
+      return ymd >= from && ymd <= to;
+    });
     const map = new Map<string, ItemSummaryRow>();
     for (const o of orders) {
       let items: any[] = [];
@@ -3086,10 +3089,7 @@ export class DatabaseStorage implements IStorage {
     unpaidAmount: number;     // 기말 잔액 = 이월 + 당기 매출 − 당기 입금
   }> {
     // 유효 주문일자 = 관리자 지정 주문 일자(ecountDate, YYYY-MM-DD) 있으면 그것, 없으면 생성일(KST)
-    const effYmd = (o: any): string =>
-      o.ecountDate && String(o.ecountDate).trim()
-        ? String(o.ecountDate).trim()
-        : new Date(o.createdAt + 9 * 3600 * 1000).toISOString().slice(0, 10);
+    const effYmd = (o: any): string => effectiveOrderYmd(o);
 
     const custOrders = await db
       .select()

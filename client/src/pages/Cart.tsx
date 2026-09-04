@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/lib/cart";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg, won, CATEGORY_LABEL } from "@/lib/format";
 import type { Order } from "@shared/schema";
 import { Plus, Minus, Trash2, ShoppingBag, Loader2, ArrowLeft } from "lucide-react";
@@ -35,11 +35,33 @@ export default function Cart() {
   );
   const minMap = new Map<number, number>((productRows ?? []).map((p) => [p.id, p.minOrderQty ?? 0]));
 
+  // 오늘(KST) 접수 중인 내 주문 — 서버가 같은 날 주문을 합치므로, 5kg 판정도 합산 기준으로 미리 보여준다.
+  // (서버 조건과 동일: pending · 오늘 생성 · 샘플 아님 · 음수 라인 없음)
+  const { data: myOrders } = useQuery<Order[]>({ queryKey: ["/api/orders/mine"] });
+  const todayPending = (() => {
+    const kst = 9 * 3600 * 1000;
+    const now = new Date(Date.now() + kst);
+    const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - kst;
+    const end = start + 24 * 3600 * 1000;
+    return (myOrders ?? []).find((o: any) => {
+      if (o.status !== "pending" || o.createdAt < start || o.createdAt >= end || o.isSample === 1) return false;
+      try { return !(JSON.parse(o.items) as any[]).some((i) => Number(i?.qty) < 0); } catch { return false; }
+    });
+  })();
+  const existingBeanQty = (() => {
+    if (!todayPending) return 0;
+    try {
+      return (JSON.parse(todayPending.items) as any[])
+        .filter((i) => beanKeys.has(i?.category))
+        .reduce((s, i) => s + (Number(i?.qty) || 0), 0);
+    } catch { return 0; }
+  })();
+
   // A-4: 원두 수량 합 최소 5kg(5개) 검증 (원두 = 카테고리 관리의 isBean)
   const beanQty = items
     .filter((i) => beanKeys.has(i.category))
     .reduce((s, i) => s + i.qty, 0);
-  const belowMin = beanQty > 0 && beanQty < 5;
+  const belowMin = beanQty > 0 && beanQty + existingBeanQty < 5;
 
   // 상품별 최소 주문 수량 위반 목록
   const minViolations = items
@@ -83,10 +105,14 @@ export default function Cart() {
       });
       const result = await res.json();
       clear();
+      // 주문 내역·잔액·상품 캐시는 staleTime Infinity 라서 직접 무효화하지 않으면 새 주문이 목록에 안 보인다.
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/mine"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/account/ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       if (result.merged) {
         toast({
           title: "주문에 추가되었습니다",
-          description: `오늘 접수 중인 주문에 추가되었습니다 (#${result.orderNo ?? result.orderId})`,
+          description: `오늘 접수 중인 주문 ${result.orderNo ?? `#${result.orderId}`}에 합쳐졌습니다. 요청사항과 퀵 요청도 그 주문에 반영됩니다.`,
         });
       }
       navigate(`/invoice/${result.id ?? result.orderId}`);
@@ -242,9 +268,16 @@ export default function Cart() {
                     퀵 요청이 선택되었습니다.
                   </div>
                 )}
+                {todayPending && (
+                  <div className="rounded-none border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" data-testid="text-merge-notice">
+                    오늘 접수 중인 주문 {todayPending.orderNo}에 합쳐집니다
+                    {existingBeanQty > 0 ? ` (기존 원두 ${existingBeanQty}개)` : ""}.
+                  </div>
+                )}
                 {belowMin && (
                   <div className="rounded-none border border-destructive/60 bg-destructive/5 px-3 py-2 text-xs text-destructive" data-testid="text-min-order-warning">
-                    원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQty}개.
+                    원두는 최소 5kg(수량 5개)부터 주문 가능합니다. 현재 {beanQty}개
+                    {existingBeanQty > 0 ? ` (오늘 주문 포함 ${beanQty + existingBeanQty}개)` : ""}.
                   </div>
                 )}
                 {minViolations.map((v) => (

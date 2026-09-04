@@ -487,7 +487,13 @@ export class StaffStorage {
 
   async clockOut(staffId: number): Promise<Attendance | undefined> {
     const workDate = kstToday();
-    const cur = await this.getAttendance(staffId, workDate);
+    let cur = await this.getAttendance(staffId, workDate);
+    // 자정을 넘긴 퇴근: 오늘 출근 기록이 없으면 어제 출근했고 아직 퇴근을 안 찍은 기록을 닫는다.
+    // (마감·재고 정리로 00시를 넘기는 날에 "오늘 출근 기록이 없습니다"로 막히지 않게)
+    if (!cur || !cur.clockInAt) {
+      const y = await this.getAttendance(staffId, addDays(workDate, -1));
+      if (y && y.clockInAt && !y.clockOutAt) cur = y;
+    }
     if (!cur) return undefined;
     return db
       .update(attendance)
@@ -554,23 +560,26 @@ export class StaffStorage {
   async attendanceSummary(from: string, to: string): Promise<AttendanceSummaryRow[]> {
     const rows = await this.listAttendance(from, to);
     const people = db.select().from(staff).all();
-    const byStaff = new Map<number, { days: number; minutes: number }>();
+    const byStaff = new Map<number, { days: number; minutes: number; openDays: number }>();
     for (const r of rows) {
       const m = workedMinutes(r);
-      const cur = byStaff.get(r.staffId) ?? { days: 0, minutes: 0 };
+      const cur = byStaff.get(r.staffId) ?? { days: 0, minutes: 0, openDays: 0 };
       cur.days += 1;
       cur.minutes += m;
+      // 출근은 찍었는데 퇴근이 없는 날 — 근무시간 0으로 잡히므로 따로 세어 화면에 알린다
+      if (r.clockInAt && !r.clockOutAt) cur.openDays += 1;
       byStaff.set(r.staffId, cur);
     }
     return people
       .map((p) => {
-        const agg = byStaff.get(p.id) ?? { days: 0, minutes: 0 };
+        const agg = byStaff.get(p.id) ?? { days: 0, minutes: 0, openDays: 0 };
         return {
           staffId: p.id,
           name: p.name,
           position: p.position,
           days: agg.days,
           minutes: agg.minutes,
+          openDays: agg.openDays,
         };
       })
       .filter((r) => r.days > 0 || people.find((p) => p.id === r.staffId)?.active === 1)

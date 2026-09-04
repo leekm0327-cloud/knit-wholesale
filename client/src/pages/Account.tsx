@@ -76,7 +76,7 @@ export default function Account() {
         <div className="eyebrow">Account</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">내 정보</h1>
         <p className="mb-6 text-sm text-muted-foreground">
-          주문 시 거래명세서에 자동으로 반영됩니다. 이메일({user?.email})은 변경할 수 없습니다.
+          주문 시 거래명세서에 자동으로 반영됩니다. 이메일은 비밀번호 찾기와 주문 안내 메일에 쓰이니 정확히 유지해 주세요.
         </p>
 
         {ledgerLoading && !ledger && (

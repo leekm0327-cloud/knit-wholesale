@@ -63,6 +63,7 @@ import {
   type PurchaseItem,
 } from "@shared/schema";
 import { isValidBizRegNo } from "@shared/bizRegNo";
+import { effectiveOrderYm } from "@shared/orderDate";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 
@@ -644,13 +645,6 @@ export async function registerRoutes(
       newItems.push({ ...it, category: prod.category, productName: prod.name, unitPrice, amount: unitPrice * it.qty });
     }
 
-    // A-4: 도매 원두 최소 5kg(수량 5개) 검증. 샘플 주문(isSample)이면 스킵.
-    //  주의: is_sample 컬럼은 B에서 추가 예정 — 아직 없을 수 있으므로 truthy일 때만 스킵(방어적).
-    const isSample = (parsed.data as any).isSample;
-    if (!isSample && beanQtyTotal > 0 && beanQtyTotal < 5) {
-      return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
-    }
-
     // ===== V7 #23B: 같은 날(KST) pending 주문 누적 =====
     const nowUtcMs = Date.now();
     const kstOffsetMs = 9 * 60 * 60 * 1000;
@@ -662,14 +656,42 @@ export async function registerRoutes(
     const kstTodayEnd = kstTodayStart + 24 * 60 * 60 * 1000;
 
     // 오늘 생성된 해당 거래처의 pending 주문 찾기
+    //  - 샘플 주문(isSample)에는 합치지 않는다. 유료 품목이 샘플 주문에 흡수되면 샘플 배지가 달린 채 청구된다.
+    //  - 음수(차감) 라인이 있는 주문에도 합치지 않는다. 환불 라인이 새 품목에 섞여 사라질 수 있다.
     const myOrders = await storage.listOrdersByCustomer(customer.id);
+    const hasNegativeLine = (o: any) => {
+      try { return (JSON.parse(o.items) as any[]).some((i) => Number(i?.qty) < 0); } catch { return false; }
+    };
     const todayPending = myOrders.find(
-      (o) => o.status === "pending" && o.createdAt >= kstTodayStart && o.createdAt < kstTodayEnd
+      (o) =>
+        o.status === "pending" &&
+        o.createdAt >= kstTodayStart &&
+        o.createdAt < kstTodayEnd &&
+        (o as any).isSample !== 1 &&
+        !hasNegativeLine(o)
     );
+
+    // 기존 주문(합쳐질 주문)의 원두 수량
+    let existingItems: any[] = [];
+    if (todayPending) {
+      try { existingItems = JSON.parse(todayPending.items); } catch { existingItems = []; }
+    }
+    const existingBeanQty = existingItems.reduce(
+      (s: number, i: any) => s + (beanKeys.has(i?.category) ? Number(i?.qty) || 0 : 0),
+      0,
+    );
+
+    // A-4: 도매 원두 최소 5kg(수량 5개) 검증. 샘플 주문(isSample)이면 스킵.
+    //  같은 날 주문에 합쳐지는 경우 "기존 원두 + 이번 원두" 합계로 판정한다.
+    //  (아침에 10kg 주문한 거래처가 오후에 1kg 추가하는 흔한 경우를 막지 않기 위해)
+    const isSample = (parsed.data as any).isSample;
+    const beanQtyAfterMerge = existingBeanQty + beanQtyTotal;
+    if (!isSample && beanQtyTotal > 0 && beanQtyAfterMerge < 5) {
+      return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
+    }
 
     if (todayPending) {
       // 기존 주문에 항목 머지
-      const existingItems: any[] = JSON.parse(todayPending.items);
       const mergedItems = [...existingItems];
 
       for (const ni of newItems) {
@@ -693,13 +715,27 @@ export async function registerRoutes(
       const newVat = Math.round(newSupplyAmount * 0.1);
       const newTotalAmount = newSupplyAmount + newVat;
 
+      // 요청사항·퀵 요청은 버리지 않고 기존 주문에 이어붙인다.
+      const prevNote = String((todayPending as any).note ?? "").trim();
+      const addedNote = String(parsed.data.note ?? "").trim();
+      const mergedNote =
+        prevNote && addedNote && prevNote !== addedNote
+          ? `${prevNote}\n[추가 주문] ${addedNote}`
+          : addedNote || prevNote;
+      const mergedQuick = ((todayPending as any).quickRequest === 1 || !!parsed.data.quickRequest) ? 1 : 0;
+      const prevDesired = String((todayPending as any).desiredDate ?? "").trim();
+      const mergedDesired = prevDesired || String(parsed.data.desiredDate ?? "").trim();
+
       const updatedOrder = await storage.updateOrder(todayPending.id, {
         items: JSON.stringify(mergedItems),
         discountAmount: keptDiscount,
         supplyAmount: newSupplyAmount,
         vat: newVat,
         totalAmount: newTotalAmount,
-      });
+        note: mergedNote,
+        quickRequest: mergedQuick,
+        desiredDate: mergedDesired,
+      } as any);
 
       // 관리자에게 주문 추가 알림 메일 (추가된 항목만 요약)
       sendOrderMergedEmail({
@@ -707,7 +743,7 @@ export async function registerRoutes(
         businessName: customer.businessName,
         managerName: customer.managerName,
         phone: customer.phone,
-        addedItems: newItems.map((i: any) => ({ name: i.name, qty: i.qty, unitPrice: i.unitPrice, amount: i.amount })),
+        addedItems: newItems.map((i: any) => ({ name: i.productName ?? i.name, qty: i.qty, unitPrice: i.unitPrice, amount: i.amount })),
         newSupplyAmount,
         newVat,
         newTotalAmount,
@@ -1088,14 +1124,18 @@ export async function registerRoutes(
     const allOrders = await storage.listOrders();
     const allCustomers = await storage.listCustomers();
     // 취소된 주문은 매출·집계에서 제외 (금액/건수 모두 실제 유효 주문 기준)
-    const activeOrders = allOrders.filter((o) => o.status !== "cancelled");
+    // 매장 내부 계정(자기거래) 주문도 도매 매출에서 제외 — 경영 대시보드와 같은 기준.
+    const storeIds = new Set(allCustomers.filter((c) => (c as any).isStore).map((c) => c.id));
+    const isStoreOrder = (o: any) =>
+      typeof o.isStoreOrder === "number" && o.isStoreOrder >= 0 ? o.isStoreOrder === 1 : storeIds.has(o.customerId);
+    const activeOrders = allOrders.filter((o) => o.status !== "cancelled" && !isStoreOrder(o));
     const pending = allOrders.filter((o) => o.status === "pending").length;
     const totalRevenue = activeOrders.reduce((s, o) => s + o.totalAmount, 0);
 
+    // 월별 집계는 서버 타임존(UTC)이 아니라 KST 유효 주문일자 기준
     const monthly: Record<string, number> = {};
     for (const o of activeOrders) {
-      const d = new Date(o.createdAt);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const key = effectiveOrderYm(o as any);
       monthly[key] = (monthly[key] ?? 0) + o.totalAmount;
     }
 
@@ -2501,14 +2541,31 @@ export async function registerRoutes(
             const cust = await storage.getCustomer(updated.customerId);
             const isStoreOrder = updated.isStoreOrder === 1 || (updated.isStoreOrder === -1 && !!(cust as any)?.isStore);
             if (ecountSettings?.autoSendSales && !isStoreOrder) {
+              // 실패는 로그로만 남기지 않는다. 월말 세금계산서에서 빠진 뒤에야 발견되는 것을 막기 위해
+              // 알림센터 + 카카오 메모로 즉시 알린다.
+              const notifyEcountFail = (reason: string) => {
+                console.warn(`[ecount] 판매전표 자동 전송 실패 (${updated.orderNo}):`, reason);
+                storage
+                  .createNotification({
+                    type: "ecount_fail",
+                    title: `ECOUNT 판매전표 전송 실패 · ${cust?.businessName ?? ""}`,
+                    body: `${updated.orderNo} · ${reason}`,
+                    link: `/admin/orders/${updated.id}`,
+                  })
+                  .catch((e) => console.error("[notif] ecount 실패 알림 저장 실패:", e));
+                sendKakaoMemo(
+                  `[니트커피] ECOUNT 판매전표 자동 전송에 실패했습니다.\n주문번호: ${updated.orderNo}\n거래처: ${cust?.businessName ?? ""}\n사유: ${reason}\n주문 상세에서 다시 전송해 주세요.`,
+                  `https://wholesale.knitcoffee.co.kr/#/admin/orders/${updated.id}`,
+                ).catch((e) => console.warn("[kakao] ecount 실패 알림 발송 실패:", e?.message ?? e));
+              };
               sendOrderToEcount(updated.id)
                 .then((r) => {
                   if (!r.ok) {
                     const failed = r.steps.find((st) => !st.ok);
-                    console.warn(`[ecount] 판매전표 자동 전송 실패 (${updated.orderNo}):`, failed?.message ?? "원인 불명");
+                    notifyEcountFail(failed?.message ?? "원인 불명");
                   }
                 })
-                .catch((e) => console.warn(`[ecount] 판매전표 자동 전송 오류 (${updated.orderNo}):`, e?.message ?? e));
+                .catch((e) => notifyEcountFail(String(e?.message ?? e)));
             }
           } catch (e: any) {
             console.warn("[ecount] 판매전표 자동 전송 준비 실패:", e?.message ?? e);

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
+import { useAuth } from "@/lib/auth";
 import type { SupplyOrder, SupplyOrderSummary, SupplyVendor } from "@shared/schema";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 
@@ -30,6 +31,9 @@ function fmtDay(iso: string): string {
 
 export default function AdminStaffSupply() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  // 서버가 requireOwner 로 막는 삭제는 매니저에게 버튼 자체를 보이지 않는다 (누르면 403 나던 문제)
+  const isOwner = (user as any)?.adminRole === "owner";
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
   const [vName, setVName] = useState("");
@@ -242,15 +246,17 @@ export default function AdminStaffSupply() {
                           {won(r.amount)}원
                         </span>
                       )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => delOrder(r)}
-                        className="text-muted-foreground hover:text-destructive"
-                        aria-label="삭제"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {isOwner && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => delOrder(r)}
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label="삭제"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>

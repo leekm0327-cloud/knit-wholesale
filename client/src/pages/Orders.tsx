@@ -155,11 +155,15 @@ export default function Orders() {
         ) : (
           <div className="space-y-3">
             {filtered.map((o) => {
-              const items: OrderItem[] = JSON.parse(o.items);
+              // items 파싱은 방어적으로 — 한 건이 깨져도 목록 전체가 백지가 되지 않게
+              let items: OrderItem[] = [];
+              try { items = JSON.parse(o.items) ?? []; } catch { items = []; }
               const summary =
-                items.length === 1
-                  ? items[0].name
-                  : `${items[0].name} 외 ${items.length - 1}건`;
+                items.length === 0
+                  ? "(품목 없음)"
+                  : items.length === 1
+                    ? items[0].name
+                    : `${items[0].name} 외 ${items.length - 1}건`;
               const cancelled = o.status === "cancelled";
               return (
                 <Card

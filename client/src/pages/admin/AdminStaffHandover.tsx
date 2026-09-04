@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
+import { useAuth } from "@/lib/auth";
 import type { HandoverRow, PrepTask, PrepTaskPreset, StaffEvent } from "@shared/schema";
 import { STAFF_EVENT_KIND_LABEL, STAFF_EVENT_KINDS } from "@shared/schema";
 import { AlertCircle, ArrowDown, ArrowUp, Check, Loader2, Plus, Trash2 } from "lucide-react";
@@ -34,6 +35,9 @@ function hhmm(ts: number): string {
 
 export default function AdminStaffHandover() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  // 서버가 requireOwner 로 막는 삭제는 매니저에게 버튼 자체를 보이지 않는다 (누르면 403 나던 문제)
+  const isOwner = (user as any)?.adminRole === "owner";
   const [from, setFrom] = useState(addDays(today(), -13));
   const [to, setTo] = useState(addDays(today(), 14));
 
@@ -495,15 +499,17 @@ export default function AdminStaffHandover() {
                             {h.important === 1 && <AlertCircle className="h-3.5 w-3.5 text-destructive" />}
                             <span className="text-sm font-semibold text-foreground">{h.staffName}</span>
                             <span className="text-[11px] text-muted-foreground">{hhmm(h.createdAt)}</span>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => delHandover(h)}
-                              className="ml-auto text-muted-foreground hover:text-destructive"
-                              aria-label="삭제"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            {isOwner && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => delHandover(h)}
+                                className="ml-auto text-muted-foreground hover:text-destructive"
+                                aria-label="삭제"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
                           <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{h.body}</p>
                           <div className="mt-2 flex flex-wrap items-center gap-1.5">

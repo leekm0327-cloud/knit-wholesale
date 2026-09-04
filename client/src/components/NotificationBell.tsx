@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Bell, UserPlus, ShoppingBag, PlusCircle, MessageSquare, MessagesSquare, CalendarClock, Check } from "lucide-react";
+import { Bell, UserPlus, ShoppingBag, PlusCircle, MessageSquare, MessagesSquare, CalendarClock, Check, AlertTriangle } from "lucide-react";
 
 interface NotiItem {
   id: number;
@@ -26,6 +26,7 @@ const ICON_BY_TYPE: Record<string, any> = {
   inquiry: MessageSquare,
   visit_request: CalendarClock,
   chat: MessagesSquare,
+  ecount_fail: AlertTriangle,
 };
 
 function relTime(ts: number, now: number): string {

@@ -98,8 +98,15 @@ export default function SampleRequest() {
     queryKey: ["/api/products"],
   });
 
+  // 샘플 대상 카테고리는 서버(카테고리 관리의 sampleEligible)를 따른다. 설정이 없을 때만 하드코딩 폴백.
+  const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
+  const sampleKeys = new Set<string>(
+    categoryRows && categoryRows.some((c) => c.sampleEligible === 1)
+      ? categoryRows.filter((c) => c.sampleEligible === 1).map((c) => c.key)
+      : BEAN_CATEGORIES,
+  );
   const beans = (products ?? []).filter(
-    (p) => BEAN_CATEGORIES.includes(p.category) && p.available === 1,
+    (p) => sampleKeys.has(p.category) && p.available === 1,
   );
 
   function toggle(id: number) {

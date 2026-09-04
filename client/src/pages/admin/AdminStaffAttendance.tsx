@@ -166,7 +166,10 @@ export default function AdminStaffAttendance() {
                     <div className="text-sm font-semibold text-foreground">{s.name}</div>
                     <div className="text-[11px] text-muted-foreground">{s.position} · {s.days}일 근무</div>
                   </div>
-                  <div className="text-right">
+                  <div className="flex items-center gap-2 text-right">
+                    {(s.openDays ?? 0) > 0 && (
+                      <Badge variant="destructive" className="text-[10px]">퇴근 없음 {s.openDays}일</Badge>
+                    )}
                     <div className="font-display tabular text-sm font-semibold text-foreground">{fmtMinutes(s.minutes)}</div>
                   </div>
                 </div>
@@ -256,6 +259,9 @@ export default function AdminStaffAttendance() {
                       <span className="text-[11px] text-muted-foreground">분 휴게</span>
                     </div>
                     <div className="font-display tabular ml-auto text-sm text-foreground">{fmtMinutes(r.minutes)}</div>
+                    {r.clockInAt && !r.clockOutAt && r.workDate < today() && (
+                      <Badge variant="destructive" className="text-[10px]">퇴근 없음</Badge>
+                    )}
                     {r.editedByAdmin === 1 && <Badge variant="secondary" className="text-[10px]">수정됨</Badge>}
                     {dirty && (
                       <Button size="sm" onClick={() => saveRow(r)} disabled={busy}>
