@@ -1,23 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import StaffWeekTeam from "@/components/StaffWeekTeam";
 import { StaffLayout } from "@/components/StaffLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { slotLabel, type StaffHome as StaffHomeData } from "@shared/schema";
 import { LogIn, LogOut, Loader2, ChevronRight, AlertCircle, Check } from "lucide-react";
-
-const WEEK_LABEL = ["월", "화", "수", "목", "금", "토", "일"];
-
-/** 월요일(YYYY-MM-DD)로부터 7일치 날짜 */
-function weekDays(from: string): string[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(from + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
 
 function hhmm(ts: number | null | undefined): string {
   if (!ts) return "--:--";
@@ -79,45 +69,6 @@ export default function StaffHome() {
 
   return (
     <StaffLayout title="오늘" greeting>
-      {/* 새 인수인계 — 확인하기 전까지 맨 위에 붙어 있는다 */}
-      {newHandovers.length > 0 && (
-        <div className="s-card mb-2.5" style={{ padding: "13px 15px", boxShadow: "0 2px 10px rgba(92,115,87,.16)" }}>
-          <div className="flex items-center gap-1.5">
-            <span className="h-[7px] w-[7px] rounded-full" style={{ background: "var(--s-accent)" }} />
-            <span className="text-[12.5px] font-semibold" style={{ color: "var(--s-accent)" }}>
-              새 인수인계 {newHandovers.length}건
-            </span>
-          </div>
-          {newHandovers.map((h) => (
-            <div key={h.id} className="mt-2.5" data-testid={`home-handover-${h.id}`}>
-              <div className="flex items-center gap-1.5">
-                {h.important === 1 && (
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" style={{ color: "#a2483f" }} strokeWidth={1.8} />
-                )}
-                <span className="text-[12.5px] font-semibold">{h.staffName}</span>
-              </div>
-              <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed">{h.body}</p>
-              <button
-                className="mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-medium"
-                style={{ background: "var(--s-ink)", color: "#fff" }}
-                onClick={() => readHandover(h.id)}
-                data-testid={`home-read-handover-${h.id}`}
-              >
-                <Check className="h-3 w-3" strokeWidth={2.6} />
-                확인
-              </button>
-            </div>
-          ))}
-          <button
-            className="mt-3 text-[11.5px]"
-            style={{ color: "var(--s-muted)" }}
-            onClick={() => navigate("/staff/handover")}
-          >
-            인수인계 전체 보기 ›
-          </button>
-        </div>
-      )}
-
       {/* 오늘 근무 — 화면에서 가장 중요한 하나 */}
       <button
         onClick={() => navigate("/staff/schedule")}
@@ -195,6 +146,55 @@ export default function StaffHome() {
         )}
       </div>
 
+      {/* 새 인수인계 — 출퇴근 아래에서 펼쳐 읽고 확인한다 */}
+      {newHandovers.length > 0 && (
+        <details className="s-card group mt-3" style={{ padding: "13px 15px", boxShadow: "0 2px 10px rgba(92,115,87,.16)" }}>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden" data-testid="toggle-home-handovers">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-[14px] font-semibold">새 인수인계 {newHandovers.length}건</span>
+              {newHandovers.some((h) => h.important === 1) && (
+                <span className="flex items-center gap-1 text-[12px] font-medium" style={{ color: "#a2483f" }}>
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  중요 {newHandovers.filter((h) => h.important === 1).length}건
+                </span>
+              )}
+            </span>
+            <span className="flex shrink-0 items-center gap-1 text-[12px]" style={{ color: "var(--s-muted)" }}>
+              <span className="group-open:hidden">펼치기</span>
+              <span className="hidden group-open:inline">접기</span>
+              <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />
+            </span>
+          </summary>
+          {newHandovers.map((h) => (
+            <div key={h.id} className="mt-2.5" data-testid={`home-handover-${h.id}`}>
+              <div className="flex items-center gap-1.5">
+                {h.important === 1 && (
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" style={{ color: "#a2483f" }} strokeWidth={1.8} />
+                )}
+                <span className="text-[12.5px] font-semibold">{h.staffName}</span>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed">{h.body}</p>
+              <button
+                className="mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-medium"
+                style={{ background: "var(--s-ink)", color: "#fff" }}
+                onClick={() => readHandover(h.id)}
+                data-testid={`home-read-handover-${h.id}`}
+              >
+                <Check className="h-3 w-3" strokeWidth={2.6} />
+                확인
+              </button>
+            </div>
+          ))}
+          <button
+            className="mt-3 text-[11.5px]"
+            style={{ color: "var(--s-muted)" }}
+            onClick={() => navigate("/staff/handover")}
+          >
+            인수인계 전체 보기 ›
+          </button>
+        </details>
+      )}
+
       {/* 이번 주 */}
       {data && (
         <>
@@ -204,38 +204,13 @@ export default function StaffHome() {
               근무 {data.weekShifts.length}일
             </span>
           </div>
-          <button
-            onClick={() => navigate("/staff/schedule")}
-            className="s-card block w-full text-left"
-            data-testid="link-week"
-          >
-            <div className="grid grid-cols-7 gap-1.5">
-              {weekDays(data.weekFrom).map((d, i) => {
-                const sh = data.weekShifts.find((w) => w.workDate === d);
-                const isToday = d === data.today;
-                return (
-                  <div key={d} className="text-center">
-                    <div className="text-[10px]" style={{ color: "var(--s-faint)" }}>
-                      {WEEK_LABEL[i]}
-                    </div>
-                    <div
-                      className="mt-1 flex h-[44px] flex-col items-center justify-center rounded-xl text-[9px] leading-tight"
-                      style={
-                        sh
-                          ? isToday
-                            ? { background: "var(--s-ink)", color: "#fff" }
-                            : { background: "var(--s-accent-soft)", color: "var(--s-accent)" }
-                          : { background: "var(--s-bg)", color: "var(--s-faint)" }
-                      }
-                    >
-                      <b className="text-[12.5px] font-semibold">{Number(d.slice(8))}</b>
-                      <span>{sh ? (sh.position ? slotLabel(sh.position) : "근무") : "—"}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </button>
+          <StaffWeekTeam
+            from={data.weekFrom}
+            today={data.today}
+            staffId={data.staff.id}
+            myShifts={data.weekShifts}
+            onOpenSchedule={() => navigate("/staff/schedule")}
+          />
         </>
       )}
 
