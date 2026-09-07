@@ -1669,7 +1669,9 @@ export class StaffStorage {
       .where(and(gte(supplyOrders.orderDate, from), lte(supplyOrders.orderDate, to)))
       .orderBy(desc(supplyOrders.orderDate), desc(supplyOrders.createdAt))
       .all();
-    return staffId ? rows.filter((r) => r.staffId === staffId) : rows;
+    // Purchase summaries exclude requests and cancelled/refunded orders; original rows remain intact.
+    const excluded = new Set((sqlite.prepare("SELECT order_id FROM supply_order_meta WHERE status IN ('needed','cancelled','refunded')").all() as {order_id:number}[]).map(r=>r.order_id));
+    return rows.filter(r => !excluded.has(r.id) && (!staffId || r.staffId === staffId));
   }
 
   async getSupplyOrder(id: number): Promise<SupplyOrder | null> {
@@ -1678,14 +1680,10 @@ export class StaffStorage {
 
   /** 같은 구입처의 가장 최근 기록 — '지난번과 같이' 불러오기에 쓴다 */
   async lastSupplyOrder(vendor: string): Promise<SupplyOrder | null> {
-    return (
-      db
-        .select()
-        .from(supplyOrders)
-        .where(eq(supplyOrders.vendor, vendor))
-        .orderBy(desc(supplyOrders.orderDate), desc(supplyOrders.createdAt))
-        .all()[0] ?? null
-    );
+    const excluded = new Set((sqlite.prepare("SELECT order_id FROM supply_order_meta WHERE status IN ('needed','cancelled','refunded')").all() as {order_id:number}[]).map(r=>r.order_id));
+    return db.select().from(supplyOrders).where(eq(supplyOrders.vendor, vendor))
+      .orderBy(desc(supplyOrders.orderDate), desc(supplyOrders.createdAt)).all()
+      .find(r => !excluded.has(r.id)) ?? null;
   }
 
   async createSupplyOrder(input: {

@@ -46,7 +46,7 @@ const TABS = [
 const MORE = [
   { href: "/staff/schedule", label: "스케줄", desc: "근무표 · 내 근무", icon: CalendarDays },
   { href: "/staff/dessert", label: "준비 작업", desc: "오늘 해야 할 준비", icon: ListChecks, flag: "knit.staffPrep" },
-  { href: "/staff/supply", label: "발주 기록", desc: "소모품·식자재 구매 기록", icon: ShoppingCart },
+  { href: "/staff/supply", label: "발주 · 재고", desc: "발주·입고 확인과 원두 재고", icon: ShoppingCart },
   { href: "/staff/notices", label: "공지사항", desc: "대표님 공지", icon: Megaphone },
   { href: "/staff/leave", label: "연차", desc: "잔여 · 신청", icon: CalendarOff },
   { href: "/staff/me", label: "내 정보", desc: "연락처 · 비밀번호", icon: User },

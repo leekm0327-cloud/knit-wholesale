@@ -1,3 +1,5 @@
+import { registerSupplyWorkflow } from "./supply-workflow";
+import { sqlite } from "./storage";
 // 직원 내부 관리 시스템 — API
 // 직원용 엔드포인트: /api/staff/*        (직원 세션 필요)
 // 관리자용 엔드포인트: /api/admin/staff/* (관리자 세션 필요)
@@ -108,6 +110,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 }
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
+  registerSupplyWorkflow(app, sqlite, requireStaff);
   seedOwnerStaff();
   importEspressoHistory();
 
