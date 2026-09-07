@@ -1,3 +1,4 @@
+import StaffQueryError from "@/components/StaffQueryError";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout, useStaff } from "@/components/StaffLayout";
@@ -79,7 +80,7 @@ export default function StaffSchedule() {
   const todayStr = ymd(today);
   const isThisMonth = cursor.y === today.getFullYear() && cursor.m === today.getMonth();
 
-  const { data, isLoading } = useQuery<ShiftResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ShiftResponse>({
     queryKey: [`/api/staff/shifts?from=${from}&to=${to}`],
   });
 
@@ -146,7 +147,7 @@ export default function StaffSchedule() {
         </button>
       </div>
 
-      {isLoading ? (
+      {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="mt-2.5 space-y-2.5">
           {Array.from({ length: 4 }).map((_, i) => (
             <div

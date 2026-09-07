@@ -1,3 +1,4 @@
+import StaffQueryError from "@/components/StaffQueryError";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout } from "@/components/StaffLayout";
@@ -39,7 +40,7 @@ export default function StaffHandover() {
   const [writing, setWriting] = useState(false);
 
   const key = `/api/staff/handover?date=${date}`;
-  const { data, isLoading } = useQuery<HandoverDay>({ queryKey: [key] });
+  const { data, isLoading, isError, refetch } = useQuery<HandoverDay>({ queryKey: [key] });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: [key] });
@@ -144,7 +145,7 @@ export default function StaffHandover() {
         )}
       </div>
 
-      {isLoading ? (
+      {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="space-y-2.5">
           {Array.from({ length: 2 }).map((_, i) => (
             <div

@@ -341,8 +341,8 @@
   --s-bg: #f1f0ee;
   --s-surface: #ffffff;
   --s-ink: #1b1c19;
-  --s-muted: #8e8d88;
-  --s-faint: #c6c5bf;
+  --s-muted: #686963;
+  --s-faint: #777971;
   --s-hair: #f0efec;
   --s-accent: #5c7357;
   --s-accent-soft: #eceeea;
@@ -381,7 +381,7 @@
 }
 .staff-ui .s-dark .s-k { color: #a9aaa4; }
 
-.staff-ui .s-k { font-size: 11.5px; color: var(--s-muted); }
+.staff-ui .s-k { font-size: 12px; color: var(--s-muted); }
 .staff-ui .s-big { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; margin-top: 3px; }
 .staff-ui .s-big.off { color: var(--s-faint); }
 
@@ -446,9 +446,10 @@
 .staff-ui .s-nav button {
   background: none;
   border: 0;
-  color: #8b8c86;
+  color: #bfc1b9;
   font-family: inherit;
-  font-size: 10.5px;
+  font-size: 12px;
+  min-height: 44px;
   padding: 2px 0;
   cursor: pointer;
   display: flex;

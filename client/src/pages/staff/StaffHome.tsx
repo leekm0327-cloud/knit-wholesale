@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import StaffWeekTeam from "@/components/StaffWeekTeam";
+import StaffQueryError from "@/components/StaffQueryError";
 import { StaffLayout } from "@/components/StaffLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -33,7 +34,7 @@ export default function StaffHome() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
-  const { data, isLoading } = useQuery<StaffHomeData>({
+  const { data, isLoading, isError, refetch } = useQuery<StaffHomeData>({
     queryKey: ["/api/staff/home"],
     refetchInterval: 60000,
   });
@@ -44,6 +45,7 @@ export default function StaffHome() {
 
   async function punch(kind: "clock-in" | "clock-out") {
     if (busy) return;
+    if (kind === "clock-out" && !window.confirm("지금 퇴근을 기록할까요? 잘못 기록한 경우 관리자에게 정정을 요청해 주세요.")) return;
     setBusy(true);
     try {
       await apiRequest("POST", `/api/staff/attendance/${kind}`);
@@ -66,6 +68,9 @@ export default function StaffHome() {
   }
 
   const newHandovers = data?.handoverNew ?? [];
+
+  if (isError) return <StaffLayout title="오늘" greeting><StaffQueryError retry={refetch} /></StaffLayout>;
+  if (isLoading || !data) return <StaffLayout title="오늘" greeting><div className="s-card mt-3" role="status">오늘 근무 정보를 불러오는 중…</div></StaffLayout>;
 
   return (
     <StaffLayout title="오늘" greeting>

@@ -1,3 +1,4 @@
+import StaffQueryError from "@/components/StaffQueryError";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout, useStaff } from "@/components/StaffLayout";
@@ -43,7 +44,7 @@ export default function StaffSupply() {
   const [busy, setBusy] = useState(false);
 
   const { data: vendors } = useQuery<SupplyVendor[]>({ queryKey: ["/api/staff/supply-vendors"] });
-  const { data: orders, isLoading } = useQuery<SupplyOrder[]>({ queryKey: ["/api/staff/supply-orders"] });
+  const { data: orders, isLoading, isError, refetch } = useQuery<SupplyOrder[]>({ queryKey: ["/api/staff/supply-orders"] });
 
   const list = orders ?? [];
   const monthTotal = list.reduce((s, r) => s + r.amount, 0);
@@ -255,7 +256,7 @@ export default function StaffSupply() {
         </div>
       )}
 
-      {isLoading ? (
+      {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="mt-2.5 space-y-2.5">
           {Array.from({ length: 3 }).map((_, i) => (
             <div

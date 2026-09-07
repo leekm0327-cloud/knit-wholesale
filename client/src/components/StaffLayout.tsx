@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PublicStaff } from "@shared/schema";
+import StaffQueryError from "@/components/StaffQueryError";
+import { API_BASE } from "@/lib/queryClient";
 import {
   Loader2,
   Home,
@@ -24,12 +26,10 @@ export function useStaff() {
   return useQuery<PublicStaff | null>({
     queryKey: ["/api/staff/me"],
     queryFn: async () => {
-      try {
-        const res = await apiRequest("GET", "/api/staff/me");
-        return await res.json();
-      } catch {
-        return null;
-      }
+      const res = await fetch(`${API_BASE}/api/staff/me`, { credentials: "include" });
+      if (res.status === 401) return null;
+      if (!res.ok) throw new Error("직원 정보를 불러오지 못했습니다.");
+      return await res.json();
     },
   });
 }
@@ -52,7 +52,7 @@ const MORE = [
   { href: "/staff/me", label: "내 정보", desc: "연락처 · 비밀번호", icon: User },
 ];
 
-const MORE_PATHS = new Set(MORE.map((m) => m.href.split("?")[0]));
+const MORE_PATHS = new Set(MORE.filter((m) => !TABS.some((t) => t.href === m.href)).map((m) => m.href));
 
 export function StaffLayout({
   children,
@@ -66,13 +66,17 @@ export function StaffLayout({
   /** 홈처럼 헤더에 인사말을 쓸 때 */
   greeting?: boolean;
 }) {
-  const { data: staff, isLoading } = useStaff();
+  const { data: staff, isLoading, isError, refetch } = useStaff();
   const [location, navigate] = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !staff) navigate("/staff/login");
-  }, [isLoading, staff, navigate]);
+    if (!isLoading && !isError && !staff) navigate("/staff/login");
+  }, [isLoading, isError, staff, navigate]);
+
+  if (isError) {
+    return <div className="staff-ui min-h-screen p-4"><div className="mx-auto max-w-xl"><StaffQueryError retry={refetch} /></div></div>;
+  }
 
   if (isLoading || !staff) {
     return (

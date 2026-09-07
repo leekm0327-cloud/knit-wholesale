@@ -1,3 +1,4 @@
+import StaffQueryError from "@/components/StaffQueryError";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout } from "@/components/StaffLayout";
@@ -10,7 +11,7 @@ type Row = Announcement & { read: boolean };
 
 export default function StaffNotices() {
   const [openId, setOpenId] = useState<number | null>(null);
-  const { data, isLoading } = useQuery<Row[]>({ queryKey: ["/api/staff/announcements"] });
+  const { data, isLoading, isError, refetch } = useQuery<Row[]>({ queryKey: ["/api/staff/announcements"] });
 
   async function open(a: Row) {
     setOpenId((cur) => (cur === a.id ? null : a.id));
@@ -42,7 +43,7 @@ export default function StaffNotices() {
         전체
       </div>
 
-      {isLoading ? (
+      {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="space-y-2.5">
           {Array.from({ length: 3 }).map((_, i) => (
             <div

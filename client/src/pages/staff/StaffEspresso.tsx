@@ -1,3 +1,4 @@
+import StaffQueryError from "@/components/StaffQueryError";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout, useStaff } from "@/components/StaffLayout";
@@ -77,7 +78,7 @@ export default function StaffEspresso() {
   const [beanEtc, setBeanEtc] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const { data: logs, isLoading } = useQuery<EspressoLog[]>({ queryKey: ["/api/staff/espresso-logs"] });
+  const { data: logs, isLoading, isError, refetch } = useQuery<EspressoLog[]>({ queryKey: ["/api/staff/espresso-logs"] });
   // 요즘 세팅 — 공개 통계 API(전체 기간 · 긍정 평가 기준)를 그대로 쓴다. 서버가 30초 캐시한다.
   const { data: stats } = useQuery<EspressoStats>({ queryKey: ["/api/espresso-log-stats"] });
 
@@ -111,10 +112,29 @@ export default function StaffEspresso() {
     }));
   }
 
-  function close() {
+  function resetForm() {
     setOpen(false);
     setBeanEtc(false);
     setD(emptyDraft());
+  }
+
+  function close() {
+    if (busy) return;
+    const original = emptyDraft();
+    if (JSON.stringify(d) !== JSON.stringify(original) && !window.confirm("작성 중인 추출 기록을 닫을까요? 저장하지 않은 내용은 사라집니다.")) return;
+    resetForm();
+  }
+
+  const previous = [...(logs ?? [])]
+    .filter((log) => log.beanName === d.beanName && log.logDate <= d.logDate)
+    .sort((a, b) => b.logDate.localeCompare(a.logDate) || b.createdAt - a.createdAt || b.id - a.id)[0];
+
+  function loadPrevious() {
+    if (!previous || busy) return;
+    if ([d.doseG, d.yieldG, d.timeSec, d.grindSetting, d.waterTemp].some(Boolean) && !window.confirm("입력한 레시피를 직전 세팅으로 바꿀까요?")) return;
+    const value = (n: number) => n > 0 ? String(n) : "";
+    set({ doseG: value(previous.doseG), yieldG: value(previous.yieldG), timeSec: value(previous.timeSec), grindSetting: previous.grindSetting, waterTemp: value(previous.waterTemp) });
+    toast({ title: `${shortDate(previous.logDate)} 레시피를 불러왔습니다.`, description: "도징·추출량·시간·분쇄도·추출 온도만 복사했습니다." });
   }
 
   async function save() {
@@ -141,7 +161,7 @@ export default function StaffEspresso() {
         memo: d.memo.trim(),
       });
       toast({ title: "기록되었습니다." });
-      close();
+      resetForm();
       queryClient.invalidateQueries({ queryKey: ["/api/staff/espresso-logs"] });
     } catch (err) {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
@@ -240,6 +260,12 @@ export default function StaffEspresso() {
           {/* 레시피 */}
           <div className="s-sect">레시피</div>
           <div className="s-card">
+            <button type="button" className="s-pill line mb-3" onClick={loadPrevious} disabled={!previous || busy || isError} data-testid="button-load-previous-espresso">
+              같은 원두 직전 세팅 불러오기
+            </button>
+            <p className="mb-3 text-[12px]" style={{ color: "var(--s-muted)" }}>
+              {!d.beanName ? "원두를 먼저 선택해 주세요." : isError ? "기록을 불러오지 못했습니다." : isLoading ? "직전 기록을 찾는 중…" : previous ? `${shortDate(previous.logDate)} 기록 · 불러온 뒤 오늘 세팅에 맞게 수정하세요.` : "이 원두의 이전 기록이 없습니다."}
+            </p>
             <div className="grid grid-cols-3 gap-x-2.5 gap-y-3">
               <Field label="도징 (g)" value={d.doseG} onChange={(v) => set({ doseG: v })} placeholder="19.5" test="input-dose" />
               <Field label="추출량 (g)" value={d.yieldG} onChange={(v) => set({ yieldG: v })} placeholder="34" test="input-yield" />
@@ -258,8 +284,8 @@ export default function StaffEspresso() {
           </div>
 
           {/* 환경 */}
-          <div className="s-sect">그날의 환경</div>
-          <div className="s-card">
+          <details className="s-card mt-3" data-testid="espresso-environment">
+            <summary className="min-h-11 cursor-pointer text-[14px] font-medium">상세 입력 · 온도와 습도 (선택)</summary>
             <div className="grid grid-cols-2 gap-x-3 gap-y-3">
               <Field label="추출 온도 (℃)" value={d.waterTemp} onChange={(v) => set({ waterTemp: v })} placeholder="93" />
               <Field
@@ -279,7 +305,7 @@ export default function StaffEspresso() {
             <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
               실내 온도와 습도는 거래처가 보는 페이지에서 환경별 권장 레시피를 뽑는 데 쓰입니다.
             </p>
-          </div>
+          </details>
 
           {/* 평가 */}
           <div className="s-sect">종합 평가</div>
@@ -399,7 +425,7 @@ export default function StaffEspresso() {
         )}
       </div>
 
-      {isLoading ? (
+      {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="space-y-2.5">
           {Array.from({ length: 3 }).map((_, i) => (
             <div

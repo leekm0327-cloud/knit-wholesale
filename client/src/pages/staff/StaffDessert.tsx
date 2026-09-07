@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { StaffLayout } from "@/components/StaffLayout";
+import { StaffLayout, useStaff } from "@/components/StaffLayout";
+import StaffQueryError from "@/components/StaffQueryError";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
@@ -36,6 +37,7 @@ function fmtDay(iso: string): string {
 }
 
 export default function StaffDessert() {
+  const { data: me } = useStaff();
   useEffect(() => {
     let flag = "";
     try { flag = sessionStorage.getItem("knit.staffPrep") || ""; sessionStorage.removeItem("knit.staffPrep"); } catch {}
@@ -46,23 +48,54 @@ export default function StaffDessert() {
   const [kind, setKind] = useState<Kind>("produce");
   const [draft, setDraft] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const cachedDrafts = useRef<Record<string, Record<number, string>>>({});
+  const draftKey = `knit.dessertDraft:${me?.id}:${date}:${kind}`;
 
   const key = `/api/staff/dessert-logs/day?date=${date}`;
-  const { data, isLoading } = useQuery<DayRes>({ queryKey: [key] });
+  const { data, isLoading, isError, refetch } = useQuery<DayRes>({ queryKey: [key] });
 
   // 날짜나 모드가 바뀌면 서버 값으로 입력칸을 다시 채운다
   useEffect(() => {
-    if (!data) return;
+    if (!data || data.date !== date || !me) return;
+    let saved = cachedDrafts.current[draftKey];
+    if (!saved) {
+      try {
+        const value = JSON.parse(sessionStorage.getItem(draftKey) || "null");
+        if (value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every((v) => typeof v === "string" && /^\d*$/.test(v))) saved = value;
+      } catch { /* 메모리의 초안은 저장소 사용 불가 시에도 유지한다. */ }
+    }
+    if (saved) {
+      setDraft(saved);
+      setDirty(true);
+      return;
+    }
     const next: Record<number, string> = {};
     for (const r of data.rows) {
       const v = kind === "produce" ? r.qty : r.discardQty;
       next[r.itemId] = v ? String(v) : "";
     }
     setDraft(next);
-  }, [data, kind]);
+    setDirty(false);
+  }, [data, kind, date, draftKey, me]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", protect);
+    return () => window.removeEventListener("beforeunload", protect);
+  }, [dirty]);
+
+  function updateQuantity(itemId: number, value: string) {
+    const next = { ...draft, [itemId]: value.replace(/[^0-9]/g, "") };
+    cachedDrafts.current[draftKey] = next;
+    try { sessionStorage.setItem(draftKey, JSON.stringify(next)); } catch { /* 메모리 초안 유지 */ }
+    setDraft(next);
+    setDirty(true);
+  }
 
   async function save() {
-    if (!data) return;
+    if (!data || busy || isError) return;
     setBusy(true);
     try {
       await apiRequest("POST", "/api/staff/dessert-logs/save", {
@@ -70,6 +103,9 @@ export default function StaffDessert() {
         kind,
         rows: data.rows.map((r) => ({ itemId: r.itemId, value: Number(draft[r.itemId]) || 0 })),
       });
+      delete cachedDrafts.current[draftKey];
+      try { sessionStorage.removeItem(draftKey); } catch { /* 저장 성공은 유지 */ }
+      setDirty(false);
       toast({ title: kind === "produce" ? "생산량이 저장되었습니다." : "폐기량이 저장되었습니다." });
       queryClient.invalidateQueries({ queryKey: [key] });
     } catch (err) {
@@ -88,17 +124,17 @@ export default function StaffDessert() {
     <StaffLayout title="생산일지" subtitle="디저트">
       {/* 생산 / 폐기 */}
       <div className="s-seg">
-        <button className={isProduce ? "on" : ""} onClick={() => setKind("produce")} data-testid="mode-생산">
+        <button disabled={busy} className={isProduce ? "on" : ""} onClick={() => setKind("produce")} data-testid="mode-생산">
           <ChefHat className="h-4 w-4" strokeWidth={1.6} />
           생산
         </button>
-        <button className={!isProduce ? "on" : ""} onClick={() => setKind("discard")} data-testid="mode-폐기">
+        <button disabled={busy} className={!isProduce ? "on" : ""} onClick={() => setKind("discard")} data-testid="mode-폐기">
           <Trash2 className="h-4 w-4" strokeWidth={1.6} />
           폐기
         </button>
       </div>
       <p className="mt-2 flex items-center justify-between px-1 text-[11.5px]" style={{ color: "var(--s-muted)" }}>
-        <span>{isProduce ? "만든 수량을 적어주세요." : "폐기한 수량을 적어주세요."}</span>
+        <span>{isProduce ? "이날 만든 누적 총수량을 적어주세요." : "이날 폐기한 누적 총수량을 적어주세요."}</span>
         <span className="s-k" style={{ fontSize: 10.5 }}>{isProduce ? "베이킹 담당" : "마감 담당"}</span>
       </p>
 
@@ -106,13 +142,14 @@ export default function StaffDessert() {
       <div className="s-card mt-2.5 flex items-center justify-between" style={{ padding: "9px 10px" }}>
         <button
           className="s-icon"
+          disabled={busy}
           onClick={() => setDate((v) => addDays(v, -1))}
           aria-label="이전 날"
           data-testid="button-prev-day"
         >
           <span className="text-[15px] leading-none">‹</span>
         </button>
-        <button className="text-center" onClick={() => setDate(today())} disabled={isToday}>
+        <button className="text-center" onClick={() => setDate(today())} disabled={isToday || busy}>
           <div className="text-[14.5px] font-semibold tracking-tight">{fmtDay(date)}</div>
           <div className="s-k" style={{ marginTop: 1 }}>
             {isToday ? "오늘" : "오늘로"}
@@ -120,6 +157,7 @@ export default function StaffDessert() {
         </button>
         <button
           className="s-icon"
+          disabled={busy}
           onClick={() => setDate((v) => addDays(v, 1))}
           aria-label="다음 날"
           data-testid="button-next-day"
@@ -132,7 +170,7 @@ export default function StaffDessert() {
       <div id="staff-prep-section" />
       <PrepTasks date={date} />
 
-      {isLoading ? (
+      {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="mt-2.5 space-y-2.5">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
@@ -152,7 +190,8 @@ export default function StaffDessert() {
         </div>
       ) : (
         <>
-          <div className="s-sect">{isProduce ? "생산 수량" : "폐기 수량"}</div>
+          <div className="s-sect">{isProduce ? "생산 누적 수량" : "폐기 누적 수량"}</div>
+          {dirty && <p className="mb-2 text-[12px]" role="status" style={{ color: "var(--s-accent)" }}>작성 중인 내용이 있습니다. 저장 버튼을 눌러야 근무자들과 공유됩니다.</p>}
           <div className="s-card" style={{ padding: "4px 16px" }}>
             {rows.map((r) => {
               const other = isProduce
@@ -174,7 +213,8 @@ export default function StaffDessert() {
                     className="s-input center"
                     style={{ width: 74, padding: "9px 6px" }}
                     value={draft[r.itemId] ?? ""}
-                    onChange={(e) => setDraft((p) => ({ ...p, [r.itemId]: e.target.value.replace(/[^0-9]/g, "") }))}
+                    disabled={busy}
+                    onChange={(e) => updateQuantity(r.itemId, e.target.value)}
                     inputMode="numeric"
                     placeholder="0"
                     data-testid={`input-${kind}-${r.itemId}`}
@@ -195,6 +235,7 @@ export default function StaffDessert() {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {isProduce ? "생산량 저장" : "폐기량 저장"}
           </button>
+          <p className="mt-2 text-[12px]" style={{ color: "var(--s-muted)" }}>입력값으로 이날 합계를 바꿉니다. 예: 오전 20개 + 오후 10개를 만들었다면 30개.</p>
 
           <p className="mt-3 px-2 text-center text-[11px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
             {isProduce
