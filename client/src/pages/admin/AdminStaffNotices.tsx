@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -75,9 +76,9 @@ export default function AdminStaffNotices() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Notices</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">직원 공지사항</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminStaffNotices.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           직원 앱 홈과 공지 탭에 표시됩니다. 누가 읽었는지는 읽음 수로 확인할 수 있습니다.
-        </p>
+        </p></AdminFold>
 
         {!open && (
           <Button className="mb-4" onClick={() => setOpen(true)} data-testid="button-open-notice-form">

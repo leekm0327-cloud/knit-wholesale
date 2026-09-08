@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -60,7 +61,7 @@ export default function AdminWebAnalytics() {
           <div>
             <div className="eyebrow">Web Analytics</div>
             <h1 className="font-display mt-1 text-2xl font-bold tracking-tight text-foreground">방문자 통계</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Cloudflare Web Analytics 기준 · 익명 집계</p>
+            <AdminFold id="AdminWebAnalytics.tsx-intro-0"><p className="mt-1 text-sm text-muted-foreground">Cloudflare Web Analytics 기준 · 익명 집계</p></AdminFold>
           </div>
           {/* 기간 토글 */}
           <div className="flex gap-1 rounded-lg border border-border p-1">

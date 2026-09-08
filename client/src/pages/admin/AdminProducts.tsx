@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { ProductDetailEditor, emptyDetailFields, type DetailFields } from "./ProductDetailEditor";
 import { useQuery } from "@tanstack/react-query";
@@ -236,7 +237,7 @@ export default function AdminProducts() {
           <div>
             <div className="eyebrow">Products</div>
             <h1 className="font-display mt-1 text-xl font-semibold text-foreground">상품 관리</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">ECOUNT 1품목 1코드 원칙 — 중량별로 상품을 별도로 등록하세요.</p>
+            <AdminFold id="AdminProducts.tsx-intro-0"><p className="mt-0.5 text-sm text-muted-foreground">ECOUNT 1품목 1코드 원칙 — 중량별로 상품을 별도로 등록하세요.</p></AdminFold>
           </div>
           <Button onClick={openNew} data-testid="button-new-product">
             <Plus className="mr-1.5 h-4 w-4" /> 상품 추가

@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -95,7 +96,7 @@ export default function AdminSupplierPayments() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Supplier Payments</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">공장 지급 관리</h1>
-        <p className="mb-6 text-sm text-muted-foreground">OEM 공장에 송금한 지급 내역 등록 · 채무 차감</p>
+        <AdminFold id="AdminSupplierPayments.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">OEM 공장에 송금한 지급 내역 등록 · 채무 차감</p></AdminFold>
 
         {/* 지급 입력 */}
         <Card className="mb-6 p-5">

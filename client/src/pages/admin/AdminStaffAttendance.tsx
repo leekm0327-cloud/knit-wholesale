@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -131,9 +132,9 @@ export default function AdminStaffAttendance() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Attendance</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">근태 현황</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminStaffAttendance.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           직원이 직접 찍은 출퇴근 기록입니다. 빠뜨렸거나 잘못 찍힌 기록은 이 화면에서 고칠 수 있습니다.
-        </p>
+        </p></AdminFold>
 
         <Card className="mb-5 p-4">
           <div className="flex flex-wrap items-end gap-3">

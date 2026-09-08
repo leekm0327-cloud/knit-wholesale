@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -203,7 +204,7 @@ export default function AdminQuotes() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Quotation</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">견적서</h1>
-        <p className="mb-6 text-sm text-muted-foreground">예비 거래처에게 보낼 원두 도매 견적서를 만들고, PDF·공유 링크로 발송합니다.</p>
+        <AdminFold id="AdminQuotes.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">예비 거래처에게 보낼 원두 도매 견적서를 만들고, PDF·공유 링크로 발송합니다.</p></AdminFold>
 
         {/* 폼 */}
         <Card className="mb-6 p-5">

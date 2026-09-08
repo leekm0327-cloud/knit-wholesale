@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -91,11 +92,11 @@ export default function AdminStoreSales() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Other Sales</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">기타매출 입력</h1>
-        <p className="mb-2 text-sm text-muted-foreground">
+        <AdminFold id="AdminStoreSales.tsx-intro-0"><p className="mb-2 text-sm text-muted-foreground">
           온라인·아뜰리에·컨설팅·팝업처럼 <strong className="text-foreground">주문 시스템과 POS를 거치지 않는 매출</strong>을 기록합니다.
           금액은 부가세 포함으로 입력하시면 손익에는 공급가액으로 반영됩니다.
           같은 날짜·같은 부문은 덮어쓰기 되니, 건별로 남기시려면 메모에 내용을 적어 주세요.
-        </p>
+        </p></AdminFold>
         <p className="mb-6 rounded-md border border-dashed p-3 text-xs text-muted-foreground">
           <strong className="text-foreground">매장 매출은 입력하지 않으셔도 됩니다.</strong> POS 매출 분석에서 엑셀을 올리시면 일자별 매장 매출이 자동으로 반영됩니다.
           도매 매출도 주문에서 자동 집계됩니다. 매장 값을 직접 고쳐야 할 때만 부문에서 ‘매장(보정용)’을 선택하세요 —

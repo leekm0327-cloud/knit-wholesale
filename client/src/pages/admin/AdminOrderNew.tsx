@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -223,9 +224,9 @@ export default function AdminOrderNew() {
         <div className="mb-6">
           <div className="eyebrow">Orders</div>
           <h1 className="font-display mt-1 text-xl font-semibold text-foreground">대리 주문 입력</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <AdminFold id="AdminOrderNew.tsx-intro-0"><p className="mt-1 text-sm text-muted-foreground">
             거래처를 대신하여 도매 주문을 생성합니다. 거래처 등록 단가가 자동 적용됩니다.
-          </p>
+          </p></AdminFold>
         </div>
 
         {loadingCustomers || loadingProducts ? (

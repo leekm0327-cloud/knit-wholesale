@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -120,7 +121,7 @@ export default function AdminCustomers() {
           <div>
             <div className="eyebrow">Customers</div>
             <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">거래처 관리</h1>
-            <p className="text-sm text-muted-foreground">가입한 거래처 목록과 상세 정보입니다.</p>
+            <AdminFold id="AdminCustomers.tsx-intro-0"><p className="text-sm text-muted-foreground">가입한 거래처 목록과 상세 정보입니다.</p></AdminFold>
           </div>
           <Button onClick={() => setCreateOpen(true)} data-testid="button-create-customer">
             <Plus className="mr-1.5 h-4 w-4" /> 거래처 등록

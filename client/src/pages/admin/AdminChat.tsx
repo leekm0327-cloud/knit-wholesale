@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
@@ -63,7 +64,7 @@ export default function AdminChat() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Chat</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">거래처 채팅</h1>
-        <p className="mb-6 text-sm text-muted-foreground">거래처와 1:1로 메시지를 주고받습니다. 거래처가 보낸 메시지는 알림센터에도 표시됩니다.</p>
+        <AdminFold id="AdminChat.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">거래처와 1:1로 메시지를 주고받습니다. 거래처가 보낸 메시지는 알림센터에도 표시됩니다.</p></AdminFold>
 
         <div className="grid gap-4 sm:grid-cols-[300px_1fr]">
           {/* 스레드 목록 — 모바일에선 대화 선택 시 숨김 */}

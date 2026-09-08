@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -166,7 +167,7 @@ export default function AdminPersonalLedger() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Personal ledger</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">개인 가계부</h1>
-        <p className="mb-6 text-sm text-muted-foreground">사장님 개인 수입·지출 기록입니다. 사업 재무(경영 대시보드)와 완전히 분리되어 있습니다.</p>
+        <AdminFold id="AdminPersonalLedger.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">사장님 개인 수입·지출 기록입니다. 사업 재무(경영 대시보드)와 완전히 분리되어 있습니다.</p></AdminFold>
 
         {/* 입력 폼 */}
         <Card className="mb-6 p-5">

@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -251,9 +252,9 @@ export default function AdminPosSales() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">POS sales</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">POS 매출 분석</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminPosSales.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           POS 매출리포트 엑셀을 올리면 자동으로 분류·집계합니다. 취소·0원(테이블번호 등) 데이터는 제외되며, 같은 기간을 다시 올리면 덮어씁니다.
-        </p>
+        </p></AdminFold>
 
         {/* 업로드 */}
         <Card className="mb-6 p-5">

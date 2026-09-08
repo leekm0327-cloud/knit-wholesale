@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -134,7 +135,7 @@ export default function AdminDashboardPnl() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Management</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">경영 대시보드</h1>
-        <p className="mb-6 text-sm text-muted-foreground">기간별 수입·지출·손익을 한눈에 봅니다.</p>
+        <AdminFold id="AdminDashboardPnl.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">기간별 수입·지출·손익을 한눈에 봅니다.</p></AdminFold>
 
         {/* 기간 컨트롤 */}
         <Card className="mb-6 p-4">

@@ -6,3 +6,14 @@
 @media print{.erp-body{margin:0}.erp-rail,.erp-topbar,.erp-subnav{display:none}.erp-panel{break-inside:avoid}.erp-page{padding:0}}
 
 .erp-stats>button{text-align:left}.erp-task:focus-visible,.erp-nav a:focus-visible{outline:2px solid #515c6b;outline-offset:-3px}
+
+/* Compact optional guidance without hiding the working controls. */
+.admin-fold{margin:8px 0 12px;color:inherit;font-size:13px}
+.admin-fold>summary{cursor:pointer;color:#6b7280;width:fit-content;padding:4px 0;line-height:1.5}
+.admin-fold>summary:hover{color:#20252b}
+.admin-fold>summary:focus-visible{outline:2px solid #4a6ee0;outline-offset:3px}
+.admin-fold-content{padding:10px 0 4px}
+.admin-fold-content>p{margin:0!important;text-align:left!important}
+.bank-review-page .erp-page-heading{margin-bottom:12px}
+.bank-review-page .bank-classify{margin:12px 0;padding:12px;background:#f5f6f7;border-radius:6px}
+.bank-classify{margin:12px 0;padding:12px;background:#f5f6f7;border-radius:6px}

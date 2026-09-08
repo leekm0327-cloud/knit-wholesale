@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -145,9 +146,9 @@ export default function AdminProductCategories() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Product categories</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">상품 카테고리</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminProductCategories.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           카탈로그에 노출되는 카테고리와 순서를 관리합니다. '원두'는 5kg 최소주문 수량에 포함되는 카테고리, '샘플'은 무료 샘플 신청이 가능한 카테고리입니다.
-        </p>
+        </p></AdminFold>
 
         {/* 추가 폼 */}
         <Card className="mb-6 p-5">

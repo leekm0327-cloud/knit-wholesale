@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -201,10 +202,10 @@ export default function AdminStaffHandover() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Handover</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">인수인계 · 일정</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminStaffHandover.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           직원들이 남긴 인수인계를 보고, 준비 작업과 일정을 날짜에 걸어둘 수 있습니다. 여기에 등록한 일정은 직원 앱
           첫 화면의 2주 달력에 바로 뜹니다.
-        </p>
+        </p></AdminFold>
 
         <Card className="mb-5 p-4">
           <div className="flex flex-wrap items-end gap-3">

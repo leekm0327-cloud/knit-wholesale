@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -32,7 +33,7 @@ export default function AdminBalances() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Receivables</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">채권 관리</h1>
-        <p className="mb-6 text-sm text-muted-foreground">거래처별 미수금 현황과 입금 처리</p>
+        <AdminFold id="AdminBalances.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">거래처별 미수금 현황과 입금 처리</p></AdminFold>
 
         {/* KPI */}
         <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">

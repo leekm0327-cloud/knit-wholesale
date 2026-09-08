@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -239,9 +240,9 @@ export default function AdminFinancials() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Financial statements</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">재무제표</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminFinancials.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           업종별(음식점업·원두도매업) 손익계산서와 채권·채무 현황입니다. 앱 데이터 기반의 내부 경영용 자료이며, 공식 세무신고용 재무제표가 아닙니다.
-        </p>
+        </p></AdminFold>
 
         {/* 기간 */}
         <Card className="mb-6 p-4">

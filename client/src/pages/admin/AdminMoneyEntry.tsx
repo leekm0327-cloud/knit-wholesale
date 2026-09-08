@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -314,9 +315,9 @@ export default function AdminMoneyEntry() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Money</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">지출 · 가계부</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminMoneyEntry.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           사업 지출과 개인 가계부를 한 곳에서 입력합니다. 탭 → 탭 → 금액 → 저장.
-        </p>
+        </p></AdminFold>
 
         {/* 사업 지출 / 개인 가계부 토글 (개인 가계부는 사장님 전용) */}
         {isOwner && (

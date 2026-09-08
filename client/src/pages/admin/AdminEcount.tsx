@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -147,9 +148,9 @@ export default function AdminEcount() {
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">ERP Integration</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">ECOUNT 연동</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminEcount.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           이카운트 API 인증키를 저장하고 연결 상태를 확인합니다. 수금·입금보고서·채권채무는 판매·회계자동분개 전표를 통해 ECOUNT에서 자동으로 생성됩니다.
-        </p>
+        </p></AdminFold>
 
         {/* 지금 어느 서버로 나가고 있는지 — 잘못 켜두면 전표가 통째로 엉뚱한 곳에 쌓인다 */}
         {!isLoading && data && (

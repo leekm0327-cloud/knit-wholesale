@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -44,9 +45,9 @@ export default function AdminBoard() {
               게시판 관리
             </h1>
           </div>
-          <p className="max-w-md text-xs leading-relaxed text-muted-foreground sm:text-right">
+          <AdminFold id="AdminBoard.tsx-intro-0"><p className="max-w-md text-xs leading-relaxed text-muted-foreground sm:text-right">
             공지/문의/자유 게시판을 관리합니다. 모든 글을 삭제할 수 있습니다.
-          </p>
+          </p></AdminFold>
         </div>
 
         {/* 탭 */}

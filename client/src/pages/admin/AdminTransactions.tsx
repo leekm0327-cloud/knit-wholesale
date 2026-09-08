@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -91,7 +92,7 @@ export default function AdminTransactions() {
           <div>
             <div className="eyebrow">Transactions</div>
             <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">거래내역서</h1>
-            <p className="text-sm text-muted-foreground">거래처별 기간 거래 내역을 조회합니다.</p>
+            <AdminFold id="AdminTransactions.tsx-intro-0"><p className="text-sm text-muted-foreground">거래처별 기간 거래 내역을 조회합니다.</p></AdminFold>
           </div>
           {result && (
             <Button variant="outline" onClick={handlePrint}>

@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -102,7 +103,7 @@ export default function Dashboard() {
           <div>
             <div className="eyebrow">Dashboard</div>
             <h1 className="font-display mt-1 text-xl font-semibold text-foreground">대시보드</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">니트커피 도매 주문 현황</p>
+            <AdminFold id="Dashboard.tsx-intro-0"><p className="mt-0.5 text-sm text-muted-foreground">니트커피 도매 주문 현황</p></AdminFold>
           </div>
           {stats && stats.pendingOrders > 0 && (
             <Badge className="gap-1 bg-destructive text-destructive-foreground hover:bg-destructive" data-testid="badge-pending">

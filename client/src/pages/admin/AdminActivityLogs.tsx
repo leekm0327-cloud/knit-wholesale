@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -99,9 +100,9 @@ export default function AdminActivityLogs() {
           <h1 className="font-display text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
             활동 로그
           </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <AdminFold id="AdminActivityLogs.tsx-intro-0"><p className="mt-1 text-xs text-muted-foreground">
             모든 변경 작업의 감사 기록입니다. 삭제 불가.
-          </p>
+          </p></AdminFold>
         </div>
 
         {/* 필터 */}

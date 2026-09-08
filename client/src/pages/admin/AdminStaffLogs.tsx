@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -48,7 +49,7 @@ export default function AdminStaffLogs() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Staff Records</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">직원 기록 조회</h1>
-        <p className="mb-6 text-sm text-muted-foreground">직원들이 남긴 추출 기록과 생산일지를 기간별로 확인합니다.</p>
+        <AdminFold id="AdminStaffLogs.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">직원들이 남긴 추출 기록과 생산일지를 기간별로 확인합니다.</p></AdminFold>
 
         <div className="mb-4 flex gap-2">
           <TabButton active={tab === "espresso"} onClick={() => setTab("espresso")} icon={Coffee} label="에스프레소 추출" />

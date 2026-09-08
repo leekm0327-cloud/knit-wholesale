@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -114,9 +115,9 @@ export default function AdminExpenseCleanup() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Expense cleanup</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">지출 재분류</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminExpenseCleanup.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           같은 내용(메모)끼리 묶어 보여줍니다. 여러 묶음을 한 번에 골라 항목·부문을 바꿀 수 있어, ‘기타’로 쌓인 지출을 빠르게 정리할 수 있습니다.
-        </p>
+        </p></AdminFold>
 
         {/* 필터 */}
         <Card className="mb-6 p-4">

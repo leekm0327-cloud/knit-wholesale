@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -96,7 +97,7 @@ export default function AdminSuppliers() {
           <div>
             <div className="eyebrow">Suppliers</div>
             <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">공급처 관리</h1>
-            <p className="text-sm text-muted-foreground">OEM 공장(클라리멘토 등) 공급처 등록 · 관리</p>
+            <AdminFold id="AdminSuppliers.tsx-intro-0"><p className="text-sm text-muted-foreground">OEM 공장(클라리멘토 등) 공급처 등록 · 관리</p></AdminFold>
           </div>
           <Button onClick={openCreate} data-testid="button-add-supplier">
             <Plus className="mr-1.5 h-4 w-4" />

@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -136,11 +137,11 @@ export default function AdminExpenseDuplicates() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Duplicates</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">지출 중복 정리</h1>
-        <p className="mb-6 break-keep text-sm leading-relaxed text-muted-foreground">
+        <AdminFold id="AdminExpenseDuplicates.tsx-intro-0"><p className="mb-6 break-keep text-sm leading-relaxed text-muted-foreground">
           같은 날짜·같은 금액의 지출을 묶어서 보여줍니다. 같은 명세서를 두 번 올렸거나, 은행 내역과 카드 내역에
           같은 결제가 이중으로 들어온 경우를 찾을 수 있습니다. 지우는 건 직접 고르세요 — 같은 날 같은 금액을 두 번
           결제하는 일도 실제로 있습니다.
-        </p>
+        </p></AdminFold>
 
         <Card className="mb-5 p-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

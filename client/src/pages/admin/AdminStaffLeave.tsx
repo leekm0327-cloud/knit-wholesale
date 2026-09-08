@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -115,10 +116,10 @@ export default function AdminStaffLeave() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Annual Leave</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">연차 관리</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminStaffLeave.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           입사일 기준으로 자동 부여되며, 발생일로부터 1년이 지나면 소멸합니다. 직원 계정에서 입사일과 연차 적용을 켜야
           집계됩니다.
-        </p>
+        </p></AdminFold>
 
         {/* 대기 중 신청 */}
         <Card className="mb-5 overflow-hidden">

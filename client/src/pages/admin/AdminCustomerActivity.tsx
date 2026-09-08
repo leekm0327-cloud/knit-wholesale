@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -81,11 +82,11 @@ export default function AdminCustomerActivity() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Activity</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">미주문 거래처</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminCustomerActivity.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           정한 기간 동안 주문이 없는 거래처를 오래 비어 있는 순서로 보여드립니다. 평소 주문 주기를 계산해 그 주기를
           넘긴 곳은 따로 표시하고, 그것만 골라 볼 수도 있습니다. 취소된 주문과 무료 샘플, 매장 내부 계정은 빼고
           셉니다.
-        </p>
+        </p></AdminFold>
 
         {/* 조건 */}
         <Card className="mb-5 p-4">

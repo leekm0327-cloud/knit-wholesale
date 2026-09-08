@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -79,9 +80,9 @@ export default function AdminKakao() {
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Kakao</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">카카오톡 알림 연동</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminKakao.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           샘플/승인, 새 도매 주문 등 주요 이벤트를 사장님 본인 카카오톡("나에게 보내기")으로 받습니다.
-        </p>
+        </p></AdminFold>
 
         {isLoading || !status ? (
           <Skeleton className="h-48 w-full" />

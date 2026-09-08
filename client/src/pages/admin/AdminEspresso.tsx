@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -121,9 +122,9 @@ export default function AdminEspresso() {
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Espresso log</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">에스프레소 추출 로그</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminEspresso.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           추출 환경(인포그래픽)을 수정하고, 구글폼 응답 기반 레시피 집계를 확인합니다. 공개 페이지·메인 화면에도 동일하게 노출됩니다.
-        </p>
+        </p></AdminFold>
 
         {/* 추출 환경 편집 */}
         <Card className="mb-6 overflow-hidden">

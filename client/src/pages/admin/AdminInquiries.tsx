@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -75,9 +76,10 @@ export default function AdminInquiries() {
       <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
         <div className="mb-6">
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">문의</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            원두 납품 · 카페 컨설팅 문의 접수 내역입니다. {newCount > 0 && <span className="font-semibold text-foreground">· 신규 {newCount}건</span>}
-          </p>
+          <AdminFold id="AdminInquiries.tsx-intro-0"><p className="mt-1 text-sm text-muted-foreground">
+            원두 납품 · 카페 컨설팅 문의 접수 내역입니다. 
+          </p></AdminFold>
+          {newCount > 0 && <span className="font-semibold text-foreground">· 신규 {newCount}건</span>}
           <div className="mt-4 flex flex-wrap gap-2">
             {TYPE_FILTERS.map((f) => {
               const n = f.value === "all" ? all.length : all.filter((i) => (i.inquiryType ?? "wholesale") === f.value).length;

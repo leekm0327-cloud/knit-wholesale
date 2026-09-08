@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 // 카드·은행 내역 불러오기 — 파일을 올리면 자동 분류하고, 애매한 것만 골라 확인한 뒤 저장한다.
 //
 // 파싱은 브라우저에서 한다. 서버에 파일 업로드 장치를 새로 만들지 않아도 되고,
@@ -417,10 +418,10 @@ export default function AdminExpenseImport() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Import</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">카드·은행 내역 불러오기</h1>
-        <p className="mb-6 text-sm leading-relaxed text-muted-foreground">
+        <AdminFold id="AdminExpenseImport.tsx-intro-0"><p className="mb-6 text-sm leading-relaxed text-muted-foreground">
           카드사나 은행에서 받은 파일을 그대로 올리시면, 과거에 분류해 두신 기록에 비추어 자동으로 항목을 채웁니다.
           처음 보는 곳만 따로 모아 보여드리니 그것만 골라주시면 됩니다. 확인 전에는 저장되지 않습니다.
-        </p>
+        </p></AdminFold>
 
         <Card className="mb-5 p-5">
           <div className="flex flex-wrap items-center gap-3">

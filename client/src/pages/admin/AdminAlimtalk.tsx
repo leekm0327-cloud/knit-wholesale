@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 // 카카오 알림톡 — 설정, 테스트 발송, 미수금 안내 수동 발송, 발송 기록.
 // 승인된 템플릿 ID 는 코드에 박지 않고 여기서 골라 쓴다.
 import { useState } from "react";
@@ -221,10 +222,10 @@ export default function AdminAlimtalk() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Alimtalk</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">카카오 알림톡</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminAlimtalk.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           거래처에게 나가는 알림입니다. 주문 접수는 자동으로, 미수금 안내는 고른 곳에만 직접 보냅니다. 카카오톡을 쓰지
           않는 번호로는 문자로 대신 나갑니다.
-        </p>
+        </p></AdminFold>
 
         {isLoading ? (
           <Skeleton className="h-64 w-full" />

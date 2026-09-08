@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -101,10 +102,10 @@ export default function AdminPopupNotices() {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Popup</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">팝업 공지</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminPopupNotices.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           거래처가 로그인하면 화면 가운데에 뜨는 안내입니다. 택배사 휴무처럼 주문 일정이 바뀔 때 쓰시면 됩니다.
           거래처가 '오늘 하루 보지 않기'를 누르면 그날은 다시 뜨지 않고, 그냥 닫으면 다음 로그인 때 또 뜹니다.
-        </p>
+        </p></AdminFold>
 
         {/* 등록 */}
         <Card className="mb-6 p-5">

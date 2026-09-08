@@ -1,3 +1,4 @@
+import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -97,10 +98,10 @@ export default function AdminStaffSupply() {
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Supply</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">발주 기록</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
+        <AdminFold id="AdminStaffSupply.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           직원들이 매장 소모품·식자재를 발주하고 남긴 기록입니다. 결제와 주문은 기존 방식대로 하고, 여기에는 기록만
           쌓입니다. 원두 발주(클라리멘토)는 매입·공장 메뉴에서 따로 관리합니다.
-        </p>
+        </p></AdminFold>
 
         <Card className="mb-5 p-4">
           <div className="flex flex-wrap items-end gap-3">
