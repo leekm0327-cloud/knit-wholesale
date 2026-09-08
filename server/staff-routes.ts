@@ -1,3 +1,4 @@
+import { registerWorkspaceFeatures } from "./workspace-features";
 import { registerAdminOperations } from "./admin-operations";
 import { registerSupplyWorkflow } from "./supply-workflow";
 import { sqlite } from "./storage";
@@ -113,6 +114,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 export function registerStaffRoutes(app: Express, storage: IStorage) {
   registerSupplyWorkflow(app, sqlite, requireStaff);
   registerAdminOperations(app, sqlite, requireAdmin);
+  registerWorkspaceFeatures(app, sqlite, { admin: requireAdmin, owner: requireOwner, staff: requireStaff }, storage);
   seedOwnerStaff();
   importEspressoHistory();
 

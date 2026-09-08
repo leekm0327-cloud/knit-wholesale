@@ -1,3 +1,7 @@
+import Manuals, { StaffManuals } from "@/pages/workspace/Manuals";
+import OperationsCalendar, { StaffOperationsCalendar } from "@/pages/workspace/OperationsCalendar";
+import StorePerformance, { StaffStorePerformance } from "@/pages/workspace/StorePerformance";
+import CustomerOverview from "@/pages/workspace/CustomerOverview";
 import { useEffect } from "react";
 import { Switch, Route, Router, useLocation, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
@@ -187,6 +191,13 @@ function AppRouter() {
       {/* 관리자 */}
       <Route path="/admin/login" component={AdminLogin} />
       <Route path="/admin" component={OperationsHome} />
+      <Route path="/admin/manuals" component={Manuals} />
+      <Route path="/admin/operations-calendar" component={OperationsCalendar} />
+      <Route path="/admin/store-performance" component={StorePerformance} />
+      <Route path="/admin/customers/:id/overview" component={CustomerOverview} />
+      <Route path="/staff/manuals" component={StaffManuals} />
+      <Route path="/staff/operations-calendar" component={StaffOperationsCalendar} />
+      <Route path="/staff/store-performance" component={StaffStorePerformance} />
       <Route path="/admin/workspace/:group" component={AdminWorkspace} />
       <Route path="/admin/order-summary" component={Dashboard} />
       <Route path="/admin/orders" component={AdminOrders} />

@@ -161,7 +161,7 @@ export default function AdminCustomers() {
                 >
                   <div className="min-w-0">
                     <button
-                      onClick={() => setDetailId(c.id)}
+                      onClick={() => navigate(`/admin/customers/${c.id}/overview`)}
                       className="text-sm font-semibold text-foreground hover:underline"
                     >
                       {c.businessName}
@@ -240,7 +240,7 @@ export default function AdminCustomers() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => setDetailId(c.id)}
+                              onClick={() => navigate(`/admin/customers/${c.id}/overview`)}
                               className="text-sm font-semibold text-foreground hover:underline underline-offset-2"
                               data-testid={`link-customer-${c.id}`}
                             >
@@ -311,7 +311,7 @@ export default function AdminCustomers() {
                   <Card
                     key={c.id}
                     className="cursor-pointer p-5 hover-elevate"
-                    onClick={() => setDetailId(c.id)}
+                    onClick={() => navigate(`/admin/customers/${c.id}/overview`)}
                     data-testid={`card-customer-${c.id}`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -966,7 +966,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CustomerPricesSection({ customerId }: { customerId: number }) {
+export function CustomerPricesSection({ customerId }: { customerId: number }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);

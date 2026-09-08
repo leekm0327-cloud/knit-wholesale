@@ -29,6 +29,9 @@ export const adminModules = [
   }
 ];
 export const adminNavigation = [
+ {path:"/admin/operations-calendar",label:"운영 캘린더",owner:false,group:"store"},
+ {path:"/admin/manuals",label:"레시피·매뉴얼",owner:false,group:"store"},
+ {path:"/admin/store-performance",label:"매장 성과 요약",owner:true,group:"store"},
   {
     "path": "/admin/order-summary",
     "label": "도매 주문 요약",

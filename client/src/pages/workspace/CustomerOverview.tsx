@@ -1,0 +1,27 @@
+import { CustomerPricesSection } from "@/pages/admin/AdminCustomers";
+import { useState } from 'react';
+import { Link, useRoute } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import { errMsg, won, fmtDate } from '@/lib/format';
+import { FeatureShell, LoadState } from './FeatureUI';
+import type { PublicCustomer, Order, CustomerBalance, Payment } from '@shared/schema';
+type Context={messages:{id:number;sender:string;body:string;createdAt:number}[];visits:{id:number;date:string;preferredDate:string;status:string;message:string;memo:string}[];notes:{id:number;body:string;dueDate:string;done:number;createdAt:number}[]};
+export default function CustomerOverview(){
+ const [,params]=useRoute('/admin/customers/:id/overview');const id=Number(params?.id);const base='/api/admin/customers/'+id;
+ const q=useQuery<{customer:PublicCustomer;orders:Order[]}>({queryKey:[base],enabled:id>0,staleTime:0,refetchInterval:60000});const ledger=useQuery<{balance:CustomerBalance;payments:Payment[]}>({queryKey:[base+'/ledger'],enabled:id>0,staleTime:0,refetchInterval:60000});const context=useQuery<Context>({queryKey:[base+'/context'],enabled:id>0,staleTime:0,refetchInterval:60000});
+ const [body,setBody]=useState(''),[due,setDue]=useState(''),[busy,setBusy]=useState(false);const {toast}=useToast();const c=q.data?.customer;
+ async function save(){if(busy)return;setBusy(true);try{await apiRequest('POST',base+'/followups',{body,dueDate:due});setBody('');setDue('');await context.refetch();}catch(e){toast({variant:'destructive',title:errMsg(e)});}finally{setBusy(false);}}
+ async function toggle(note:Context['notes'][number]){if(busy)return;setBusy(true);try{await apiRequest('PATCH',base+'/followups/'+note.id,{done:!note.done});await context.refetch();}catch(e){toast({variant:'destructive',title:errMsg(e)});}finally{setBusy(false);}}
+ const orders=[...(q.data?.orders||[])].sort((a,b)=>b.createdAt-a.createdAt);
+ return <FeatureShell title={c?.businessName||'거래처 통합 화면'}><Link className="f-button mb-4" href="/admin/customers">거래처 목록</Link><LoadState query={q}/>{c&&<section className="f-card"><p>{c.managerName} · {c.phone}</p><p className="f-muted">사업자번호 {c.bizRegNo||"미등록"}<br/>{c.email}<br/>{c.defaultAddress||'배송지 미등록'}</p><div className="f-actions"><Link className="f-button" href={`/admin/chat/${id}`}>거래처 채팅</Link><Link className="f-button" href={`/admin/customers/${id}/ledger`}>입금 · 거래 원장</Link><Link className="f-button" href="/admin/quotes">견적서</Link></div></section>}
+ <LoadState query={ledger}/>{ledger.data&&!ledger.isError&&<div className="f-grid"><section className="f-card"><h2>현재 미수금</h2><strong className="f-number">{won(ledger.data.balance.balance)}</strong><p className="f-muted">음수 잔액은 선수금입니다.</p></section><section className="f-card"><h2>누적 입금</h2><strong className="f-number">{won(ledger.data.balance.totalPaid)}</strong></section></div>}
+ <div className="f-grid"><div><section className="f-card"><h2>최근 주문</h2>{orders.slice(0,10).map(o=><div className="f-row" key={o.id}><Link href={`/admin/orders/${o.id}`}>{o.orderNo} · {won(o.totalAmount)}</Link><p className="f-muted">{fmtDate(o.createdAt)} · {o.status==='pending'?'미처리':o.status==='done'?'처리 완료':'취소'} · 희망 납품일 {o.desiredDate||'미지정'}</p>{o.note&&<p className="whitespace-pre-wrap">{o.note}</p>}</div>)}{!q.isError&&!q.isPending&&!orders.length&&<p className="f-muted">주문이 없습니다.</p>}</section>
+ <section className="f-card"><h2>최근 상담</h2><LoadState query={context}/>{context.data?.messages.map(m=><div key={m.id} className="f-row"><p className="f-muted">{m.sender==='admin'?'니트커피':'거래처'} · {fmtDate(m.createdAt)}</p><p className="whitespace-pre-wrap">{m.body}</p></div>)}{context.data&&!context.data.messages.length&&<p className="f-muted">상담 기록이 없습니다.</p>}</section></div><div>
+ <section className="f-card"><h2>다음에 챙길 일 · 내부 메모</h2><p className="f-muted mb-3">관리자끼리 공유하는 메모입니다. 거래처로 전송되지 않습니다.</p><fieldset disabled={busy}><label>내용<textarea aria-label="내용" maxLength={2000} value={body} onChange={e=>setBody(e.target.value)} placeholder="예: 다음 납품 때 추출 상태 확인"/></label><label>확인할 날짜 (선택)<input type="date" value={due} onChange={e=>setDue(e.target.value)}/></label><button className="f-primary" disabled={!body.trim()} onClick={save}>메모 저장</button></fieldset><LoadState query={context}/>{context.data?.notes.map(n=><div className="f-row" key={n.id}><p className={'whitespace-pre-wrap '+(n.done?'line-through text-gray-500':'')}>{n.body}</p>{n.dueDate&&<p className="f-muted">확인일 {n.dueDate}</p>}<button disabled={busy} className="mt-2" onClick={()=>toggle(n)}>{n.done?'다시 열기':'완료 표시'}</button></div>)}</section>
+ <section className="f-card"><h2>방문 세팅</h2><LoadState query={context}/>{context.data?.visits.map(v=><div className="f-row" key={v.id}><strong>{v.date||v.preferredDate||'일자 미정'}</strong><p className="f-muted">{v.date?'확정일':'희망일'} · {{new:'신청 접수',coordinating:'일정 조율',confirmed:'확정',done:'완료'}[v.status]||v.status}</p><p>{v.message}</p>{v.memo&&<p className="f-muted">내부 메모: {v.memo}</p>}</div>)}{context.data&&!context.data.visits.length&&<p className="f-muted">신청 내역이 없습니다.</p>}<Link className="f-button mt-3" href="/admin/visit-setups">방문 세팅 관리</Link></section>
+ {c&&<section className="f-card"><CustomerPricesSection customerId={id}/></section>}
+ <section className="f-card"><h2>세금계산서</h2><p className="f-muted">팝빌 연동 준비 중입니다. 발행과 확인은 현재 사용 중인 ECOUNT에서 진행해 주세요.</p></section>
+ </div></div></FeatureShell>;
+}

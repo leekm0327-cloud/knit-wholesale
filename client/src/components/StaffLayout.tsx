@@ -44,6 +44,9 @@ const TABS = [
 ];
 
 const MORE = [
+  { href: "/staff/operations-calendar", label: "운영 캘린더", desc: "근무 · 행사 · 단체주문", icon: CalendarDays },
+  { href: "/staff/manuals", label: "레시피 · 매뉴얼", desc: "레시피와 업무 방법 검색", icon: ListChecks },
+  { href: "/staff/store-performance", label: "매장 성과", desc: "공유된 판매 현황", icon: ListChecks },
   { href: "/staff/schedule", label: "스케줄", desc: "근무표 · 내 근무", icon: CalendarDays },
   { href: "/staff/dessert", label: "준비 작업", desc: "오늘 해야 할 준비", icon: ListChecks, flag: "knit.staffPrep" },
   { href: "/staff/supply", label: "발주 · 재고", desc: "발주·입고 확인과 원두 재고", icon: ShoppingCart },
@@ -119,7 +122,7 @@ export function StaffLayout({
             className="absolute inset-x-0 bottom-0 mx-auto max-w-xl px-3.5 pb-24"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="s-card p-2">
+            <div className="s-card p-2 max-h-[70vh] overflow-y-auto">
               <div className="flex items-center justify-between px-3 pt-2 pb-1">
                 <span className="s-k">더보기</span>
                 <button onClick={() => setMoreOpen(false)} aria-label="닫기" className="p-1">
