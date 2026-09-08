@@ -17,3 +17,14 @@
 .bank-review-page .erp-page-heading{margin-bottom:12px}
 .bank-review-page .bank-classify{margin:12px 0;padding:12px;background:#f5f6f7;border-radius:6px}
 .bank-classify{margin:12px 0;padding:12px;background:#f5f6f7;border-radius:6px}
+
+.bank-quick-actions{min-width:210px;max-width:320px;font-size:12px}
+.bank-quick-line{display:flex;gap:6px;align-items:center;margin-bottom:5px}
+.bank-quick-line select{min-width:0;width:125px;border:1px solid #d8dce1;border-radius:4px;padding:6px;background:white}
+.bank-quick-primary{white-space:nowrap;background:#252a30;color:white;border-radius:4px;padding:6px 9px}
+.bank-quick-primary:disabled{opacity:.4}
+.bank-quick-secondary{color:#425674;margin-right:10px;padding:3px 0}
+.bank-quick-detail{color:#6b7280;text-decoration:underline;padding:3px 0}
+.bank-inline-detail{padding:16px;background:#f7f8fa;border-bottom:1px solid #d8dce1}
+.bank-inline-detail>div{max-width:760px;padding:20px;background:white;border:1px solid #d8dce1;border-radius:8px}
+.bank-review-page td{vertical-align:top}
