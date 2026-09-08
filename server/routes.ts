@@ -1,3 +1,4 @@
+import { registerBankReview } from "./bank-review";
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
 import session from "express-session";
@@ -270,6 +271,8 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Owner 권한이 필요합니다." });
     next();
   }
+
+  registerBankReview(app, sqlite, requireOwner);
 
   // actor 정보 추출 헬퍼
   async function getActor(req: Request) {

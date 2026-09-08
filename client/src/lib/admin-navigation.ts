@@ -87,6 +87,12 @@ export const adminNavigation = [
     "group": "sales"
   },
   {
+    "path": "/admin/bank-review",
+    "label": "통장 내역 · 테스트",
+    "owner": true,
+    "group": "finance"
+  },
+  {
     "path": "/admin/balances",
     "label": "채권 관리",
     "owner": false,

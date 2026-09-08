@@ -1,3 +1,4 @@
+import BankReview from "@/pages/admin/BankReview";
 import Manuals, { StaffManuals } from "@/pages/workspace/Manuals";
 import OperationsCalendar, { StaffOperationsCalendar } from "@/pages/workspace/OperationsCalendar";
 import StorePerformance, { StaffStorePerformance } from "@/pages/workspace/StorePerformance";
@@ -198,6 +199,7 @@ function AppRouter() {
       <Route path="/staff/manuals" component={StaffManuals} />
       <Route path="/staff/operations-calendar" component={StaffOperationsCalendar} />
       <Route path="/staff/store-performance" component={StaffStorePerformance} />
+      <Route path="/admin/bank-review" component={BankReview} />
       <Route path="/admin/workspace/:group" component={AdminWorkspace} />
       <Route path="/admin/order-summary" component={Dashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
