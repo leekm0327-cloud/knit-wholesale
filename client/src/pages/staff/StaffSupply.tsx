@@ -1,3 +1,5 @@
+import StaffSupplyPicker from "@/components/StaffSupplyPicker";
+import { appendSupplyText, type SupplySelection } from "@/lib/supply-catalog";
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { StaffLayout, useStaff } from '@/components/StaffLayout';
@@ -12,6 +14,7 @@ const today = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10
 const won = (n: number) => n.toLocaleString('ko-KR');
 const when = (n: number) => new Date(n).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 type Form = {
+    selection?: SupplySelection[];
     id?: number;
     version?: number;
     convert?: boolean;
@@ -63,13 +66,13 @@ function SupplyBoard({ me }: {
     function from(r: SupplyRecord, mode: 'edit' | 'convert' | 'copy') { start({ ...empty(), ...r, id: mode === 'copy' ? undefined : r.id, version: r.updatedAt, convert: mode === 'convert', orderDate: mode === 'edit' ? r.orderDate : today(), expectedDate: mode === 'copy' ? '' : r.expectedDate, status: mode === 'edit' && r.status === 'needed' ? 'needed' : 'ordered', amount: mode === 'edit' && r.amount ? String(r.amount) : '', note: mode === 'edit' ? r.note : '' }); if (mode === 'copy' && r.amount)
         toast({ title: `지난 금액 ${won(r.amount)}원`, description: '이번 결제금액을 확인해 입력해 주세요.' }); }
     async function save() { if (!form || busy)
-        return; if (!form.body.trim()) {
+        return; let body: string; try { body = appendSupplyText(form.body, form.selection || []); } catch (e) { toast({ variant: 'destructive', title: errMsg(e) }); return; } if (!body.trim()) {
         toast({ variant: 'destructive', title: '품목과 수량을 적어주세요.' });
         return;
     } if (form.amount && !/^\d+$/.test(form.amount)) {
         toast({ variant: 'destructive', title: '금액은 0 이상의 정수로 입력해 주세요.' });
         return;
-    } setBusy(true); const payload = { ...form, amount: form.status === 'needed' ? 0 : Number(form.amount) || 0 }; try {
+    } setBusy(true); const { selection: _selection, ...fields } = form; const payload = { ...fields, body, amount: form.status === 'needed' ? 0 : Number(form.amount) || 0 }; try {
         if (form.convert)
             await apiRequest('POST', `/api/staff/supply-board/${form.id}/status`, { version: form.version, status: form.status, note: form.note, order: payload });
         else
@@ -106,11 +109,12 @@ function SupplyBoard({ me }: {
  {tab === 'stock' ? <StaffBeanStock /> : <>
  {!form ? <div className="grid grid-cols-2 gap-2 mb-3"><button className="s-pill" onClick={() => start(empty())}>결제한 발주 기록</button><button className="s-pill line" onClick={() => start(empty('needed'))}>발주 필요 추가</button></div> : <div className="s-card" data-testid="supply-form"><div className="flex justify-between items-center mb-4"><h2 className="text-base font-semibold">{form.convert ? '발주 완료 기록' : form.id ? '기록 수정' : form.status === 'needed' ? '발주할 것 남기기' : '결제한 발주 기록'}</h2><button className="s-pill line" onClick={close} disabled={busy}>닫기</button></div>
  <fieldset disabled={busy} className="space-y-4">
- {!form.id && <details><summary className="text-sm cursor-pointer min-h-9">자주 사는 품목 불러오기</summary>{t.isError ? <StaffQueryError retry={t.refetch}/> : <div className="flex flex-wrap gap-2 mt-2">{t.data?.map(x => <button key={x.id} className="s-chip" onClick={() => { if (form.body && !confirm('작성한 품목을 바꿀까요?'))
-                return; update({ vendor: x.vendor, body: x.body, link: x.link, destination: x.destination, amount: '' }); }}>{x.name}</button>)}{!t.isLoading && !t.data?.length && <p className="text-xs" style={{ color: 'var(--s-muted)' }}>기록의 ‘자주 사는 품목으로 저장’으로 추가할 수 있어요.</p>}</div>}</details>}
+ {!form.id && <details><summary className="text-sm cursor-pointer min-h-9">자주 사는 품목 불러오기</summary>{t.isError ? <StaffQueryError retry={t.refetch}/> : <div className="flex flex-wrap gap-2 mt-2">{t.data?.map(x => <button key={x.id} className="s-chip" onClick={() => { if ((form.body || form.selection?.length) && !confirm('작성한 품목을 바꿀까요?'))
+                return; update({ vendor: x.vendor, body: x.body, selection: [], link: x.link, destination: x.destination, amount: '' }); }}>{x.name}</button>)}{!t.isLoading && !t.data?.length && <p className="text-xs" style={{ color: 'var(--s-muted)' }}>기록의 ‘자주 사는 품목으로 저장’으로 추가할 수 있어요.</p>}</div>}</details>}
  <div><label className="s-label" htmlFor="supply-date">{form.status === 'needed' ? '기록 날짜' : '발주 날짜'}</label><input id="supply-date" className="s-input" type="date" value={form.orderDate} onChange={e => update({ orderDate: e.target.value })}/></div>
  <div><label className="s-label" htmlFor="supply-vendor">구입처</label><input id="supply-vendor" className="s-input" list="supply-vendors" maxLength={40} value={form.vendor} onChange={e => update({ vendor: e.target.value })} placeholder="선택하거나 직접 입력"/><datalist id="supply-vendors">{v.data?.map(x => <option key={x.id} value={x.name}/>)}</datalist>{v.isError && <p className="text-xs mt-1">구입처 목록을 불러오지 못했어요. 직접 입력할 수 있어요.</p>}</div>
- <div><label className="s-label" htmlFor="supply-body">품목 · 수량</label><textarea id="supply-body" className="s-input" rows={4} maxLength={2000} value={form.body} onChange={e => update({ body: e.target.value })} placeholder={'매일우유 1박스\n생크림 5개'}/></div>
+ <StaffSupplyPicker value={form.selection || []} onChange={selection => update({ selection })}/>
+ <div><label className="s-label" htmlFor="supply-body">{form.selection?.length ? "직접 입력 · 추가 재료 / 규격 (선택)" : "직접 입력 · 품목 / 수량"}</label><textarea id="supply-body" className="s-input" rows={4} maxLength={2000} value={form.body} onChange={e => update({ body: e.target.value })} placeholder={form.selection?.length ? '추가 재료나 규격을 적어주세요. 예: 버터는 500g 제품' : '목록에 없는 재료도 적을 수 있어요.\n예: 생레몬 5개'}/></div>
  {form.status !== 'needed' && <><div><label className="s-label" htmlFor="supply-amount">이번 결제금액 (원 · 모르면 비워두기)</label><input id="supply-amount" className="s-input" inputMode="numeric" value={form.amount} onChange={e => update({ amount: e.target.value.replace(/,/g, '') })} placeholder="예: 43190"/></div>{(!form.id || form.convert) && <div><label className="s-label" htmlFor="supply-receipt">입고 상태</label><select id="supply-receipt" className="s-input" value={form.status} onChange={e => update({ status: e.target.value as Form['status'] })}><option value="ordered">아직 도착하지 않았어요</option><option value="received">이미 받았어요 · 직접 구매</option></select></div>}</>}
  <details open={!!form.destination || !!form.expectedDate || !!form.link || !!form.note}><summary className="text-sm cursor-pointer min-h-9">배송지 · 구매 링크 · 메모 (선택)</summary><div className="space-y-3 mt-2"><div><label className="s-label">배송지</label><input className="s-input" maxLength={100} value={form.destination} onChange={e => update({ destination: e.target.value })} placeholder="예: 매장 / 아뜰리에"/></div><div><label className="s-label">도착 예정일</label><input className="s-input" type="date" value={form.expectedDate} onChange={e => update({ expectedDate: e.target.value })}/></div><div><label className="s-label">구매 링크</label><input className="s-input" type="url" value={form.link} onChange={e => update({ link: e.target.value })} placeholder="https://"/></div><div><label className="s-label">규격 · 전달사항</label><textarea className="s-input" rows={2} maxLength={1000} value={form.note} onChange={e => update({ note: e.target.value })}/></div></div></details>
  <button className="s-pill wide" onClick={save}>{busy ? '저장 중…' : '저장'}</button><p className="text-xs" style={{ color: 'var(--s-muted)' }}>저장 전에는 다른 직원에게 보이지 않아요.</p>
