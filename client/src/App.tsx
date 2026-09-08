@@ -34,6 +34,8 @@ import QuoteView from "@/pages/QuoteView";
 import Help from "@/pages/Help";
 import Statement from "@/pages/Statement";
 import AdminLogin from "@/pages/admin/AdminLogin";
+import OperationsHome from "@/pages/admin/OperationsHome";
+import AdminWorkspace from "@/pages/admin/AdminWorkspace";
 import Dashboard from "@/pages/admin/Dashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminOrderNew from "@/pages/admin/AdminOrderNew";
@@ -184,7 +186,9 @@ function AppRouter() {
 
       {/* 관리자 */}
       <Route path="/admin/login" component={AdminLogin} />
-      <Route path="/admin" component={Dashboard} />
+      <Route path="/admin" component={OperationsHome} />
+      <Route path="/admin/workspace/:group" component={AdminWorkspace} />
+      <Route path="/admin/order-summary" component={Dashboard} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/orders/new" component={AdminOrderNew} />
       <Route path="/admin/products" component={AdminProducts} />

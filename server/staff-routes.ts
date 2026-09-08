@@ -1,3 +1,4 @@
+import { registerAdminOperations } from "./admin-operations";
 import { registerSupplyWorkflow } from "./supply-workflow";
 import { sqlite } from "./storage";
 // 직원 내부 관리 시스템 — API
@@ -111,6 +112,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
   registerSupplyWorkflow(app, sqlite, requireStaff);
+  registerAdminOperations(app, sqlite, requireAdmin);
   seedOwnerStaff();
   importEspressoHistory();
 

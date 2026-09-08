@@ -4,199 +4,28 @@ import { Wordmark } from "./Logo";
 import { NotificationBell } from "./NotificationBell";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useChatAlert } from "@/hooks/use-chat-alert";
+import { adminModules, adminNavigation, activeAdminItem, moduleHref } from "@/lib/admin-navigation";
 import type { Order } from "@shared/schema";
-import {
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Building2,
-  LogOut,
-  Loader2,
-  Wallet,
-  Link2,
-  ScrollText,
-  MessageSquare,
-  Users,
-  Archive,
-  Activity,
-  FileBarChart,
-  Factory,
-  PackagePlus,
-  Landmark,
-  Coins,
-  LineChart,
-  Store,
-  Receipt,
-  ListChecks,
-  MessageCircle,
-  Newspaper,
-  ChevronDown,
-  Menu,
-  Inbox,
-  CalendarCheck,
-  ExternalLink,
-  Tags,
-  FileSpreadsheet,
-  Coffee,
-  MessagesSquare,
-  FileText,
-  BarChart3,
-  Wand2,
-  CopyX,
-  UserCog,
-  Clock,
-  CalendarDays,
-  Megaphone,
-  ClipboardList,
-  CalendarOff,
-  ArrowLeftRight,
-  MonitorSmartphone,
-  AlarmClock,
-  Zap,
-  Send,
-  Upload,
-} from "lucide-react";
-
-// NAV 항목 타입
-type NavItem = {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  ownerOnly?: boolean;
-  external?: boolean; // 새 탭으로 여는 외부/고객 사이트 링크
-};
-
-// NAV 그룹 타입 (label === null 이면 그룹 헤더 없이 상단 단독 항목)
-type NavGroup = {
-  label: string | null;
-  items: NavItem[];
-};
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: null,
-    items: [
-      { href: "/admin", label: "대시보드", icon: LayoutDashboard },
-      { href: "/#/catalog", label: "주문 사이트 바로가기", icon: ExternalLink, external: true },
-    ],
-  },
-  {
-    label: "판매·주문",
-    items: [
-      { href: "/admin/orders", label: "주문 관리", icon: ShoppingCart },
-      { href: "/admin/products", label: "상품 관리", icon: Package },
-      { href: "/admin/product-categories", label: "상품 카테고리", icon: Tags, ownerOnly: true },
-      { href: "/admin/customers", label: "거래처 관리", icon: Building2 },
-      { href: "/admin/customer-activity", label: "미주문 거래처", icon: AlarmClock },
-      { href: "/admin/chat", label: "거래처 채팅", icon: MessagesSquare },
-      { href: "/admin/transactions", label: "거래내역서", icon: FileBarChart },
-      { href: "/admin/quotes", label: "견적서", icon: FileText },
-      { href: "/admin/balances", label: "채권 관리", icon: Wallet },
-    ],
-  },
-  {
-    label: "매입·공장",
-    items: [
-      { href: "/admin/suppliers", label: "공급처 관리", icon: Factory },
-      { href: "/admin/purchases", label: "발주 관리", icon: PackagePlus },
-      { href: "/admin/supplier-payments", label: "공장 지급", icon: Landmark },
-      { href: "/admin/supplier-balances", label: "공장 채무", icon: Coins },
-    ],
-  },
-  {
-    label: "경영·재무",
-    items: [
-      { href: "/admin/dashboard-pnl", label: "경영 대시보드", icon: LineChart, ownerOnly: true },
-      { href: "/admin/financials", label: "재무제표", icon: FileSpreadsheet, ownerOnly: true },
-      // 방문자 통계 — Cloudflare 토큰 이슈로 우선 중단(메뉴 숨김). 토큰 수정 후 이 줄을 되살리면 재개.
-      // { href: "/admin/web-analytics", label: "방문자 통계", icon: Activity, ownerOnly: true },
-      { href: "/admin/store-sales", label: "기타매출", icon: Store, ownerOnly: true },
-      { href: "/admin/pos-sales", label: "POS 매출 분석", icon: BarChart3, ownerOnly: true },
-      { href: "/admin/money", label: "지출·가계부", icon: Receipt, ownerOnly: true },
-      { href: "/admin/expense-import", label: "지출 불러오기", icon: Upload, ownerOnly: true },
-      { href: "/admin/expense-cleanup", label: "지출 재분류", icon: Wand2, ownerOnly: true },
-      { href: "/admin/expense-duplicates", label: "지출 중복 정리", icon: CopyX, ownerOnly: true },
-      { href: "/admin/fixed-cost-items", label: "고정비 항목", icon: ListChecks, ownerOnly: true },
-    ],
-  },
-  {
-    label: "소식·게시판",
-    items: [
-      { href: "/admin/espresso", label: "에스프레소 로그", icon: Coffee },
-      { href: "/admin/news", label: "소식", icon: Newspaper },
-      { href: "/admin/popup-notices", label: "팝업 공지", icon: MonitorSmartphone },
-      { href: "/admin/board", label: "게시판", icon: MessageSquare },
-      { href: "/admin/inquiries", label: "문의", icon: Inbox },
-      { href: "/admin/visit-setups", label: "방문 세팅", icon: CalendarCheck },
-    ],
-  },
-  {
-    label: "직원 관리",
-    items: [
-      { href: "/admin/staff", label: "직원 계정", icon: UserCog },
-      { href: "/admin/staff/attendance", label: "근태 현황", icon: Clock },
-      { href: "/admin/staff/schedule", label: "근무 스케줄", icon: CalendarDays },
-      { href: "/admin/staff/handover", label: "인수인계·일정", icon: ArrowLeftRight },
-      { href: "/admin/staff/supply", label: "발주 기록", icon: ShoppingCart },
-      { href: "/admin/staff/notices", label: "직원 공지", icon: Megaphone },
-      { href: "/admin/staff/leave", label: "연차 관리", icon: CalendarOff },
-      { href: "/admin/staff/logs", label: "직원 기록", icon: ClipboardList },
-    ],
-  },
-  {
-    label: "설정·연동",
-    items: [
-      { href: "/admin/ecount", label: "ECOUNT 연동", icon: Link2 },
-      { href: "/admin/ecount-logs", label: "ECOUNT 로그", icon: ScrollText },
-      { href: "/admin/kakao", label: "카카오 알림", icon: MessageCircle, ownerOnly: true },
-      { href: "/admin/alimtalk", label: "알림톡", icon: Send, ownerOnly: true },
-      { href: "/admin/managers", label: "매니저", icon: Users, ownerOnly: true },
-      { href: "/admin/activity-logs", label: "활동 로그", icon: Activity },
-      { href: "/admin/automation", label: "자동화", icon: Zap, ownerOnly: true },
-      { href: "/admin/backup", label: "백업", icon: Archive, ownerOnly: true },
-    ],
-  },
-];
-
-// 다른 메뉴의 상위 경로가 되는 href(예: '/admin', '/admin/staff')는 정확히 일치할 때만 활성으로 본다.
-// 그렇지 않으면 '/admin/staff/schedule'에 있을 때 '직원 계정'까지 같이 활성으로 표시된다.
-const EXACT_MATCH_ONLY: Set<string> = (() => {
-  const all = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
-  const s = new Set(all.filter((href) => all.some((o) => o !== href && o.startsWith(href + "/"))));
-  s.add("/admin");
-  return s;
-})();
-
-// 현재 경로가 해당 메뉴에 속하는지 (하위 경로 포함).
-function matchActive(location: string, href: string): boolean {
-  if (EXACT_MATCH_ONLY.has(href)) return location === href;
-  return location === href || location.startsWith(href + "/");
-}
-
-// 현재 경로가 속한 그룹의 label 반환
-function findActiveGroupLabel(location: string): string | null {
-  const g = NAV_GROUPS.find(
-    (grp) => grp.label !== null && grp.items.some((i) => matchActive(location, i.href)),
-  );
-  return g?.label ?? null;
-}
-
+import { LayoutDashboard, ShoppingCart, Package, Store, Users, Wallet, Settings, Search, Menu, LogOut, Loader2, ExternalLink } from "lucide-react";
+import "./admin-erp.css";
+const icons = [LayoutDashboard, ShoppingCart, Package, Store, Users, Wallet, Settings];
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, authUnknown, logout } = useAuth();
-  const [location, navigate] = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  // 열려 있는 아코디언 그룹 (기본: 현재 위치의 그룹, 없으면 판매·주문)
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
-    const s = new Set<string>();
-    const active = findActiveGroupLabel(location);
-    s.add(active ?? "판매·주문");
-    return s;
-  });
-
+ const { user, isLoading, authUnknown, logout } = useAuth();
+ const [location, navigate] = useLocation();
+ const [mobileOpen, setMobileOpen] = useState(false);
+ const [searchOpen,setSearchOpen] = useState(false);
+ const [search,setSearch] = useState('');
+ const isOwner = (user as any)?.adminRole === 'owner';
+ const items = adminNavigation.filter(i=>!i.owner || isOwner);
+ const active = activeAdminItem(location);
+ const groupId = location === '/admin' ? 'today' : location.startsWith('/admin/workspace/') ? location.split('/').pop() : active?.group;
+ const group = adminModules.find(g=>g.id===groupId);
+ useEffect(()=>{setMobileOpen(false);setSearchOpen(false);},[location]);
+ useEffect(()=>{const key=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setSearchOpen(v=>!v);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[]);
   // 관리자 가드
   // 서버에 물어보지 못한 상태(authUnknown)에서는 튕겨내지 않는다.
   // 일시적인 통신 오류를 "로그아웃"으로 처리하면, 세션이 멀쩡한데도 매번 다시 로그인하게 된다.
@@ -205,21 +34,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       navigate("/admin/login");
     }
   }, [isLoading, authUnknown, user, navigate]);
-
-  // 경로가 바뀌면 해당 그룹을 자동으로 펼침 (기존에 펼친 그룹은 유지)
-  useEffect(() => {
-    const active = findActiveGroupLabel(location);
-    if (active) {
-      setOpenGroups((prev) => {
-        if (prev.has(active)) return prev;
-        const next = new Set(prev);
-        next.add(active);
-        return next;
-      });
-    }
-  }, [location]);
-
-  const isOwner = (user as any)?.adminRole === "owner";
 
   // 미처리 주문 수 (배지)
   const { data: orders } = useQuery<Order[]>({
@@ -252,136 +66,6 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     onClick: () => navigate("/admin/chat"),
   });
 
-  const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  };
-
-  // 항목별 배지 수 (대시보드/주문 관리 = 미처리 주문 / 거래처 채팅 = 미읽음)
-  const badgeFor = (href: string) =>
-    href === "/admin" || href === "/admin/orders"
-      ? pendingCount
-      : href === "/admin/chat"
-        ? chatUnreadCount
-        : href === "/admin/staff/leave"
-          ? leavePendingCount
-          : 0;
-
-  // 단일 메뉴 링크 렌더
-  const renderLink = (item: NavItem, indent: boolean, onNavigate?: () => void) => {
-    const active = matchActive(location, item.href);
-    const Icon = item.icon;
-    const badge = badgeFor(item.href);
-
-    // 외부/고객 사이트 링크는 새 탭으로 여는 일반 <a> 로 렌더 (관리자 세션 유지)
-    if (item.external) {
-      return (
-        <a
-          key={item.href}
-          href={item.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          data-testid={`nav-${item.href}`}
-          onClick={onNavigate}
-          className={`flex items-center justify-between rounded-none py-2 pr-3 font-ui text-sm font-semibold tracking-wide text-sidebar-foreground transition-colors hover-elevate ${
-            indent ? "pl-6" : "pl-3"
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <Icon className="h-4 w-4" />
-            {item.label}
-          </span>
-        </a>
-      );
-    }
-
-    return (
-      <Link
-        key={item.href}
-        href={item.href}
-        data-testid={`nav-${item.href}`}
-        onClick={onNavigate}
-        className={`flex items-center justify-between rounded-none py-2 pr-3 font-ui text-sm font-semibold tracking-wide transition-colors ${
-          indent ? "pl-6" : "pl-3"
-        } ${
-          active
-            ? "bg-sidebar-primary text-sidebar-primary-foreground"
-            : "text-sidebar-foreground hover-elevate"
-        }`}
-      >
-        <span className="flex items-center gap-2.5">
-          <Icon className="h-4 w-4" />
-          {item.label}
-        </span>
-        {badge > 0 && (
-          <span
-            className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 font-ui text-[11px] font-bold ${
-              active
-                ? "bg-sidebar-primary-foreground text-sidebar-primary"
-                : "bg-foreground text-background"
-            }`}
-          >
-            {badge}
-          </span>
-        )}
-      </Link>
-    );
-  };
-
-  // 그룹/항목 전체 네비 렌더 (데스크톱·모바일 공용)
-  const renderNav = (onNavigate?: () => void) =>
-    NAV_GROUPS.map((group) => {
-      const items = group.items.filter((i) => !i.ownerOnly || isOwner);
-      if (items.length === 0) return null;
-
-      // 그룹 헤더 없는 단독 항목 (대시보드)
-      if (group.label === null) {
-        return (
-          <div key="__top" className="space-y-1">
-            {items.map((i) => renderLink(i, false, onNavigate))}
-          </div>
-        );
-      }
-
-      const open = openGroups.has(group.label);
-      // 그룹이 접혀 있을 때, 그룹 안의 미처리 주문 수 합계를 헤더에 표시
-      const groupBadge = !open
-        ? items.reduce((sum, i) => sum + badgeFor(i.href), 0)
-        : 0;
-
-      return (
-        <div key={group.label} className="pt-1">
-          <button
-            type="button"
-            onClick={() => toggleGroup(group.label as string)}
-            aria-expanded={open}
-            className="flex w-full items-center justify-between rounded-none px-3 py-2 font-ui text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground hover-elevate"
-          >
-            <span>{group.label}</span>
-            <span className="flex items-center gap-2">
-              {groupBadge > 0 && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 font-ui text-[10px] font-bold text-background">
-                  {groupBadge}
-                </span>
-              )}
-              <ChevronDown
-                className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}
-              />
-            </span>
-          </button>
-          {open && (
-            <div className="mt-1 space-y-1">
-              {items.map((i) => renderLink(i, true, onNavigate))}
-            </div>
-          )}
-        </div>
-      );
-    });
-
   if (authUnknown) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center">
@@ -404,107 +88,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const roleBadge = (
-    <div className="mt-3 inline-flex items-center border border-foreground px-2 py-0.5 font-ui text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">
-      {isOwner ? "Owner" : "Manager"}
-    </div>
-  );
 
-  const logoutButton = (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="w-full justify-start"
-      onClick={async () => {
-        await logout();
-        navigate("/admin/login");
-      }}
-      data-testid="button-logout"
-    >
-      <LogOut className="mr-2 h-4 w-4" />
-      로그아웃
-    </Button>
-  );
-
-  return (
-    <div className="flex min-h-screen bg-background">
-      {/* 데스크톱 사이드바 */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar md:flex print:hidden">
-        <div className="border-b border-border p-5">
-          <div className="flex items-start justify-between">
-            <Wordmark size={26} />
-            <NotificationBell />
-          </div>
-          {roleBadge}
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">{renderNav()}</nav>
-        <div className="space-y-1 border-t border-border p-3">
-          <div className="px-3 py-1 font-ui text-xs text-muted-foreground">
-            {user.managerName} · {user.email}
-          </div>
-          {logoutButton}
-        </div>
-      </aside>
-
-      {/* 모바일 슬라이드 메뉴 (햄버거) */}
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 p-0 sm:max-w-xs">
-          <SheetTitle className="sr-only">관리자 메뉴</SheetTitle>
-          <div className="flex h-full flex-col bg-sidebar">
-            <div className="border-b border-border p-5">
-              <Wordmark size={24} />
-              {roleBadge}
-            </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {renderNav(() => setMobileOpen(false))}
-            </nav>
-            <div className="space-y-1 border-t border-border p-3">
-              <div className="px-3 py-1 font-ui text-xs text-muted-foreground">
-                {user.managerName} · {user.email}
-              </div>
-              {logoutButton}
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* 본문 영역 */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* 모바일 상단바 */}
-        <div className="flex items-center justify-between border-b border-border bg-sidebar px-3 py-3 md:hidden print:hidden">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setMobileOpen(true)}
-            aria-label="메뉴 열기"
-            className="relative"
-          >
-            <Menu className="h-5 w-5" />
-            {pendingCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 font-ui text-[10px] font-bold text-background">
-                {pendingCount}
-              </span>
-            )}
-          </Button>
-          <Wordmark size={22} />
-          <div className="flex items-center gap-0.5">
-            <NotificationBell />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={async () => {
-                await logout();
-                navigate("/admin/login");
-              }}
-              aria-label="로그아웃"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <main className="flex-1 overflow-x-hidden">{children}</main>
-      </div>
-    </div>
-  );
+ const navigation = <nav aria-label="업무 메뉴" className="erp-nav">{adminModules.map((g,index)=>{const Icon=icons[index];const badge=g.id==='sales'?pendingCount+chatUnreadCount:g.id==='people'?leavePendingCount:0;return <Link key={g.id} href={moduleHref(g.id)} aria-current={g.id===groupId?'page':undefined} className={g.id===groupId?'active':''}><Icon size={16}/><span>{g.label}</span>{badge>0&&<b>{badge}</b>}</Link>;})}</nav>;
+ const footer = <div className="erp-rail-footer"><a href="/#/catalog" target="_blank" rel="noopener noreferrer">주문 사이트 <ExternalLink size={13}/></a><small>{user.managerName} · {isOwner?'Owner':'Manager'}</small><button onClick={async()=>{await logout();navigate('/admin/login');}}><LogOut size={14}/>로그아웃</button></div>;
+ const brand = <div className="erp-brand"><Wordmark size={28}/><span>KNIT COFFEE · WORKSPACE</span><div className="erp-workspace">니트커피<small>운영 관리</small></div></div>;
+ return <div className="erp-admin erp-shell">
+  <aside className="erp-rail print:hidden">{brand}{navigation}{footer}</aside>
+  <Sheet open={mobileOpen} onOpenChange={setMobileOpen}><SheetContent side="left" className="erp-admin erp-mobile-menu"><SheetTitle className="sr-only">관리자 메뉴</SheetTitle>{brand}{navigation}{footer}</SheetContent></Sheet>
+  <div className="erp-body"><header className="erp-topbar print:hidden"><button className="erp-mobile-toggle" aria-label="메뉴 열기" onClick={()=>setMobileOpen(true)}><Menu size={20}/></button><div className="erp-breadcrumb"><Link href="/admin">Workspace</Link><span>/</span><Link href={moduleHref(groupId||'today')}>{group?.label||'관리자'}</Link>{active&&<><span>/</span><strong>{active.label}</strong></>}</div><button className="erp-search-trigger" onClick={()=>{setSearch('');setSearchOpen(true);}} aria-label="메뉴 검색"><Search size={15}/><span>메뉴 검색</span><kbd>⌘ K</kbd></button><NotificationBell/></header>
+  {groupId&&groupId!=='today'&&<nav className="erp-subnav print:hidden" aria-label="세부 메뉴">{items.filter(i=>i.group===groupId).map(i=><Link key={i.path} href={i.path} aria-current={active?.path===i.path?'page':undefined}>{i.label}</Link>)}</nav>}
+  <main className="min-w-0">{children}</main></div>
+  <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent className="erp-admin erp-search-dialog" aria-describedby={undefined}><DialogTitle>메뉴 검색</DialogTitle><input autoFocus aria-label="메뉴 이름" placeholder="주문, 재고, 직원, 정산…" value={search} onChange={e=>setSearch(e.target.value)}/><div className="erp-search-results">{items.filter(i=>i.label.replaceAll(' ','').includes(search.replaceAll(' ',''))).map(i=><Link key={i.path} href={i.path} onClick={()=>setSearchOpen(false)}>{i.label}<small>{adminModules.find(g=>g.id===i.group)?.label}</small></Link>)}{!items.some(i=>i.label.replaceAll(' ','').includes(search.replaceAll(' ','')))&&<p>일치하는 메뉴가 없습니다.</p>}</div></DialogContent></Dialog>
+ </div>;
 }
