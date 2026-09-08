@@ -3,7 +3,7 @@ import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 
-const request=z.object({kind:z.enum(['expense','payment']),customerId:z.number().int().positive().optional(),category:z.string().trim().min(1).max(100).optional(),sector:z.enum(['store','wholesale','online','atelier','consulting','popup','common']).optional(),memo:z.string().trim().max(500),duplicateChecked:z.literal(true),confirmProduction:z.boolean().optional()});
+const request=z.object({kind:z.enum(['expense','payment']),customerId:z.number().int().positive().optional(),category:z.string().trim().min(1).max(100).optional(),sector:z.enum(['store','wholesale','online','atelier','consulting','popup','common']).optional(),memo:z.string().trim().max(500),duplicateChecked:z.literal(true).optional(),confirmProduction:z.boolean().optional()});
 const idSchema=z.coerce.number().int().positive();
 export function registerBankPosting(app:Express,db:Database.Database,owner:RequestHandler,environment:BankEnvironment='test',prefix='/api/admin/bank-review'){
  const table=environment==='test'?'bank_test_postings':'bank_live_postings',audit=environment==='test'?'bank_test_audit':'bank_live_audit';
@@ -31,7 +31,7 @@ export function registerBankPosting(app:Express,db:Database.Database,owner:Reque
     throw new Error('이미 반영한 내역입니다. 취소 후 다시 처리해 주세요.');
    }
    if(['expense','payment','card','transfer','loan','settlement','other'].includes(row.state))throw new Error('이미 연결했거나 비용·수금으로 바로 등록할 수 없는 분류입니다.');
-   if(p.kind==='payment'&&row.state!=='customer')throw new Error('거래처 입금으로 분류하고 저장한 뒤 수금 반영해 주세요.');
+
    if(row.deposit>0&&row.withdraw>0)throw new Error('입출금이 동시에 있는 거래는 개별 확인이 필요합니다.');
    const amount=p.kind==='expense'?row.withdraw:row.deposit;if(!Number.isSafeInteger(amount)||amount<=0)throw new Error('입출금 방향과 처리 종류가 일치하지 않습니다.');
    if(p.kind==='payment'){
@@ -39,11 +39,12 @@ export function registerBankPosting(app:Express,db:Database.Database,owner:Reque
    }else{
     if(p.customerId||!p.category||!p.sector||!db.prepare("SELECT id FROM fixed_cost_items WHERE name=? AND active=1 AND cost_type IN ('cogs','sga')").get(p.category))throw new Error('사용 중인 비용 항목과 사업 부문을 선택해 주세요.');
    }
-   if(p.kind==='payment'&&row.target_id!==p.customerId)throw new Error('분류에 저장한 거래처와 수금 거래처가 다릅니다.');
+
    if(environment==='production'){
     const duplicate=p.kind==='expense'?db.prepare('SELECT id FROM expenses WHERE expense_date=? AND amount=? AND category=? AND sector=?').get(day(row),amount,p.category,p.sector):db.prepare('SELECT id FROM payments WHERE paid_at=? AND amount=? AND customer_id=?').get(day(row),amount,p.customerId);
     if(duplicate)throw new Error('같은 날짜·금액의 장부 기록이 있습니다. 기존 기록 연결을 확인해 주세요.');
    }
+   if(p.kind==='payment')db.prepare("UPDATE bank_review SET state='customer',target_id=?,updated_by=?,updated_at=? WHERE id=?").run(p.customerId,req.session.userId,Date.now(),id);
    const r=db.prepare(`INSERT INTO ${table}(bank_id,kind,amount,posted_date,customer_id,category,sector,memo,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(id,p.kind,amount,day(row),p.customerId??null,p.category??null,p.sector??null,p.memo,req.session.userId,Date.now());postingId=r.lastInsertRowid;
    if(environment==='production'){
     const ledger=p.kind==='expense'?db.prepare('INSERT INTO expenses(expense_date,category,amount,memo,sector,created_at) VALUES(?,?,?,?,?,?)').run(day(row),p.category,amount,p.memo,p.sector,Date.now()):db.prepare('INSERT INTO payments(customer_id,amount,paid_at,method,memo,created_at) VALUES(?,?,?,?,?,?)').run(p.customerId,amount,day(row),'transfer',p.memo,Date.now());

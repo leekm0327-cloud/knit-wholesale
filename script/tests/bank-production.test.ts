@@ -6,7 +6,7 @@ const db:any=new DatabaseSync(':memory:');db.transaction=(fn:any)=>()=>{db.exec(
 db.exec(`CREATE TABLE customers(id INTEGER PRIMARY KEY,role TEXT,business_name TEXT);INSERT INTO customers VALUES(1,'customer','Fixture');CREATE TABLE expenses(id INTEGER PRIMARY KEY,amount INTEGER,expense_date TEXT,category TEXT,memo TEXT,sector TEXT,created_at INTEGER);CREATE TABLE payments(id INTEGER PRIMARY KEY,amount INTEGER,paid_at TEXT,customer_id INTEGER,memo TEXT,method TEXT,created_at INTEGER);CREATE TABLE fixed_cost_items(id INTEGER,name TEXT,sector TEXT,cost_type TEXT,active INTEGER,sort_order INTEGER);INSERT INTO fixed_cost_items VALUES(1,'Fixture','store','cogs',1,0);`);
 process.env.SESSION_SECRET='unit-test-session-secret-not-for-production';
 const app=express();app.use(express.json());app.use((req:any,_res,next)=>{req.session={userId:1};next();});registerBankReview(app,db,(req,res,next)=>req.headers['x-role']==='owner'?next():res.sendStatus(403));
-db.exec(`INSERT INTO bank_review(id,environment,account,ref,at,deposit,withdraw,remark,currency,state,target_id) VALUES(1,'production','12345','a','20260908100000',0,1000,'Fixture','KRW','pending',NULL),(2,'production','12345','b','20260908100000',2000,0,'Fixture','KRW','customer',1),(3,'test','12345','a','20260908100000',0,1000,'Fixture','KRW','pending',NULL),(4,'production','12345','c','20260908100000',0,1000,'Fixture','KRW','pending',NULL);`);
+db.exec(`INSERT INTO bank_review(id,environment,account,ref,at,deposit,withdraw,remark,currency,state,target_id) VALUES(1,'production','12345','a','20260908100000',0,1000,'Fixture','KRW','pending',NULL),(2,'production','12345','b','20260908100000',2000,0,'Fixture','KRW','pending',NULL),(3,'test','12345','a','20260908100000',0,1000,'Fixture','KRW','pending',NULL),(4,'production','12345','c','20260908100000',0,1000,'Fixture','KRW','pending',NULL);`);
 const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));const base=`http://127.0.0.1:${(server.address() as any).port}/api/admin`;
 async function call(path:string,body?:any,role='owner',method=body?'POST':'GET'){const response=await fetch(base+path,{method,headers:{'Content-Type':'application/json','x-role':role},body:body?JSON.stringify(body):undefined});return {status:response.status,data:await response.json().catch(()=>null)};}
 try{
@@ -36,7 +36,7 @@ try{
  assert.equal((await call('/bank-live/4/posting',{...expense,confirmProduction:true})).status,409);
  assert.equal(db.prepare('SELECT sum(amount) AS amount FROM expenses').get().amount,1000);
  assert.throws(()=>db.exec("UPDATE expenses SET amount=123"));assert.throws(()=>db.exec('DELETE FROM expenses'));
- const p=await call('/bank-live/2/posting',{kind:'payment',customerId:1,memo:'fixture',duplicateChecked:true,confirmProduction:true});assert.equal(p.status,200);
+ const p=await call('/bank-live/2/posting',{kind:'payment',customerId:1,memo:'fixture',confirmProduction:true});assert.equal(p.status,200);assert.equal(db.prepare('SELECT state FROM bank_review WHERE id=2').get().state,'customer');assert.equal(db.prepare('SELECT target_id FROM bank_review WHERE id=2').get().target_id,1);
  assert.equal(db.prepare('SELECT sum(amount) AS amount FROM payments').get().amount,2000);
  assert.throws(()=>db.exec('DELETE FROM payments'));
  assert.equal((await call(`/bank-live/1/posting/${e.data.id}/cancel`,{reason:'fixture'})).status,200);
