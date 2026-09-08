@@ -1,3 +1,4 @@
+import TaxInvoices from '@/pages/admin/TaxInvoices';
 import BankReview from "@/pages/admin/BankReview";
 import Manuals, { StaffManuals } from "@/pages/workspace/Manuals";
 import OperationsCalendar, { StaffOperationsCalendar } from "@/pages/workspace/OperationsCalendar";
@@ -200,6 +201,7 @@ function AppRouter() {
       <Route path="/staff/operations-calendar" component={StaffOperationsCalendar} />
       <Route path="/staff/store-performance" component={StaffStorePerformance} />
       <Route path="/admin/bank-review" component={BankReview} />
+      <Route path="/admin/tax-invoices" component={TaxInvoices} />
       <Route path="/admin/workspace/:group" component={AdminWorkspace} />
       <Route path="/admin/order-summary" component={Dashboard} />
       <Route path="/admin/orders" component={AdminOrders} />

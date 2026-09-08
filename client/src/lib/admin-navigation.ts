@@ -87,6 +87,12 @@ export const adminNavigation = [
     "group": "sales"
   },
   {
+    "path": "/admin/tax-invoices",
+    "label": "세금계산서",
+    "owner": true,
+    "group": "finance"
+  },
+  {
     "path": "/admin/bank-review",
     "label": "통장 내역",
     "owner": true,

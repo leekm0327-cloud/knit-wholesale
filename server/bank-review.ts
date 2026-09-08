@@ -1,3 +1,4 @@
+import { registerTaxInvoices } from './tax-invoices';
 import { registerBankConnection, type BankEnvironment, type BankCredentials } from "./bank-connection";
 import { registerBankPosting } from "./bank-posting";
 import type { Express, RequestHandler } from 'express';
@@ -53,6 +54,7 @@ export async function fetchBankRows(from:string,to:string,environment:BankEnviro
 export function registerBankReview(app:Express,db:Database.Database,owner:RequestHandler){
  db.exec(`CREATE TABLE IF NOT EXISTS bank_review(id INTEGER PRIMARY KEY,environment TEXT NOT NULL DEFAULT 'test',account TEXT NOT NULL,ref TEXT NOT NULL,at TEXT NOT NULL,deposit INTEGER NOT NULL,withdraw INTEGER NOT NULL,remark TEXT NOT NULL,currency TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',target_id INTEGER,memo TEXT NOT NULL DEFAULT '',updated_by INTEGER,updated_at INTEGER,UNIQUE(environment,account,ref));`);
  const connection=registerBankConnection(app,db,owner);
+ registerTaxInvoices(app,db,owner,connection);
  for(const environment of ['test','production'] as const){
  const prefix=environment==='test'?'/api/admin/bank-review':'/api/admin/bank-live';
  const postingTable=environment==='test'?'bank_test_postings':'bank_live_postings';
