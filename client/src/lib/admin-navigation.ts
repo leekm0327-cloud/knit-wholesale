@@ -88,7 +88,7 @@ export const adminNavigation = [
   },
   {
     "path": "/admin/bank-review",
-    "label": "통장 내역 · 테스트",
+    "label": "통장 내역",
     "owner": true,
     "group": "finance"
   },

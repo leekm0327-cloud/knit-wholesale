@@ -24,7 +24,7 @@ try{
  assert.throws(()=>normalizeBankRow({TransRefKey:'1',TransDT:'20260908000000',CurrencyCode:'USD',Deposit:'1',Withdraw:'0'},'x'));
  assert.throws(()=>normalizeBankRow({TransRefKey:'',TransDT:'20260908000000',CurrencyCode:'KRW',Deposit:'1',Withdraw:'0'},'x'));
  const originalFetch=globalThis.fetch;
- process.env.BAROBILL_TEST_KEY='test-only';process.env.BAROBILL_CORP_NUM='0000000000';process.env.BAROBILL_USER_ID='test';
+ process.env.BAROBILL_TEST_KEY='test-only-placeholder-key';process.env.BAROBILL_CORP_NUM='0000000000';process.env.BAROBILL_USER_ID='test';
  globalThis.fetch=(async(input:any,options:any)=>{
   if(!String(input).startsWith('https://testws.baroservice.com/'))return originalFetch(input,options);
   const method=String(options.headers.SOAPAction).includes('GetPeriod')?'GetPeriodBankAccountTransLog':'GetBankAccount';
