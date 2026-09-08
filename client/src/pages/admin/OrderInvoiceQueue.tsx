@@ -6,7 +6,7 @@ export const orderTaxLabels:Record<string,string>={unissued:'미발행',draft:'�
 export default function OrderInvoiceQueue({env,supplier,PartyFields,onDocument}:{env:string;supplier:any;PartyFields:any;onDocument:(r:any)=>void}){
  const cache=useQueryClient();
  const base=`/api/admin/tax-invoices/${env}`,q=useQuery<any>({queryKey:[base+'/orders'],staleTime:0});
- const orderId=new URLSearchParams(window.location.hash.split('?')[1]||'').get('order');
+ const orderId=new URLSearchParams(window.location.search).get('order');
  const [filter,setFilter]=useState(orderId?'all':'unissued'),[search,setSearch]=useState(orderId||''),[ids,setIds]=useState<number[]>([]),[mode,setMode]=useState('each'),[groups,setGroups]=useState<any[]>([]),[docs,setDocs]=useState<any[]>([]);
  const [date,setDate]=useState(new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'})),[purpose,setPurpose]=useState('2'),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[confirmed,setConfirmed]=useState(false),[approval,setApproval]=useState('');
  const act=async(fn:()=>Promise<void>)=>{setBusy(true);setMessage('');try{await fn();await q.refetch();await cache.invalidateQueries({queryKey:[base]});}catch(e:any){setMessage(e.message);}finally{setBusy(false);}};
