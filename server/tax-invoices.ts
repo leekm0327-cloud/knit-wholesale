@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
-import { invoiceDraft, invoiceParty, taxDate, taxEnvironment } from '../shared/tax-invoices';
+import { invoiceDraft, invoiceParty, taxEnvironment } from '../shared/tax-invoices';
 import type { BankCredentials, BankEnvironment } from './bank-connection';
 import { taxCall, soapInvoice, TaxRemoteError } from './tax-soap';
 
@@ -22,8 +22,8 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
  db.prepare('INSERT INTO tax_invoice_profiles VALUES(?,?) ON CONFLICT(environment) DO UPDATE SET payload=excluded.payload').run(env,JSON.stringify(p));res.json({ok:true});}));
  app.post(base+'/certificate',owner,route(async(req,res)=>{const env=taxEnvironment.parse(req.params.environment);const result=await taxCall(env,credentials(env),'CheckCERTIsValid');res.json({valid:String(result)==='1'});}));
  app.post(base+'/setup',owner,route(async(req,res)=>{
-  const env=taxEnvironment.parse(req.params.environment),kind=z.enum(['certificate','hometax']).parse(req.body.kind),c=credentials(env);
-  const url=String(await taxCall(env,c,kind==='certificate'?'GetCertificateRegistURL':'GetTaxInvoiceScrapRequestURL',kind==='certificate'?{ID:c.id,PWD:''}:{UserID:c.id,PWD:''}));
+  const env=taxEnvironment.parse(req.params.environment),kind=z.literal('certificate').parse(req.body.kind),c=credentials(env);
+  const url=String(await taxCall(env,c,'GetCertificateRegistURL',{ID:c.id,PWD:''}));
   const u=new URL(url);if(u.protocol!=='https:'||!(u.hostname==='barobill.co.kr'||u.hostname.endsWith('.barobill.co.kr')))throw new Error('Invalid URL');res.json({url});
  }));
  app.post(base+'/drafts',owner,route((req,res)=>{
@@ -66,13 +66,5 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
   if(!s||!/^\d+$/.test(String(s.BarobillState)))throw new TaxRemoteError(String(s?.BarobillState||'상태 확인 필요'));
   const n=Number(s.BarobillState),state=[3011,3021,3014].includes(n)?'issued':[5013,5023,5031].includes(n)?'cancelled':r.state;
   db.prepare('UPDATE tax_invoice_drafts SET state=?,remote_state=?,error=? WHERE id=?').run(state,JSON.stringify(s),state==='issued'?null:r.error,r.id);res.json(view(read(r.id,env)));
- }));
- app.post(base+'/search',owner,route(async(req,res)=>{
-  const env=taxEnvironment.parse(req.params.environment),p=z.object({from:taxDate,to:taxDate,direction:z.enum(['sales','purchase']),tax:z.enum(['1','3']),page:z.number().int().min(1).max(10000)}).parse(req.body);
-  const span=Date.parse(p.to)-Date.parse(p.from);if(span<0||span>199*86400000){res.status(400).json({message:'조회 기간을 200일 이내로 선택해 주세요.'});return;}
-  const c=credentials(env),result=await taxCall(env,c,p.direction==='sales'?'GetPeriodTaxInvoiceSalesListEx':'GetPeriodTaxInvoicePurchaseListEx',{UserID:c.id,TaxType:Number(p.tax),DateType:1,StartDate:p.from.replaceAll('-',''),EndDate:p.to.replaceAll('-',''),CountPerPage:100,CurrentPage:p.page});
-  if(!result||!/^\d+$/.test(String(result.CurrentPage)))throw new TaxRemoteError(String(result?.CurrentPage||'조회 실패'));
-  const list=result.SimpleTaxInvoiceEx2List?.SimpleTaxInvoiceEx2;
-  res.json({rows:list?(Array.isArray(list)?list:[list]):[],page:Number(result.CurrentPage)||1,pages:Number(result.MaxPageNum)||0,total:Number(result.MaxIndex)||0});
  }));
 }

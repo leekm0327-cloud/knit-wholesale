@@ -39,10 +39,9 @@ try{
  mode='timeout';const c=(await call('/test/drafts',{...draft,amount:2000,tax:200})).data;assert.equal((await call(`/test/drafts/${c.id}/issue`,{confirm:c.id,duplicateChecked:true})).data.state,'unknown');
  const count=calls.length;assert.equal((await call(`/test/drafts/${c.id}/issue`,{confirm:c.id,duplicateChecked:true})).status,409);assert.equal(calls.length,count);
  mode='reject';const d=(await call('/test/drafts',{...draft,amount:3000,tax:300})).data;assert.equal((await call(`/test/drafts/${d.id}/issue`,{confirm:d.id,duplicateChecked:true})).data.state,'rejected');
- mode='success';const result=await call('/production/search',{from:'2026-09-01',to:'2026-09-08',direction:'purchase',tax:'1',page:1});assert.equal(result.data.rows[0].TotalAmount,'-1100');assert.equal(result.data.total,101);assert(calls.includes('GetPeriodTaxInvoicePurchaseListEx'));
- assert.equal((await call('/test/search',{from:'2025-01-01',to:'2026-09-08',direction:'sales',tax:'1',page:1})).status,400);
- mode='malformed';assert.equal((await call('/test/search',{from:'2026-09-01',to:'2026-09-08',direction:'sales',tax:'3',page:1})).status,400);
- assert.equal((await call('/production/setup',{kind:'hometax'})).status,400);assert.equal((await call('/production/setup',{kind:'certificate'})).status,200);
+ const beforeRemoved=calls.length;
+ assert.equal((await call('/production/search',{direction:'purchase'})).status,404);
+ assert.equal((await call('/production/setup',{kind:'hometax'})).status,400);assert.equal(calls.length,beforeRemoved);assert.equal((await call('/production/setup',{kind:'certificate'})).status,200);
  assert.equal(db.prepare('SELECT count(*) n FROM payments').get().n,0);assert.equal(db.prepare('SELECT count(*) n FROM expenses').get().n,0);
- console.log('PASS invoice validation, owner and environment isolation, concurrent and economic duplicate guards, ambiguous timeout lock, reconciliation, signed purchase pagination, URL allowlist, no ledger writes');
+ console.log('PASS invoice validation, owner and environment isolation, concurrent and economic duplicate guards, ambiguous timeout lock, reconciliation, removed HomeTax endpoints without upstream calls, certificate setup, no ledger writes');
 }finally{globalThis.fetch=original;server.close();db.close();}
