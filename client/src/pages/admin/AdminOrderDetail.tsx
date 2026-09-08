@@ -1,3 +1,4 @@
+import {OrderTaxLink} from '@/components/OrderTaxLink';
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
@@ -189,6 +190,7 @@ export default function AdminOrderDetail() {
           <Skeleton className="h-[600px] w-full rounded-none" />
         ) : (
           <>
+            <OrderTaxLink orderId={order.id}/>
             {/* 관리 패널 */}
             <Card className="no-print mb-6 p-5">
               <div className="mb-4 flex items-center justify-between">

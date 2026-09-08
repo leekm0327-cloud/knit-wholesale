@@ -1,3 +1,4 @@
+import {registerOrderInvoices,assertOrderInvoiceCurrent} from './order-invoices';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
@@ -10,9 +11,11 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
  db.exec(`CREATE TABLE IF NOT EXISTS tax_invoice_profiles(environment TEXT PRIMARY KEY,payload TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS tax_invoice_drafts(id TEXT PRIMARY KEY,environment TEXT NOT NULL,fingerprint TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'draft',remote_state TEXT,error TEXT,created_at INTEGER NOT NULL,UNIQUE(environment,fingerprint));`);
  const route=(fn:(req:any,res:any)=>Promise<void>|void):RequestHandler=>async(req,res)=>{res.setHeader('Cache-Control','no-store');try{await fn(req,res);}catch(e){res.status(400).json({message:e instanceof z.ZodError?'필수 항목·날짜·금액을 확인해 주세요.':e instanceof TaxRemoteError?e.message:e instanceof Error&&e.message.startsWith('바로빌')?e.message:'처리하지 못했습니다. 입력 정보와 바로빌 연결 상태를 확인해 주세요.'});}};
+ registerOrderInvoices(app,db,owner,route,credentials);
  const base='/api/admin/tax-invoices/:environment';
  const read=(id:string,env:string)=>db.prepare('SELECT * FROM tax_invoice_drafts WHERE id=? AND environment=?').get(id,env) as any;
  const view=(r:any)=>({...r,payload:JSON.parse(r.payload),remote_state:r.remote_state?JSON.parse(r.remote_state):null,fingerprint:undefined});
+ app.get(base+'/drafts/:id',owner,route((req,res)=>{const r=read(req.params.id,taxEnvironment.parse(req.params.environment));if(!r){res.sendStatus(404);return;}res.json(view(r));}));
  app.get(base,owner,route((req,res)=>{
   const env=taxEnvironment.parse(req.params.environment);let configured=false,corp='';try{const c=credentials(env);configured=true;corp=c.corp;}catch{}
   const profile=db.prepare('SELECT payload FROM tax_invoice_profiles WHERE environment=?').get(env) as any;
@@ -42,12 +45,14 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
   const d=invoiceDraft.parse(JSON.parse(r.payload)),c=credentials(env);
   if(c.corp!==d.supplier.corpNum){res.status(400).json({message:'연결된 공급자 사업자번호가 변경되었습니다.'});return;}
   if(String(await taxCall(env,c,'CheckCERTIsValid'))!=='1')throw new Error('바로빌 공동인증서를 확인해 주세요.');
+  assertOrderInvoiceCurrent(db,r.id);
   // Atomic claim before the external side effect. Never retry a timeout automatically.
   const lock=db.prepare(`UPDATE tax_invoice_drafts SET state='sending',error=NULL WHERE id=? AND state IN ('draft','rejected') AND NOT EXISTS (
     SELECT 1 FROM tax_invoice_drafts other WHERE other.id<>? AND other.environment=? AND other.state IN ('sending','unknown','issued')
+    AND (NOT EXISTS (SELECT 1 FROM tax_invoice_order_links WHERE draft_id=? AND active=1) OR NOT EXISTS (SELECT 1 FROM tax_invoice_order_links WHERE draft_id=other.id AND active=1))
     AND json_extract(other.payload,'$.supplier.corpNum')=? AND json_extract(other.payload,'$.buyer.corpNum')=?
     AND json_extract(other.payload,'$.date')=? AND json_extract(other.payload,'$.amount')=? AND json_extract(other.payload,'$.tax')=?
-   )`).run(r.id,r.id,env,d.supplier.corpNum,d.buyer.corpNum,d.date,d.amount,d.tax);
+   )`).run(r.id,r.id,env,r.id,d.supplier.corpNum,d.buyer.corpNum,d.date,d.amount,d.tax);
   if(!lock.changes){res.status(409).json({message:'같은 거래처·날짜·금액의 발행 요청이 이미 있습니다. 기존 문서 상태를 확인해 주세요.'});return;}
   try{
    const result=await taxCall(env,c,'RegistAndIssueTaxInvoice',{Invoice:soapInvoice(d,c,r.id),SendSMS:false,ForceIssue:false,MailTitle:''});
@@ -65,6 +70,6 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
   const s=await taxCall(env,c,'GetTaxInvoiceStateEX',{MgtKey:r.id});
   if(!s||!/^\d+$/.test(String(s.BarobillState)))throw new TaxRemoteError(String(s?.BarobillState||'상태 확인 필요'));
   const n=Number(s.BarobillState),state=[3011,3021,3014].includes(n)?'issued':[5013,5023,5031].includes(n)?'cancelled':r.state;
-  db.prepare('UPDATE tax_invoice_drafts SET state=?,remote_state=?,error=? WHERE id=?').run(state,JSON.stringify(s),state==='issued'?null:r.error,r.id);res.json(view(read(r.id,env)));
+  db.prepare('UPDATE tax_invoice_drafts SET state=?,remote_state=?,error=? WHERE id=?').run(state,JSON.stringify(s),state==='issued'?null:r.error,r.id);if(state==='cancelled')db.prepare('UPDATE tax_invoice_order_links SET active=0 WHERE draft_id=?').run(r.id);res.json(view(read(r.id,env)));
  }));
 }

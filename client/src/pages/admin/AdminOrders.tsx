@@ -1,3 +1,4 @@
+import {OrderTaxLink} from '@/components/OrderTaxLink';
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -126,6 +127,7 @@ export default function AdminOrders() {
 
   return (
     <AdminLayout>
+      <OrderTaxLink/>
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
