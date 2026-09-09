@@ -1,3 +1,5 @@
+import { SupplyOrderEdit } from '@/components/SupplyOrderEdit';
+import type { SupplyRecord } from '@shared/supply-workflow';
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -43,7 +45,10 @@ export default function AdminStaffSupply() {
   const { data, isLoading } = useQuery<{ rows: SupplyOrder[]; summary: SupplyOrderSummary }>({ queryKey: [key] });
   const { data: vendors } = useQuery<SupplyVendor[]>({ queryKey: ["/api/admin/staff/supply-vendors"] });
 
+  const boardKey = `/api/admin/staff/supply-board?from=${from}&to=${to}`;
+  const board = useQuery<SupplyRecord[]>({queryKey:[boardKey]});
   const invalidate = () => {
+    queryClient.invalidateQueries({queryKey:[boardKey]});
     queryClient.invalidateQueries({ queryKey: [key] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/supply-vendors"] });
   };
@@ -81,7 +86,7 @@ export default function AdminStaffSupply() {
     }
   }
 
-  async function delOrder(r: SupplyOrder) {
+  async function delOrder(r: Pick<SupplyOrder, "id" | "orderDate" | "vendor">) {
     if (!confirm(`${r.orderDate} ${r.vendor || ""} 기록을 지울까요?`)) return;
     try {
       await apiRequest("DELETE", `/api/admin/staff/supply-orders/${r.id}`);
@@ -119,7 +124,7 @@ export default function AdminStaffSupply() {
         {/* 합계 */}
         <div className="mb-5 grid gap-4 sm:grid-cols-3">
           <Card className="p-5">
-            <div className="text-xs text-muted-foreground">기간 합계</div>
+            <div className="text-xs text-muted-foreground">기간 합계 <span className="text-[11px]">(발주 필요·취소·환불 완료 제외)</span></div>
             <div className="font-display tabular mt-1 text-2xl font-semibold text-foreground">
               {won(summary?.total ?? 0)}원
             </div>
@@ -220,17 +225,17 @@ export default function AdminStaffSupply() {
           <div className="border-b p-5">
             <h2 className="text-sm font-semibold text-foreground">기록</h2>
           </div>
-          {isLoading ? (
+          {isLoading || board.isLoading ? (
             <div className="space-y-2 p-5">
               {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
-          ) : (data?.rows ?? []).length === 0 ? (
+          ) : board.isError ? (<p role="alert" className="p-5">발주 기록을 불러오지 못했습니다. <Button onClick={()=>board.refetch()}>다시 불러오기</Button></p>) : (board.data ?? []).length === 0 ? (
             <p className="py-12 text-center text-sm text-muted-foreground">이 기간에 남겨진 기록이 없습니다.</p>
           ) : (
             <div className="divide-y">
-              {data!.rows.map((r) => (
+              {board.data!.map((r) => (
                 <div key={r.id} className="p-4" data-testid={`admin-supply-${r.id}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -260,6 +265,7 @@ export default function AdminStaffSupply() {
                       )}
                     </div>
                   </div>
+                  <SupplyOrderEdit row={r} onSaved={invalidate}/>
                 </div>
               ))}
             </div>

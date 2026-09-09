@@ -112,7 +112,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 }
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
-  registerSupplyWorkflow(app, sqlite, requireStaff);
+  registerSupplyWorkflow(app, sqlite, requireStaff, requireAdmin);
   registerAdminOperations(app, sqlite, requireAdmin);
   registerWorkspaceFeatures(app, sqlite, { admin: requireAdmin, owner: requireOwner, staff: requireStaff }, storage);
   seedOwnerStaff();
@@ -516,18 +516,6 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
         staffName: me.name,
       }),
     );
-  }));
-
-  app.patch("/api/staff/supply-orders/:id", requireStaff, safe(async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
-    const row = await staffStorage.getSupplyOrder(id);
-    if (!row) return res.status(404).json({ message: "찾을 수 없습니다." });
-    if (row.staffId !== req.session.staffId)
-      return res.status(403).json({ message: "직접 남긴 기록만 고칠 수 있습니다." });
-    const parsed = updateSupplyOrderSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
-    res.json(await staffStorage.updateSupplyOrder(id, parsed.data as any));
   }));
 
   app.delete("/api/staff/supply-orders/:id", requireStaff, safe(async (req, res) => {

@@ -2,7 +2,7 @@ import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 import type { BankCredentials, BankEnvironment } from './bank-connection';
 import type { InvoiceDraft } from '../shared/tax-invoices';
 const ns='http://ws.baroservice.com/';
-export class TaxRemoteError extends Error { constructor(public code:string){super(`바로빌 오류 ${code}. 인증서·회원 정보와 신청 상태를 확인해 주세요.`);} }
+export class TaxRemoteError extends Error { constructor(public code:string){super(code === '-26006' ? '바로빌 오류 -26006. 충전잔액이 부족합니다. 바로빌 운영 사이트에서 요금 충전 후 이 문서를 다시 발행해 주세요.' : code === '-10002' ? '바로빌 오류 -10002. 인증키를 찾을 수 없습니다. 선택한 환경의 연결 설정을 확인해 주세요.' : `바로빌 오류 ${code}. 바로빌에서 오류코드와 연결 상태를 확인해 주세요.`);} }
 export async function taxCall(env:BankEnvironment,c:BankCredentials,method:string,params:Record<string,unknown>={}) {
  const xml=new XMLBuilder({ignoreAttributes:false}).build({'soap:Envelope':{'@_xmlns:soap':'http://schemas.xmlsoap.org/soap/envelope/','soap:Body':{[method]:{'@_xmlns':ns,CERTKEY:c.key,CorpNum:c.corp,...params}}}});
  let response:Response;

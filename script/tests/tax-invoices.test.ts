@@ -1,3 +1,4 @@
+import {TaxRemoteError} from '../../server/tax-soap';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import express from 'express';
@@ -26,6 +27,8 @@ async function call(path:string,body?:any,role='owner',verb=body?'POST':'GET'){
 const party={corpNum:creds.corp,name:'A & B',ceo:'Fixture',address:'Fixture address',bizType:'',bizClass:'',contact:'Fixture',email:'fixture@example.invalid'};
 const draft={supplier:party,buyer:{...party,corpNum:'2222222222'},date:'2026-09-01',purpose:'2',item:'Fixture',amount:1000,tax:100,remark:''};
 try{
+ assert.match(new TaxRemoteError('-26006').message,/충전잔액이 부족/);
+ assert.doesNotMatch(new TaxRemoteError('-26006').message,/인증서/);
  assert.equal((await call('/test',undefined,'staff')).status,403);
  for(const body of [{...draft,tax:500},{...draft,date:'2026-02-30'},{...draft,buyer:party}])assert.equal((await call('/test/drafts',body)).status,400);
  assert.equal((await call('/test/profile',party,'owner','PUT')).status,200);

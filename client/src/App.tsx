@@ -1,3 +1,4 @@
+import {AppUpdateNotice} from '@/components/AppUpdateNotice';
 import TaxInvoices from '@/pages/admin/TaxInvoices';
 import BankReview from "@/pages/admin/BankReview";
 import Manuals, { StaffManuals } from "@/pages/workspace/Manuals";
@@ -285,6 +286,7 @@ function App() {
           <CartProvider>
             <TooltipProvider>
               <Toaster />
+              <AppUpdateNotice />
               <Router hook={useHashLocation}>
                 <ErrorBoundary>
                   <AppRouter />

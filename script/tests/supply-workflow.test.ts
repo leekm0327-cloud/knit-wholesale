@@ -22,11 +22,11 @@ initSupplyWorkflow(db);
 assert.equal((sql.prepare('SELECT amount FROM supply_orders WHERE id=1').get() as any).amount, 1000);
 const app = express();
 app.use(express.json());
-app.use((req: any, _res, next) => { req.session = { staffId: Number(req.headers['x-staff']) || undefined }; next(); });
+app.use((req: any, _res, next) => { req.session = { staffId: Number(req.headers['x-staff']) || undefined, userId: req.headers['x-admin'] === 'owner' ? 10 : undefined }; next(); });
 registerSupplyWorkflow(app, db, (req: any, res, next) => { if (!req.session.staffId) {
     res.status(401).end();
     return;
-} next(); });
+} next(); }, (req:any,res,next)=>req.session.userId?next():res.sendStatus(403));
 const server = app.listen(0, '127.0.0.1');
 await new Promise<void>(r => server.once('listening', r));
 const port = (server.address() as any).port;
@@ -70,16 +70,35 @@ try {
     assert.equal((await call('POST', `/supply-board/${paid.id}/status`, { status: 'received', version: paid.updatedAt, note: '' })).status, 409);
     let received = (await call('POST', `/supply-board/${paid.id}/status`, { status: 'received', version: partial.updatedAt, note: '나머지 도착' })).data;
     assert.equal(received.receivedBy, '직원 A');
-    let edited = (await call('PATCH', `/supply-board/${paid.id}`, { ...order, version: received.updatedAt }, 2)).data;
-    assert.equal(edited.receivedBy, '직원 A');
-    assert.equal(edited.receivedAt, received.receivedAt);
+    assert.equal((await call('PATCH', `/supply-board/${paid.id}`, { ...order, version: received.updatedAt }, 2)).status,409);
+    const edited = received;
     let refund = (await call('POST', `/supply-board/${paid.id}/status`, { status: 'refund_pending', version: edited.updatedAt, note: '파손' })).data;
+    assert.equal((await call('PATCH', `/supply-board/${paid.id}`, {...order, version:refund.updatedAt},2)).status,409);
     let refunded = (await call('POST', `/supply-board/${paid.id}/status`, { status: 'refunded', version: refund.updatedAt, note: '전액 환불 확인' })).data;
     assert.equal(refunded.amount, 43190);
     assert.equal((await call('POST', `/supply-board/${paid.id}/status`, { status: 'ordered', version: refunded.updatedAt, note: '' })).status, 400);
-    assert((await call('GET', `/supply-board/${paid.id}/events`)).data.length >= 6);
+    assert((await call('GET', `/supply-board/${paid.id}/events`)).data.length >= 5);
     assert.equal((await call('POST', '/supply-templates', { name: '우유', vendor: order.vendor, body: order.body, link: order.link, destination: order.destination })).status, 200);
     assert.equal((await call('GET', '/supply-templates')).data.length, 1);
+    const fresh = (await call('POST','/supply-board',{...order,status:'ordered'})).data;
+    let updated = await call('PATCH',`/supply-board/${fresh.id}`,{...order,body:'우유 3박스',version:fresh.updatedAt});
+    assert.equal(updated.status,200); assert.equal(updated.data.body,'우유 3박스');
+    assert.equal((await call('PATCH',`/supply-board/${fresh.id}`,{...order,version:fresh.updatedAt})).status,409);
+    async function admin(method:string,path:string,body?:any,allow=true) {
+        const r=await fetch(`http://127.0.0.1:${port}/api/admin/staff${path}`,{method,headers:{'Content-Type':'application/json','x-admin':allow?'owner':''},body:body?JSON.stringify(body):undefined});
+        return {status:r.status,data:await r.json().catch(()=>null)};
+    }
+    assert.equal((await admin('GET','/supply-board?from=2026-07-01&to=2026-08-31',undefined,false)).status,403);
+    assert.equal((await admin('PATCH',`/supply-board/${fresh.id}`,{body:'관리자 수정',version:updated.data.updatedAt},false)).status,403);
+    const byAdmin=await admin('PATCH',`/supply-board/${fresh.id}`,{body:'관리자 수정',version:updated.data.updatedAt});
+    assert.equal(byAdmin.status,200);assert.equal(byAdmin.data.staffId,1);assert.equal(byAdmin.data.body,'관리자 수정');
+    const events=(await call('GET',`/supply-board/${fresh.id}/events`)).data;
+    assert.equal(events[0].staffName,'관리자 #10');assert(events[0].note.includes('우유 3박스'));
+    const complete=(await call('POST',`/supply-board/${fresh.id}/status`,{status:'received',version:byAdmin.data.updatedAt,note:''})).data;
+    assert.equal((await admin('PATCH',`/supply-board/${fresh.id}`,{body:'금지',version:byAdmin.data.updatedAt})).status,409);
+    assert.equal((await admin('PATCH',`/supply-board/${fresh.id}`,{body:'금지',version:complete.updatedAt})).status,409);
+    assert.equal((await call('PATCH',`/supply-orders/${fresh.id}`,{body:'우회 시도',version:complete.updatedAt})).status,409);
+    assert.equal((await admin('GET','/supply-board?from=2026-07-01&to=2026-08-31')).data.find((r:any)=>r.id===fresh.id).body,'관리자 수정');
     console.log('PASS: additive migration, auth, bean-category privacy, decimals/history/conflicts, duplicate request guard, cross-month pending, validation, purchase/partial receipt/refund lifecycle and receipt attribution');
 }
 finally {

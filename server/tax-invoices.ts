@@ -14,7 +14,7 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
  registerOrderInvoices(app,db,owner,route,credentials);
  const base='/api/admin/tax-invoices/:environment';
  const read=(id:string,env:string)=>db.prepare('SELECT * FROM tax_invoice_drafts WHERE id=? AND environment=?').get(id,env) as any;
- const view=(r:any)=>({...r,payload:JSON.parse(r.payload),remote_state:r.remote_state?JSON.parse(r.remote_state):null,fingerprint:undefined});
+ const view=(r:any)=>({...r,error:typeof r.error === 'string' && r.error.startsWith('바로빌 오류 -26006.') ? new TaxRemoteError('-26006').message : r.error,payload:JSON.parse(r.payload),remote_state:r.remote_state?JSON.parse(r.remote_state):null,fingerprint:undefined});
  app.get(base+'/drafts/:id',owner,route((req,res)=>{const r=read(req.params.id,taxEnvironment.parse(req.params.environment));if(!r){res.sendStatus(404);return;}res.json(view(r));}));
  app.get(base,owner,route((req,res)=>{
   const env=taxEnvironment.parse(req.params.environment);let configured=false,corp='';try{const c=credentials(env);configured=true;corp=c.corp;}catch{}

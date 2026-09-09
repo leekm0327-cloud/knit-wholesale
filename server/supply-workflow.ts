@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
-import { supplyStates, type SupplyState } from '../shared/supply-workflow';
+import { canEditSupply, supplyStates, type SupplyState } from '../shared/supply-workflow';
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => { const d = new Date(v + 'T00:00:00Z'); return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v; }, '날짜를 확인해 주세요.');
 const url = z.string().max(2000).refine(v => !v || /^https?:\/\//i.test(v), '구매 링크는 http 또는 https 주소로 입력해 주세요.');
 const fields = z.object({ orderDate: date, vendor: z.string().trim().max(40), body: z.string().trim().min(1, '품목과 수량을 적어주세요.').max(2000), amount: z.number().int().min(0).max(100000000), destination: z.string().trim().max(100), expectedDate: z.union([date, z.literal('')]), link: url, note: z.string().trim().max(1000) });
@@ -20,7 +20,7 @@ export function initSupplyWorkflow(db: Database.Database) {
   CREATE TABLE IF NOT EXISTS staff_bean_stock_logs (id INTEGER PRIMARY KEY AUTOINCREMENT,product_id INTEGER NOT NULL,grams INTEGER,minimum_grams INTEGER,tracked INTEGER NOT NULL,staff_id INTEGER NOT NULL,staff_name TEXT NOT NULL,created_at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS idx_bean_stock_history ON staff_bean_stock_logs(product_id,id);`);
 }
-export function registerSupplyWorkflow(app: Express, db: Database.Database, auth: RequestHandler) {
+export function registerSupplyWorkflow(app: Express, db: Database.Database, auth: RequestHandler, admin?: RequestHandler) {
     initSupplyWorkflow(db);
     const route = (fn: (req: any, res: any, me: any) => void): RequestHandler => (req, res, next) => {
         try {
@@ -51,11 +51,34 @@ export function registerSupplyWorkflow(app: Express, db: Database.Database, auth
     } return row; };
     app.get('/api/staff/supply-board', auth, route((req, res) => { const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(req.query.month); res.json(db.prepare(select + ` WHERE substr(o.order_date,1,7)=? OR m.status IN ('needed','ordered','partial','refund_pending') ORDER BY o.order_date DESC,o.id DESC`).all(month)); }));
     app.post('/api/staff/supply-board', auth, route((req, res, me) => { const p = create.parse(req.body); res.json(get(db.transaction(() => insert(p, me))())); }));
-    app.patch('/api/staff/supply-board/:id', auth, route((req, res, me) => { const p = fields.parse(req.body); const row = check(req, res); if (!row)
-        return; if (row.staffId !== me.id) {
-        res.status(403).json({ message: '직접 작성한 기록만 수정할 수 있습니다.' });
-        return;
-    } const now = Math.max(Date.now(), row.updatedAt + 1); db.transaction(() => { db.prepare('UPDATE supply_orders SET order_date=?,vendor=?,body=?,amount=?,updated_at=? WHERE id=?').run(p.orderDate, p.vendor, p.body, row.status === 'needed' ? 0 : p.amount, now, row.id); meta(row.id, { ...row, ...p }, me, row.receivedAt || now); event(row.id, row.status, '내용 수정', me, now); })(); res.json(get(row.id)); }));
+    // Read the version and receipt state inside the same write transaction.
+    const edit = (req: any, res: any, me: any, ownOnly: boolean) => {
+        const patch = fields.partial().parse(req.body);
+        const result = db.transaction(() => {
+            const row = check(req, res); if (!row) return null;
+            if (ownOnly && row.staffId !== me.id) { res.status(403).json({message:'직접 작성한 기록만 수정할 수 있습니다.'}); return null; }
+            if (!canEditSupply(row)) { res.status(409).json({message:'입고 완료 또는 종료된 발주는 수정할 수 없습니다.'}); return null; }
+            const p = fields.parse({...row, ...patch});
+            const now = Math.max(Date.now(), row.updatedAt + 1);
+            db.prepare('UPDATE supply_orders SET order_date=?,vendor=?,body=?,amount=?,updated_at=? WHERE id=?').run(p.orderDate,p.vendor,p.body,row.status === 'needed' ? 0 : p.amount,now,row.id);
+            meta(row.id,{...row,...p},me,now);
+            const changed = Object.keys(p).filter(k => (p as any)[k] !== row[k]);
+            const labels:Record<string,string>={orderDate:'발주일',vendor:'구입처',body:'품목·수량',amount:'금액',destination:'배송지',expectedDate:'입고 예정일',link:'구매 링크',note:'전달사항'};
+            event(row.id,row.status,'내용 수정\n' + changed.map(k=>`${labels[k]}: ${row[k] || '(없음)'} → ${(p as any)[k] || '(없음)'}`).join('\n'),me,now);
+            return get(row.id);
+        })();
+        if (result) res.json(result);
+    };
+    app.patch(['/api/staff/supply-board/:id','/api/staff/supply-orders/:id'],auth,route((req,res,me)=>edit(req,res,me,true)));
+    if (admin) {
+        app.get('/api/admin/staff/supply-board',admin,(req,res,next)=>{try {
+            const from = date.parse(req.query.from), to = date.parse(req.query.to);
+            res.json(db.prepare(select+' WHERE o.order_date>=? AND o.order_date<=? ORDER BY o.order_date DESC,o.id DESC').all(from,to));
+        } catch(e) {if(e instanceof z.ZodError) res.status(400).json({message:'기간을 확인해 주세요.'});else next(e);}});
+        app.patch('/api/admin/staff/supply-board/:id',admin,(req,res,next)=>{try {
+            edit(req,res,{id:-Number(req.session.userId),name:'관리자 #'+req.session.userId},false);
+        } catch(e) {if(e instanceof z.ZodError) res.status(400).json({message:e.errors[0].message});else next(e);}});
+    }
     app.post('/api/staff/supply-board/:id/status', auth, route((req, res, me) => { const p = z.object({ status: z.enum(supplyStates), note: z.string().trim().max(1000), order: fields.optional() }).parse(req.body); const row = check(req, res); if (!row)
         return; if (!transitions[row.status as SupplyState].includes(p.status)) {
         res.status(400).json({ message: '현재 상태에서 변경할 수 없습니다.' });

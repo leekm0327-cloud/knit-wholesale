@@ -45,3 +45,7 @@ export type SupplyEvent = {
     staffName: string;
     createdAt: number;
 };
+
+export function canEditSupply(r: {status: string; receivedAt?: number | null}) {
+    return r.receivedAt == null && ['needed', 'ordered', 'partial', 'recorded'].includes(r.status);
+}
