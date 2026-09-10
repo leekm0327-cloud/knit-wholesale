@@ -1,3 +1,4 @@
+import { registerBankOnline } from './bank-online';
 import { registerTaxInvoices } from './tax-invoices';
 import { registerBankConnection, type BankEnvironment, type BankCredentials } from "./bank-connection";
 import { registerBankPosting } from "./bank-posting";
@@ -59,6 +60,7 @@ export function registerBankReview(app:Express,db:Database.Database,owner:Reques
  const prefix=environment==='test'?'/api/admin/bank-review':'/api/admin/bank-live';
  const postingTable=environment==='test'?'bank_test_postings':'bank_live_postings';
  registerBankPosting(app,db,owner,environment,prefix);
+ registerBankOnline(app,db,owner,environment,prefix);
  const configured=()=>{try{connection(environment);return true;}catch{return false;}};
  const safe=(fn:(req:any,res:any)=>any):RequestHandler=>(req,res)=>{Promise.resolve().then(()=>fn(req,res)).catch(e=>res.status(e instanceof z.ZodError?400:502).json({message:e instanceof z.ZodError?'입력값을 확인해 주세요.':e.message}));};
  app.get(prefix,owner,safe((_req,res)=>{
@@ -87,11 +89,12 @@ export function registerBankReview(app:Express,db:Database.Database,owner:Reques
  }));
  app.patch(prefix+'/:id',owner,safe((req,res)=>{
   const id=z.coerce.number().int().positive().parse(req.params.id);
-  const p=z.object({state:z.enum(['pending','expense','payment','customer','settlement','transfer','card','loan','other']),targetId:z.number().int().positive().nullable(),memo:z.string().max(500)}).parse(req.body);
+  const p=z.object({state:z.enum(['pending','expense','payment','customer','settlement','online','delivery','transfer','card','loan','other']),targetId:z.number().int().positive().nullable(),memo:z.string().max(500)}).parse(req.body);
   db.transaction(()=>{
    const row=db.prepare(`SELECT * FROM bank_review WHERE id=? AND environment='${environment}'`).get(id) as any;if(!row)throw new Error('내역이 없습니다.');
    if(db.prepare(`SELECT id FROM ${postingTable} WHERE bank_id=? AND cancelled_at IS NULL`).get(id))throw new Error('장부 반영을 먼저 취소해 주세요.');
-   if(p.state==='settlement'&&!row.deposit)throw new Error('정산 입금은 입금 내역에서 선택해 주세요.');
+   if(['settlement','online','delivery'].includes(p.state)&&(!row.deposit||row.withdraw))throw new Error('정산 입금은 입금 내역에서 선택해 주세요.');
+   if(p.state!=='online'&&db.prepare('SELECT bank_id FROM bank_online_settlements WHERE bank_id=?').get(id))throw new Error('온라인 매출 연결을 먼저 해제해 주세요.');
    if(['expense','payment'].includes(p.state)){
     const isExpense=p.state==='expense';const amount=isExpense?row.withdraw:row.deposit;
     if(!amount||!p.targetId)throw new Error('연결할 기존 기록을 선택해 주세요.');

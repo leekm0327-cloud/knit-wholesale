@@ -30,7 +30,7 @@ export function registerBankPosting(app:Express,db:Database.Database,owner:Reque
     if(existing.kind===p.kind&&existing.customer_id===(p.customerId??null)&&existing.category===(p.category??null)&&existing.sector===(p.sector??null)&&existing.memo===p.memo){postingId=existing.id;return;}
     throw new Error('이미 반영한 내역입니다. 취소 후 다시 처리해 주세요.');
    }
-   if(['expense','payment','card','transfer','loan','settlement','other'].includes(row.state))throw new Error('이미 연결했거나 비용·수금으로 바로 등록할 수 없는 분류입니다.');
+   if(['expense','payment','card','transfer','loan','settlement','online','delivery','other'].includes(row.state))throw new Error('이미 연결했거나 비용·수금으로 바로 등록할 수 없는 분류입니다.');
 
    if(row.deposit>0&&row.withdraw>0)throw new Error('입출금이 동시에 있는 거래는 개별 확인이 필요합니다.');
    const amount=p.kind==='expense'?row.withdraw:row.deposit;if(!Number.isSafeInteger(amount)||amount<=0)throw new Error('입출금 방향과 처리 종류가 일치하지 않습니다.');
