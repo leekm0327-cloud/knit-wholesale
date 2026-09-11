@@ -495,7 +495,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
       {isAdmin && hasDeduction && (
         <div className="rounded-md border border-amber-300/60 bg-amber-50/40 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200" data-testid="text-edit-deduction">
           <p>수량이 음수인 품목이 있습니다. 손상·반품 차감으로 처리됩니다.</p>
-          <p className="mt-1">그만큼 주문 합계가 줄고, 이카운트 판매전표와 세금계산서에도 차감된 금액으로 반영됩니다. 이 주문에서는 공장 자동발주가 생성되지 않습니다.</p>
+          <p className="mt-1">그만큼 주문 합계가 줄고, 세금계산서에도 차감된 금액으로 반영됩니다. 이 주문에서는 공장 자동발주가 생성되지 않습니다.</p>
         </div>
       )}
 

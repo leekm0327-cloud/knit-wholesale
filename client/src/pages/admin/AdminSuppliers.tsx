@@ -177,11 +177,7 @@ export default function AdminSuppliers() {
               <Label className="text-xs">연락처</Label>
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-0000-0000" data-testid="input-supplier-phone" />
             </div>
-            <div>
-              <Label className="text-xs">이카운트 거래처코드</Label>
-              <Input value={ecountCode} onChange={(e) => setEcountCode(e.target.value)} placeholder="예: 8013401047 (이카운트에 등록된 거래처코드)" data-testid="input-supplier-ecount-code" />
-              <p className="mt-1 text-[11px] text-muted-foreground">발주를 이카운트 구매전표로 보낼 때 사용됩니다. 이카운트에 등록된 이 공급처의 거래처코드를 넣어주세요.</p>
-            </div>
+
             <div>
               <Label className="text-xs">메모</Label>
               <Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="비고" data-testid="input-supplier-memo" />

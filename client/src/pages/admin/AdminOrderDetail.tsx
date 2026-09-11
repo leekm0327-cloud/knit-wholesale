@@ -25,7 +25,6 @@ import { OrderItemsEditor } from "@/components/OrderItemsEditor";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { errMsg } from "@/lib/format";
-import { ecountState, ECOUNT_BADGE_CLASS } from "@/lib/ecountState";
 import { orderToKakaoText } from "@/lib/kakaoFormat";
 import type { Order } from "@shared/schema";
 import { ArrowLeft, Printer, Loader2, CheckCircle2, RotateCcw, Link2, ScrollText, Pencil, XCircle, Copy } from "lucide-react";
@@ -52,7 +51,6 @@ export default function AdminOrderDetail() {
   const [adminMemo, setAdminMemo] = useState("");
   const [ecountDate, setEcountDate] = useState("");
   const [saving, setSaving] = useState(false);
-  const [sendingEcount, setSendingEcount] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -107,44 +105,7 @@ export default function AdminOrderDetail() {
     }
   }
 
-  async function sendToEcount() {
-    if (!id) return;
-    const st = ecountState(order);
-    if (st.kind !== "unsent") {
-      const warn =
-        st.kind === "changed"
-          ? `이 주문은 ${st.sentAtText}에 이카운트로 전송된 뒤 금액이 바뀌었습니다.\n다시 보내면 예전 판매전표가 그대로 남은 채 새 전표가 추가되어 세금계산서 금액이 이중으로 잡힙니다. 이카운트에서 예전 전표를 먼저 지우셨나요?`
-          : `이 주문은 이미 ${st.sentAtText}에 이카운트로 전송되었습니다.\n다시 보내면 판매전표가 한 건 더 쌓이고 세금계산서 금액이 이중으로 잡힙니다. 그래도 보낼까요?`;
-      if (!confirm(warn)) return;
-    }
-    setSendingEcount(true);
-    try {
-      const res = await apiRequest("POST", `/api/admin/ecount/orders/${id}/send`, st.kind === "unsent" ? {} : { force: true });
-      const data = await res.json();
-      if (data.ok) {
-        const stepMsg = (data.steps ?? [])
-          .map((s: any) => `${s.step}: ${s.message}`)
-          .join(" · ");
-        toast({
-          title: "ECOUNT 전송 성공",
-          description: stepMsg || "거래처 + 판매전표 등록 완료",
-        });
-        queryClient.invalidateQueries({ queryKey: ["/api/orders", id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
-      } else {
-        const failStep = (data.steps ?? []).find((s: any) => !s.ok);
-        toast({
-          variant: "destructive",
-          title: "ECOUNT 전송 실패",
-          description: failStep ? `${failStep.step}: ${failStep.message}` : data.message ?? "오류",
-        });
-      }
-    } catch (e) {
-      toast({ variant: "destructive", title: "ECOUNT 전송 실패", description: errMsg(e) });
-    } finally {
-      setSendingEcount(false);
-    }
-  }
+
 
   useEffect(() => {
     if (order) {
@@ -304,7 +265,7 @@ export default function AdminOrderDetail() {
               <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
                 <div className="space-y-1.5">
                   <Label className="text-xs">
-                    주문 일자 <span className="font-normal text-muted-foreground">(ECOUNT 전송 시 이 날짜로 입력됩니다)</span>
+                    주문 일자 <span className="font-normal text-muted-foreground">(거래명세서에 표시되는 날짜)</span>
                   </Label>
                   <Input type="date" value={ecountDate} onChange={(e) => setEcountDate(e.target.value)} data-testid="input-ecount-date" />
                 </div>
@@ -327,53 +288,7 @@ export default function AdminOrderDetail() {
                 </div>
               </div>
 
-              {/* ECOUNT 전송 */}
-              <div className="mt-4 rounded-md border border-dashed border-amber-300/60 bg-amber-50/30 p-3 dark:bg-amber-950/10">
-                <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                  <Link2 className="h-3.5 w-3.5" />
-                  <span>ECOUNT 연동</span>
-                </div>
-                {(() => {
-                  const st = ecountState(order as any);
-                  return (
-                    <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="ecount-state-order">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${ECOUNT_BADGE_CLASS[st.kind]}`}>
-                        {st.label}
-                      </span>
-                      {st.sentAtText && <span className="text-[11px] text-muted-foreground">{st.sentAtText} 전송</span>}
-                    </div>
-                  );
-                })()}
-                <p className="mb-2 text-xs text-muted-foreground">
-                  이 주문을 ECOUNT에 거래처 + 판매전표로 전송합니다. 세금계산서는 이카운트에 쌓인 판매전표를 근거로
-                  월 단위로 일괄 발행하므로, 모든 주문이 전송됨 상태여야 빠짐없이 발행됩니다. 결과는 ECOUNT 로그에 기록됩니다.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={sendToEcount}
-                    disabled={sendingEcount}
-                    data-testid="button-send-ecount"
-                  >
-                    {sendingEcount ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Link2 className="mr-1.5 h-3.5 w-3.5" />
-                    )}
-                    ECOUNT 전송
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => navigate("/admin/ecount-logs")}
-                    data-testid="button-view-ecount-logs"
-                  >
-                    <ScrollText className="mr-1.5 h-3.5 w-3.5" />
-                    로그 보기
-                  </Button>
-                </div>
-              </div>
+
 
               <div className="mt-4 space-y-1.5">
                 <Label className="text-xs">관리자 메모</Label>

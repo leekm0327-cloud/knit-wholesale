@@ -18,7 +18,6 @@ import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatu
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
 import { staffStorage } from "./staff-storage";
-import { encrypt, fetchZone, runVerification, sendOrderToEcount, sendPaymentToEcount, sendCustomerToEcount, sendPurchaseToEcount, __ecountLogDebug } from "./ecount";
 import path from "node:path";
 import fs from "node:fs";
 import multer from "multer";
@@ -42,7 +41,6 @@ import {
   insertProductCategorySchema,
   insertEspressoSetupSchema,
   insertPaymentSchema,
-  ecountSettingsInputSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   insertSupplierSchema,
@@ -1329,20 +1327,6 @@ export async function registerRoutes(
       summary: `거래처 '${customer.businessName}' 등록`,
       metadata: { email: customer.email },
     });
-
-    // ECOUNT 자동 등록 (autoSendCustomer가 1이고 사업자번호가 있을 때) — 응답을 막지 않고 비동기 처리
-    try {
-      const settings = await storage.getEcountSettings();
-      const cleanBizNo = (customer.bizRegNo || "").replace(/[^0-9]/g, "");
-      // 매장 내부 계정은 ECOUNT 거래처로 자동 등록하지 않음(동일 사업자 → 거래처코드 충돌 방지)
-      if (settings && settings.autoSendCustomer && cleanBizNo && !isStore) {
-        sendCustomerToEcount(customer.id).catch((e) =>
-          console.error("[ecount] 거래처 자동 등록 실패:", e),
-        );
-      }
-    } catch (e) {
-      console.error("[ecount] 거래처 자동 등록 설정 확인 실패:", e);
-    }
 
     res.json(toPublic(customer));
   });
@@ -2636,50 +2620,6 @@ export async function registerRoutes(
           }).catch((e) => console.warn("[alimtalk] 처리완료 알림 실패:", e?.message ?? e));
         }
 
-        // pending → done 전환 시 ECOUNT 판매전표 자동 전송.
-        //  세금계산서는 이 판매전표를 근거로 이카운트 (세금)계산서진행단계에서 월 단위로
-        //  일괄 발행하므로, 전표가 빠짐없이 넘어가 있는 것이 가장 중요하다.
-        //  - ECOUNT 설정의 '판매전표 자동 전송'이 켜져 있을 때만 동작
-        //  - 매장 내부 계정 주문은 동일 사업자 간 거래라 세금계산서 대상이 아니므로 제외
-        //  - 이미 전송된 주문(ecountSentAt)은 다시 보내지 않는다
-        //  - 실패해도 상태 변경은 그대로 두고, 목록에 '미전송'으로 남겨 나중에 손으로 보낼 수 있게 한다
-        if (order.status === "pending" && !updated.ecountSentAt) {
-          try {
-            const ecountSettings = await storage.getEcountSettings();
-            const cust = await storage.getCustomer(updated.customerId);
-            const isStoreOrder = updated.isStoreOrder === 1 || (updated.isStoreOrder === -1 && !!(cust as any)?.isStore);
-            if (ecountSettings?.autoSendSales && !isStoreOrder) {
-              // 실패는 로그로만 남기지 않는다. 월말 세금계산서에서 빠진 뒤에야 발견되는 것을 막기 위해
-              // 알림센터 + 카카오 메모로 즉시 알린다.
-              const notifyEcountFail = (reason: string) => {
-                console.warn(`[ecount] 판매전표 자동 전송 실패 (${updated.orderNo}):`, reason);
-                storage
-                  .createNotification({
-                    type: "ecount_fail",
-                    title: `ECOUNT 판매전표 전송 실패 · ${cust?.businessName ?? ""}`,
-                    body: `${updated.orderNo} · ${reason}`,
-                    link: `/admin/orders/${updated.id}`,
-                  })
-                  .catch((e) => console.error("[notif] ecount 실패 알림 저장 실패:", e));
-                sendKakaoMemo(
-                  `[니트커피] ECOUNT 판매전표 자동 전송에 실패했습니다.\n주문번호: ${updated.orderNo}\n거래처: ${cust?.businessName ?? ""}\n사유: ${reason}\n주문 상세에서 다시 전송해 주세요.`,
-                  `https://wholesale.knitcoffee.co.kr/#/admin/orders/${updated.id}`,
-                ).catch((e) => console.warn("[kakao] ecount 실패 알림 발송 실패:", e?.message ?? e));
-              };
-              sendOrderToEcount(updated.id)
-                .then((r) => {
-                  if (!r.ok) {
-                    const failed = r.steps.find((st) => !st.ok);
-                    notifyEcountFail(failed?.message ?? "원인 불명");
-                  }
-                })
-                .catch((e) => notifyEcountFail(String(e?.message ?? e)));
-            }
-          } catch (e: any) {
-            console.warn("[ecount] 판매전표 자동 전송 준비 실패:", e?.message ?? e);
-          }
-        }
-
         // A-3: pending → done 전환 시 클라리멘토(대표 공급처)에 원두 자동발주 등록
         //  - skipAutoPurchase=true 이면 생략, 이미 자동발주된 주문(autoPurchaseId 존재)이면 재생성 안 함
         const skipAutoPurchase = req.body.skipAutoPurchase === true;
@@ -3314,216 +3254,26 @@ export async function registerRoutes(
   });
 
   // ===== ECOUNT 연동 설정 =====
-  app.get("/api/admin/ecount/settings", requireAdmin, async (_req, res) => {
-    const s = await storage.getEcountSettings();
-    if (!s) {
-      return res.json({
-        comCode: "",
-        userId: "",
-        zone: "",
-        warehouseCode: "",
-        deliverFieldCode: "",
-        discountProductCode: "",
-        miscProductCode: "",
-        useTestEndpoint: true,
-        autoSendSales: false,
-        autoSendPayments: false,
-        autoSendCustomer: true,
-        autoSendProduct: true,
-        hasKey: false,
-        lastVerifiedAt: null,
-        verificationLog: "",
-      });
-    }
-    res.json({
-      comCode: s.comCode,
-      userId: s.userId,
-      zone: s.zone,
-      warehouseCode: s.warehouseCode,
-      deliverFieldCode: s.deliverFieldCode ?? "",
-      discountProductCode: s.discountProductCode ?? "",
-      miscProductCode: s.miscProductCode ?? "",
-      useTestEndpoint: !!s.useTestEndpoint,
-      autoSendSales: !!s.autoSendSales,
-      autoSendPayments: !!s.autoSendPayments,
-      autoSendCustomer: !!s.autoSendCustomer,
-      autoSendProduct: !!s.autoSendProduct,
-      hasKey: !!s.apiCertKeyEnc,
-      lastVerifiedAt: s.lastVerifiedAt,
-      verificationLog: s.verificationLog,
-    });
-  });
 
-  app.put("/api/admin/ecount/settings", requireAdmin, async (req, res) => {
-    const parsed = ecountSettingsInputSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
-    }
-    const d = parsed.data;
-    // 스위치는 값이 안 오면 '기존 값 유지'. 예전처럼 기본값으로 덮어쓰면
-    // 테스트 서버로 되돌아가거나 판매전표 자동 전송이 조용히 꺼진다.
-    const prev = await storage.getEcountSettings();
-    const keep = (v: boolean | undefined, before: number | undefined, fallback: number) =>
-      v === undefined ? (before ?? fallback) : v ? 1 : 0;
-    const useTest = keep(d.useTestEndpoint, prev?.useTestEndpoint, 1);
-    const patch: any = {
-      comCode: d.comCode,
-      userId: d.userId,
-      zone: d.zone ?? "",
-      warehouseCode: d.warehouseCode,
-      deliverFieldCode: (d.deliverFieldCode ?? "").trim(),
-      discountProductCode: (d.discountProductCode ?? "").trim(),
-      miscProductCode: (d.miscProductCode ?? "").trim(),
-      useTestEndpoint: useTest,
-      autoSendSales: keep(d.autoSendSales, prev?.autoSendSales, 0),
-      autoSendPayments: keep(d.autoSendPayments, prev?.autoSendPayments, 0),
-      autoSendCustomer: keep(d.autoSendCustomer, prev?.autoSendCustomer, 1),
-      autoSendProduct: keep(d.autoSendProduct, prev?.autoSendProduct, 1),
-    };
-    if (d.apiCertKey && d.apiCertKey.trim().length > 0) {
-      patch.apiCertKeyEnc = encrypt(d.apiCertKey.trim());
-    }
-    if (!patch.zone) {
-      try {
-        patch.zone = await fetchZone(d.comCode, useTest === 1);
-      } catch (e: any) {
-        return res.status(400).json({ message: `Zone 자동 조회 실패: ${e?.message ?? e}` });
-      }
-    }
-    const saved = await storage.updateEcountSettings(patch);
-    res.json({
-      ok: true,
-      zone: saved.zone,
-      hasKey: !!saved.apiCertKeyEnc,
-    });
-  });
 
-  app.post("/api/admin/ecount/verify", requireAdmin, async (_req, res) => {
-    try {
-      const result = await runVerification();
-      res.json(result);
-    } catch (e: any) {
-      res.status(500).json({
-        ok: false,
-        message: e?.message ?? String(e),
-      });
-    }
-  });
+
+
+
 
   // 발주(매입) → ECOUNT 구매입력 전송
-  app.post("/api/admin/ecount/purchases/:id/send", requireAdmin, async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, message: "잘못된 발주 ID" });
-      // 중복 전송 방지 — 이미 성공한 발주는 force=true 없이는 다시 보내지 않는다
-      const existing = await storage.getPurchase(id);
-      if (existing?.ecountSentAt && req.body?.force !== true) {
-        return res.status(409).json({
-          ok: false,
-          alreadySent: true,
-          sentAt: existing.ecountSentAt,
-          steps: [],
-          message: `이미 ${new Date(existing.ecountSentAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}에 이카운트로 전송된 발주입니다. 다시 보내면 이카운트에 구매전표가 한 건 더 쌓입니다.`,
-        });
-      }
-      const result = await sendPurchaseToEcount(id);
-      res.json(result);
-    } catch (e: any) {
-      res.status(500).json({ ok: false, steps: [], message: e?.message ?? String(e) });
-    }
-  });
 
-  app.post("/api/admin/ecount/orders/:id/send", requireAdmin, async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, message: "잘못된 주문 ID" });
-      // 매장 내부 주문은 자기거래(동일 사업자)라 세금계산서(ECOUNT 판매전표) 대상이 아님
-      const ord = await storage.getOrder(id);
-      if (ord) {
-        const cust = await storage.getCustomer(ord.customerId);
-        if ((cust as any)?.isStore) {
-          return res.status(400).json({ ok: false, message: "매장 내부 주문은 세금계산서(ECOUNT) 전송 대상이 아닙니다." });
-        }
-        // 중복 전송 방지 — 이미 성공한 주문은 force=true 없이는 다시 보내지 않는다
-        if (ord.ecountSentAt && req.body?.force !== true) {
-          return res.status(409).json({
-            ok: false,
-            alreadySent: true,
-            sentAt: ord.ecountSentAt,
-            steps: [],
-            message: `이미 ${new Date(ord.ecountSentAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}에 이카운트로 전송된 주문입니다. 다시 보내면 이카운트에 판매전표가 한 건 더 쌓이고 세금계산서 금액이 이중으로 잡힙니다.`,
-          });
-        }
-      }
-      const result = await sendOrderToEcount(id);
-      res.json(result);
-    } catch (e: any) {
-      res.status(500).json({ ok: false, steps: [], message: e?.message ?? String(e) });
-    }
-  });
 
-  app.post("/api/admin/ecount/payments/:id/send", requireAdmin, async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      if (!Number.isFinite(id)) return res.status(400).json({ ok: false, message: "잘못된 입금 ID" });
-      const result = await sendPaymentToEcount(id);
-      res.json(result);
-    } catch (e: any) {
-      res.status(500).json({ ok: false, steps: [], message: e?.message ?? String(e) });
-    }
-  });
 
-  app.get("/api/admin/ecount/logs", requireAdmin, async (req, res) => {
-    const action = typeof req.query.action === "string" && req.query.action !== "all" ? req.query.action : undefined;
-    const refKind = typeof req.query.refKind === "string" && req.query.refKind !== "all" ? req.query.refKind : undefined;
-    const refId = typeof req.query.refId === "string" && req.query.refId ? req.query.refId : undefined;
-    const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const sinceTs = typeof req.query.sinceTs === "string" ? Number(req.query.sinceTs) : undefined;
-    const limit = typeof req.query.limit === "string" ? Number(req.query.limit) : 200;
-    const logs = await storage.listEcountLogs({
-      action,
-      refKind,
-      refId,
-      okOnly: status === "ok",
-      failOnly: status === "fail",
-      sinceTs: sinceTs && !Number.isNaN(sinceTs) ? sinceTs : undefined,
-      limit: Number.isFinite(limit) ? limit : 200,
-    });
-    res.json(logs);
-  });
 
-  app.get("/api/admin/ecount/logs/__debug", requireAdmin, async (_req, res) => {
-    let rowCount = -1;
-    let tableError: string | null = null;
-    try {
-      const all = await storage.listEcountLogs({ limit: 1 });
-      const all2 = await storage.listEcountLogs({ limit: 10000 });
-      rowCount = all2.length;
-      void all;
-    } catch (e: any) {
-      tableError = e?.message ?? String(e);
-    }
-    res.json({
-      counter: __ecountLogDebug,
-      tableRowCount: rowCount,
-      tableError,
-    });
-  });
 
-  app.get("/api/admin/ecount/logs/:id", requireAdmin, async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
-    const log = await storage.getEcountLog(id);
-    if (!log) return res.status(404).json({ message: "로그를 찾을 수 없습니다." });
-    res.json(log);
-  });
 
-  app.delete("/api/admin/ecount/logs/old", requireAdmin, async (req, res) => {
-    const days = Number(req.query.days) || 90;
-    const beforeTs = Date.now() - days * 24 * 60 * 60 * 1000;
-    const deleted = await storage.deleteOldEcountLogs(beforeTs);
-    res.json({ deleted });
-  });
+
+
+
+
+
+
+
 
   /** 재설정 토큰을 새로 만들고 링크를 돌려준다 (유효 1시간) */
   async function makeResetUrl(req: Request, customerId: number): Promise<string> {

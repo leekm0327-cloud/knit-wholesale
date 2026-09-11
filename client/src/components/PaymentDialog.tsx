@@ -29,10 +29,8 @@ export function PaymentDialog({ open, customerId, businessName, defaultAmount, o
   const [paidAt, setPaidAt] = useState<string>(todayStr());
   const [memo, setMemo] = useState<string>("");
   const [busy, setBusy] = useState(false);
-  // 입금 등록 후 ECOUNT 전송 단계 상태
+  // 입금 등록 완료 상태
   const [savedPayment, setSavedPayment] = useState<{ id: number; amount: number } | null>(null);
-  const [sendingEcount, setSendingEcount] = useState(false);
-  const [ecountSent, setEcountSent] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -40,8 +38,6 @@ export function PaymentDialog({ open, customerId, businessName, defaultAmount, o
       setPaidAt(todayStr());
       setMemo("");
       setSavedPayment(null);
-      setSendingEcount(false);
-      setEcountSent(false);
     }
   }, [open, defaultAmount]);
 
@@ -66,7 +62,7 @@ export function PaymentDialog({ open, customerId, businessName, defaultAmount, o
       queryClient.invalidateQueries({ queryKey: ["/api/admin/balances"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/customers", customerId, "ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/account/ledger"] });
-      // 다이얼로그를 닫지 않고 ECOUNT 전송 단계로 이어감
+      // 등록 완료 내용을 표시
       setSavedPayment({ id: payment.id, amount: payment.amount });
     } catch (e) {
       toast({ variant: "destructive", title: "등록 실패", description: errMsg(e) });
@@ -75,35 +71,7 @@ export function PaymentDialog({ open, customerId, businessName, defaultAmount, o
     }
   }
 
-  async function sendToEcount() {
-    if (!savedPayment) return;
-    setSendingEcount(true);
-    try {
-      const res = await apiRequest("POST", `/api/admin/ecount/payments/${savedPayment.id}/send`, {});
-      const data = await res.json();
-      if (data.ok) {
-        const stepMsg = (data.steps ?? [])
-          .map((s: any) => `${s.step}: ${s.message}`)
-          .join(" · ");
-        toast({
-          title: "ECOUNT 전송 성공",
-          description: stepMsg || "회계자동분개 전표 등록 완료",
-        });
-        setEcountSent(true);
-      } else {
-        const failStep = (data.steps ?? []).find((s: any) => !s.ok);
-        toast({
-          variant: "destructive",
-          title: "ECOUNT 전송 실패",
-          description: failStep ? `${failStep.step}: ${failStep.message}` : data.message ?? "오류",
-        });
-      }
-    } catch (e) {
-      toast({ variant: "destructive", title: "ECOUNT 전송 실패", description: errMsg(e) });
-    } finally {
-      setSendingEcount(false);
-    }
-  }
+
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -123,38 +91,12 @@ export function PaymentDialog({ open, customerId, businessName, defaultAmount, o
                 {businessName} · {won(savedPayment.amount)}
               </div>
             </div>
-            <div className="rounded-md border border-dashed border-amber-300/60 bg-amber-50/30 p-3 dark:bg-amber-950/10">
-              <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-foreground">
-                <Link2 className="h-3.5 w-3.5" />
-                ECOUNT 전송
-              </div>
-              <p className="text-xs text-muted-foreground">
-                이 입금을 ECOUNT 회계자동분개 전표로 보냅니다. 결과는 "ECOUNT 로그" 페이지에서 확인할 수 있습니다.
-              </p>
-            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={onClose}>
                 닫기
               </Button>
-              {!ecountSent ? (
-                <Button
-                  onClick={sendToEcount}
-                  disabled={sendingEcount}
-                  data-testid="button-send-payment-ecount"
-                >
-                  {sendingEcount ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Link2 className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  ECOUNT 전송
-                </Button>
-              ) : (
-                <Button disabled variant="secondary">
-                  <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                  전송됨
-                </Button>
-              )}
+
             </div>
           </div>
         ) : (

@@ -237,7 +237,7 @@ export default function AdminProducts() {
           <div>
             <div className="eyebrow">Products</div>
             <h1 className="font-display mt-1 text-xl font-semibold text-foreground">상품 관리</h1>
-            <AdminFold id="AdminProducts.tsx-intro-0"><p className="mt-0.5 text-sm text-muted-foreground">ECOUNT 1품목 1코드 원칙 — 중량별로 상품을 별도로 등록하세요.</p></AdminFold>
+            <AdminFold id="AdminProducts.tsx-intro-0"><p className="mt-0.5 text-sm text-muted-foreground">중량별로 상품을 별도로 등록하세요.</p></AdminFold>
           </div>
           <Button onClick={openNew} data-testid="button-new-product">
             <Plus className="mr-1.5 h-4 w-4" /> 상품 추가
@@ -265,9 +265,7 @@ export default function AdminProducts() {
                         <span className="tabular text-muted-foreground">매입 {won((p as any).costPrice)}</span>
                       )}
                     </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      ECOUNT 품목코드: {p.ecountCode ? <span className="font-mono text-foreground">{p.ecountCode}</span> : <span className="text-destructive">미설정</span>}
-                    </div>
+
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
                     <div className="flex items-center gap-2">
@@ -310,7 +308,7 @@ export default function AdminProducts() {
                 data-testid="input-product-name"
               />
               <p className="text-[11px] text-muted-foreground">
-                중량은 상품명에 표시하세요 (예: "코튼 블렌드 200g", "코튼 블렌드 1kg"). ECOUNT 품목코드도 중량별로 다르게 부여합니다.
+                중량은 상품명에 표시하세요 (예: "코튼 블렌드 200g", "코튼 블렌드 1kg").
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -371,18 +369,7 @@ export default function AdminProducts() {
               />
               <p className="text-[11px] text-muted-foreground">발주 관리에서 이 상품의 기본 매입 단가로 적용됩니다. 거래처에는 표시되지 않습니다.</p>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">ECOUNT 품목코드</Label>
-              <Input
-                value={form.ecountCode}
-                onChange={(e) => set("ecountCode", e.target.value)}
-                placeholder="예: KCP-SILK-1000"
-                data-testid="input-product-ecount-code"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                ECOUNT 품목 마스터의 품목코드와 일치해야 합니다. 비어두면 주문의 ECOUNT 전송이 실패합니다.
-              </p>
-            </div>
+
             <div className="flex items-center justify-between rounded-md border p-3">
               <Label className="text-sm">판매중</Label>
               <Switch checked={form.available} onCheckedChange={(v) => set("available", v)} data-testid="switch-form-available" />

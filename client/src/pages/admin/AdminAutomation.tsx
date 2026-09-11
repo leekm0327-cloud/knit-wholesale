@@ -221,22 +221,7 @@ export default function AdminAutomation() {
                     </div>
                   )}
 
-                  {job.key === "ecount_check" && (
-                    <div>
-                      <div className="mb-1 text-[11px] text-muted-foreground">점검 범위 (최근 N일)</div>
-                      <Input
-                        type="number"
-                        min={7}
-                        max={120}
-                        defaultValue={Number(job.config.lookbackDays) || 45}
-                        onBlur={(e) =>
-                          saveMut.mutate({ key: job.key, patch: { config: { lookbackDays: Number(e.target.value) } } })
-                        }
-                        className="w-20"
-                        data-testid="lookback-ecount"
-                      />
-                    </div>
-                  )}
+
 
                   {job.key === "inactive_customers" && (
                     <>

@@ -279,16 +279,6 @@ async function runInactiveCustomersJob(config: JobConfig): Promise<string> {
 
 const JOBS: JobDef[] = [
   {
-    key: "ecount_check",
-    name: "ECOUNT 전송 점검",
-    description:
-      "매일 아침, 처리완료됐는데 이카운트 판매전표가 안 넘어간 주문·중복 전송된 주문·품목코드 없는 상품을 세어 하나라도 있으면 카카오와 알림센터로 알립니다. 세금계산서 일괄 발행 전에 빠진 전표를 잡기 위한 것입니다.",
-    defaultHour: 8,
-    defaultMinute: 30,
-    defaultConfig: { lookbackDays: 45, notify: "fail" },
-    run: runEcountCheckJob,
-  },
-  {
     key: "inactive_customers",
     name: "미주문 거래처 알림",
     description:

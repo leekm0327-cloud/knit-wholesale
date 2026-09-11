@@ -484,7 +484,7 @@ function CreateCustomerDialog({ open, onClose }: { open: boolean; onClose: () =>
             <span className="text-sm">
               <span className="font-semibold text-foreground">매장 내부 계정</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                니트커피 매장처럼 '내부용' 계정입니다. 이 계정의 주문은 도매 매출·세금계산서(ECOUNT)에서 제외되고, 발주는 매장(음식점업) 매출원가로 집계됩니다.
+                니트커피 매장처럼 '내부용' 계정입니다. 이 계정의 주문은 도매 매출·세금계산서에서 제외되고, 발주는 매장(음식점업) 매출원가로 집계됩니다.
               </span>
             </span>
           </label>
@@ -603,7 +603,7 @@ function EditCustomerDialog({ customer, onClose }: { customer: PublicCustomer | 
             <span className="text-sm">
               <span className="font-semibold text-foreground">매장 내부 계정</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                이 계정의 주문은 도매 매출·세금계산서(ECOUNT)에서 제외되고, 발주는 매장(음식점업) 매출원가로 집계됩니다.
+                이 계정의 주문은 도매 매출·세금계산서에서 제외되고, 발주는 매장(음식점업) 매출원가로 집계됩니다.
               </span>
             </span>
           </label>

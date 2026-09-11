@@ -51,8 +51,8 @@ import AdminCustomers from "@/pages/admin/AdminCustomers";
 import AdminBalances from "@/pages/admin/AdminBalances";
 import AdminCustomerLedger from "@/pages/admin/AdminCustomerLedger";
 import AdminOrderDetail from "@/pages/admin/AdminOrderDetail";
-import AdminEcount from "@/pages/admin/AdminEcount";
-import AdminEcountLogs from "@/pages/admin/AdminEcountLogs";
+
+
 import AdminBoard from "@/pages/admin/AdminBoard";
 import AdminNews from "@/pages/admin/AdminNews";
 import AdminBackup from "@/pages/admin/AdminBackup";
@@ -213,8 +213,8 @@ function AppRouter() {
       <Route path="/admin/customers/:id/ledger" component={AdminCustomerLedger} />
       <Route path="/admin/balances" component={AdminBalances} />
       <Route path="/admin/orders/:id" component={AdminOrderDetail} />
-      <Route path="/admin/ecount" component={AdminEcount} />
-      <Route path="/admin/ecount-logs" component={AdminEcountLogs} />
+
+
       <Route path="/admin/board" component={AdminBoard} />
       <Route path="/admin/news" component={AdminNews} />
       <Route path="/admin/backup" component={AdminBackup} />

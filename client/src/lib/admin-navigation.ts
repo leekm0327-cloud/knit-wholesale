@@ -267,18 +267,6 @@ export const adminNavigation = [
     "group": "store"
   },
   {
-    "path": "/admin/ecount",
-    "label": "ECOUNT 연동",
-    "owner": false,
-    "group": "settings"
-  },
-  {
-    "path": "/admin/ecount-logs",
-    "label": "ECOUNT 로그",
-    "owner": false,
-    "group": "settings"
-  },
-  {
     "path": "/admin/kakao",
     "label": "카카오 알림",
     "owner": true,

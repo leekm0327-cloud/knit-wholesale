@@ -240,35 +240,7 @@ export default function AdminPurchases() {
     setLines([emptyLine()]);
   }
 
-  async function sendToEcount(p: Purchase, force = false) {
-    const st = sendState(p);
-    if (!force) {
-      const warn =
-        st.kind === "sent"
-          ? `발주 '${p.purchaseNo}'은(는) 이미 ${st.sentAtText}에 전송되었습니다.\n다시 보내면 이카운트에 구매전표가 한 건 더 쌓입니다. 그래도 보낼까요?`
-          : st.kind === "changed"
-            ? `발주 '${p.purchaseNo}'은(는) ${st.sentAtText}에 전송된 뒤 금액이 바뀌었습니다.\n다시 보내면 이카운트에는 예전 전표가 그대로 남고 새 전표가 추가됩니다. 이카운트에서 예전 전표를 먼저 지우셨나요?`
-            : `발주 '${p.purchaseNo}'을(를) 이카운트 구매전표로 전송할까요?`;
-      if (!confirm(warn)) return;
-    }
-    setSendingId(p.id);
-    try {
-      const res = await apiRequest("POST", `/api/admin/ecount/purchases/${p.id}/send`, st.kind === "unsent" ? {} : { force: true });
-      const data = await res.json();
-      const steps = (data.steps ?? []) as Array<{ step: string; ok: boolean; message: string }>;
-      if (data.ok) {
-        toast({ title: "이카운트 전송 완료", description: `발주 ${p.purchaseNo} 구매전표가 등록되었습니다.` });
-        queryClient.invalidateQueries({ queryKey: ["/api/admin/purchases"] });
-      } else {
-        const failed = steps.find((s) => !s.ok);
-        toast({ variant: "destructive", title: "이카운트 전송 실패", description: failed?.message ?? data.message ?? "전송에 실패했습니다." });
-      }
-    } catch (e) {
-      toast({ variant: "destructive", title: "이카운트 전송 실패", description: errMsg(e) });
-    } finally {
-      setSendingId(null);
-    }
-  }
+
 
   const supplierName = (sid: number) => suppliers?.find((s) => s.id === sid)?.name ?? `#${sid}`;
 
@@ -429,7 +401,7 @@ export default function AdminPurchases() {
                     <th className="px-4 py-2 text-left font-medium">거래처(주문)</th>
                     <th className="px-4 py-2 text-left font-medium">품목</th>
                     <th className="px-4 py-2 text-right font-medium">합계 (부가세 포함)</th>
-                    <th className="px-4 py-2 text-left font-medium">이카운트</th>
+
                     <th className="px-4 py-2 text-right font-medium"></th>
                   </tr>
                 </thead>
@@ -469,25 +441,9 @@ export default function AdminPurchases() {
                           <div className="font-display tabular font-semibold text-foreground">{won(p.totalAmount + Math.round(p.totalAmount * 0.1))}</div>
                           <div className="text-[10px] text-muted-foreground whitespace-nowrap">공급가 {won(p.totalAmount)} · VAT {won(Math.round(p.totalAmount * 0.1))}</div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {(() => {
-                            const st = sendState(p);
-                            return (
-                              <div className="flex flex-col gap-0.5" data-testid={`ecount-state-${p.id}`}>
-                                <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${SEND_BADGE[st.kind]}`}>
-                                  {st.label}
-                                </span>
-                                {st.sentAtText && (
-                                  <span className="text-[10px] text-muted-foreground">{st.sentAtText}</span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
+
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <Button variant="ghost" size="icon" onClick={() => sendToEcount(p)} disabled={sendingId === p.id} aria-label="이카운트 전송" title="이카운트 구매전표로 전송" data-testid={`button-ecount-purchase-${p.id}`}>
-                            {sendingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 text-teal-700" />}
-                          </Button>
+
                           <Button variant="ghost" size="icon" onClick={() => startEdit(p)} aria-label="수정" data-testid={`button-edit-purchase-${p.id}`}>
                             <Pencil className="h-4 w-4 text-muted-foreground" />
                           </Button>
@@ -543,9 +499,7 @@ function RepriceCard({ products }: { products: Product[] }) {
     const msg =
       `${preview.productName} 단가를 ${won(numericPrice)}으로 바꿉니다.\n` +
       `발주 ${preview.summary.count}건 · 공장 채무 ${preview.summary.diff >= 0 ? "+" : ""}${won(preview.summary.diff)}\n` +
-      (preview.summary.alreadySent > 0
-        ? `\n이 중 ${preview.summary.alreadySent}건은 이미 이카운트로 보낸 발주입니다.\n이카운트에는 예전 금액이 그대로 남으니 직접 고치셔야 합니다.\n`
-        : "") +
+
       `\n계속할까요?`;
     if (!confirm(msg)) return;
     setBusy(true);
@@ -651,11 +605,7 @@ function RepriceCard({ products }: { products: Product[] }) {
                   <div className="font-semibold text-foreground">
                     발주 {preview.summary.count}건 · 공장 채무 {preview.summary.diff >= 0 ? "+" : ""}{won(preview.summary.diff)}
                   </div>
-                  {preview.summary.alreadySent > 0 && (
-                    <div className="mt-1 text-xs text-destructive">
-                      이 중 {preview.summary.alreadySent}건은 이미 이카운트로 보냈습니다. 이카운트에는 예전 금액이 남으니 그쪽도 고치셔야 합니다.
-                    </div>
-                  )}
+
                 </div>
                 <div className="table-scroll">
                   <table className="w-full min-w-[560px] border-collapse text-xs">
@@ -673,7 +623,7 @@ function RepriceCard({ products }: { products: Product[] }) {
                         <tr key={r.id}>
                           <td className="px-2 py-1.5 text-foreground">
                             {r.purchaseNo}
-                            {r.ecountSentAt ? <span className="ml-1 text-[10px] text-destructive">전송됨</span> : null}
+
                           </td>
                           <td className="px-2 py-1.5 tabular text-muted-foreground">{r.purchaseDate.replace(/-/g, ".")}</td>
                           <td className="px-2 py-1.5 text-right tabular text-foreground">{r.qty}</td>
