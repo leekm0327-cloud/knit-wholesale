@@ -1,3 +1,4 @@
+import {ScheduleRequests,ScheduleLeaveNotice} from "@/components/ScheduleRequests";
 import { AdminFold } from "@/components/AdminFold";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -137,6 +138,7 @@ export default function AdminStaffSchedule() {
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Schedule</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">근무 스케줄</h1>
+        <ScheduleRequests admin /><ScheduleLeaveNotice admin from={from} to={to} staff={data?.staff ?? []}/>
         <AdminFold id="AdminStaffSchedule.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           칸을 눌러 직원을 넣으세요. 오른쪽에 주별 근무일이 집계되고, 주 {WEEKLY_TARGET_DAYS}일이 안 되면 표시됩니다.
         </p></AdminFold>

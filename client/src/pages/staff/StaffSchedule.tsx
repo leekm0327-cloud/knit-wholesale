@@ -1,3 +1,4 @@
+import {ScheduleRequests,ScheduleLeaveNotice} from "@/components/ScheduleRequests";
 import StaffQueryError from "@/components/StaffQueryError";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -111,6 +112,7 @@ export default function StaffSchedule() {
 
   return (
     <StaffLayout title="스케줄" subtitle="근무표">
+<ScheduleRequests shifts={data?.shifts ?? []}/><ScheduleLeaveNotice from={from} to={to} staff={data?.staff ?? []}/>
       {/* 월 이동 — 선 없이 카드 하나로 */}
       <div className="s-card flex items-center justify-between" style={{ padding: "9px 10px" }}>
         <button

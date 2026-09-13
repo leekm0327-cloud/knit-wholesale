@@ -1,3 +1,4 @@
+import {assertNoLeave} from "./schedule-approval";
 // 직원 내부 관리 시스템 — 저장소
 // 테이블 생성(멱등) + CRUD. 기존 storage.ts 의 db 핸들을 그대로 사용합니다.
 import { db, sqlite } from "./storage";
@@ -787,6 +788,7 @@ export class StaffStorage {
   }
 
   async createShift(p: InsertShift): Promise<Shift> {
+    assertNoLeave(sqlite,p.staffId,p.workDate);
     return db
       .insert(shifts)
       .values({
@@ -804,6 +806,7 @@ export class StaffStorage {
 
   /** 근무표 칸 지정 — (날짜, 슬롯) 하나에 직원 한 명. 기존 배정은 교체된다. */
   async assignShift(p: { staffId: number; workDate: string; slot: string }): Promise<Shift> {
+    assertNoLeave(sqlite,p.staffId,p.workDate);
     db.delete(shifts)
       .where(and(eq(shifts.workDate, p.workDate), eq(shifts.position, p.slot)))
       .run();
@@ -888,6 +891,8 @@ export class StaffStorage {
   }
 
   async updateShift(id: number, patch: Partial<Shift>): Promise<Shift | undefined> {
+    const existing=db.select().from(shifts).where(eq(shifts.id,id)).get();
+    if(existing) assertNoLeave(sqlite,patch.staffId ?? existing.staffId,patch.workDate ?? existing.workDate);
     return db.update(shifts).set(patch).where(eq(shifts.id, id)).returning().get();
   }
 

@@ -41,6 +41,7 @@ export default function AdminStaffLeave() {
   const { toast } = useToast();
   const { user } = useAuth();
   const isOwner = (user as any)?.adminRole === "owner";
+  const [remaining, setRemaining] = useState<Record<number,{startTime:string;endTime:string}>>({});
   const [busy, setBusy] = useState(false);
   const [grantOpen, setGrantOpen] = useState(false);
   const [gStaff, setGStaff] = useState("");
@@ -51,7 +52,7 @@ export default function AdminStaffLeave() {
   const { data, isLoading } = useQuery<Res>({ queryKey: ["/api/admin/staff/leave"], refetchInterval: 60000 });
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/leave"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/leave/pending-count"] });
+    queryClient.invalidateQueries({ predicate:q=>String(q.queryKey[0]).includes("/staff/") });
   };
 
   const pending = (data?.requests ?? []).filter((r) => r.status === "pending");
@@ -61,7 +62,7 @@ export default function AdminStaffLeave() {
   async function decide(id: number, status: "approved" | "rejected") {
     setBusy(true);
     try {
-      await apiRequest("PATCH", `/api/admin/staff/leave/requests/${id}`, { status });
+      await apiRequest("PATCH", `/api/admin/staff/leave/requests/${id}`, { status, remaining:remaining[id] });
       toast({ title: status === "approved" ? "승인했습니다." : "반려했습니다." });
       invalidate();
     } catch (err) {
@@ -124,7 +125,7 @@ export default function AdminStaffLeave() {
         {/* 대기 중 신청 */}
         <Card className="mb-5 overflow-hidden">
           <div className="flex items-center justify-between border-b p-5">
-            <h2 className="text-sm font-semibold text-foreground">승인 대기</h2>
+            <h2 className="text-sm font-semibold text-foreground">승인 대기 · 소유자 승인</h2><p className="text-sm text-muted-foreground mt-2">종일 연차 승인 시 해당 직원의 근무 배정이 해제됩니다. 반차는 남은 실제 근무시간을 입력해 주세요.</p>
             {pending.length > 0 && <Badge className="text-[11px]">{pending.length}건</Badge>}
           </div>
           {isLoading ? (
@@ -153,12 +154,13 @@ export default function AdminStaffLeave() {
                       {r.reason ? ` · ${r.reason}` : ""}
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button size="sm" onClick={() => decide(r.id, "approved")} disabled={busy}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {r.halfDay===1&&isOwner&&<div><p className="text-xs">반차 후 실제 근무시간</p><input aria-label="반차 근무 시작" type="time" value={remaining[r.id]?.startTime||''} onChange={e=>setRemaining({...remaining,[r.id]:{...remaining[r.id],startTime:e.target.value}})}/><input aria-label="반차 근무 종료" type="time" value={remaining[r.id]?.endTime||''} onChange={e=>setRemaining({...remaining,[r.id]:{...remaining[r.id],endTime:e.target.value}})}/></div>}
+                    <Button size="sm" onClick={() => decide(r.id, "approved")} disabled={busy || !isOwner}>
                       <Check className="h-3.5 w-3.5" />
                       승인
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => decide(r.id, "rejected")} disabled={busy}>
+                    <Button size="sm" variant="outline" onClick={() => decide(r.id, "rejected")} disabled={busy || !isOwner}>
                       <X className="h-3.5 w-3.5" />
                       반려
                     </Button>

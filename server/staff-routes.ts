@@ -1,3 +1,4 @@
+import {registerScheduleApproval,applyLeaveDecision} from "./schedule-approval";
 import { registerWorkspaceFeatures } from "./workspace-features";
 import { registerAdminOperations } from "./admin-operations";
 import { registerSupplyWorkflow } from "./supply-workflow";
@@ -112,6 +113,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 }
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
+  registerScheduleApproval(app,sqlite,requireStaff,requireOwner,(r)=>(storage as any).createNotification(r));
   registerSupplyWorkflow(app, sqlite, requireStaff, requireAdmin);
   registerAdminOperations(app, sqlite, requireAdmin);
   registerWorkspaceFeatures(app, sqlite, { admin: requireAdmin, owner: requireOwner, staff: requireStaff }, storage);
@@ -622,18 +624,16 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json({ count: rows.length });
   });
 
-  app.patch("/api/admin/staff/leave/requests/:id", requireAdmin, async (req, res) => {
+  app.patch("/api/admin/staff/leave/requests/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const parsed = decideLeaveRequestSchema.safeParse(req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
     const user = req.session.userId ? await storage.getCustomer(req.session.userId) : null;
-    const row = await staffStorage.decideLeaveRequest(
-      id,
-      parsed.data.status,
-      user?.managerName || "관리자",
-      parsed.data.adminMemo ?? "",
-    );
+    try {
+      applyLeaveDecision(sqlite,id,parsed.data.status,user?.managerName || "소유자",parsed.data.adminMemo ?? "",req.body.remaining);
+    } catch(e) { return res.status(409).json({message:(e as Error).message}); }
+    const row = await staffStorage.getLeaveRequest(id);
     if (!row) return res.status(404).json({ message: "신청을 찾을 수 없습니다." });
     await logIfPossible(
       req,
@@ -657,9 +657,11 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json(row);
   });
 
-  app.delete("/api/admin/staff/leave/requests/:id", requireAdmin, async (req, res) => {
+  app.delete("/api/admin/staff/leave/requests/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    const existing=await staffStorage.getLeaveRequest(id);
+    if(existing?.status==='approved') return res.status(409).json({message:'승인된 연차는 근무표에 반영되어 삭제할 수 없습니다.'});
     await staffStorage.deleteLeaveRequest(id);
     res.json({ ok: true });
   });
