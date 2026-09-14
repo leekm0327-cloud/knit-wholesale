@@ -148,7 +148,11 @@ function authHeader(): string {
   return `HMAC-SHA256 apiKey=${apiKey()}, date=${date}, salt=${salt}, signature=${signature}`;
 }
 
-async function solapi(method: "GET" | "POST", path: string, body?: unknown): Promise<any> {
+export class SolapiHttpError extends Error {
+  constructor(message: string, public readonly status: number) { super(message); }
+}
+
+export async function solapi(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 20000): Promise<any> {
   if (!isAlimtalkConfigured()) throw new Error("솔라피 API 키가 설정되어 있지 않습니다.");
   const res = await fetch(`${API_HOST}${path}`, {
     method,
@@ -157,6 +161,7 @@ async function solapi(method: "GET" | "POST", path: string, body?: unknown): Pro
       "Content-Type": "application/json",
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await res.text();
   let data: any = {};
@@ -167,7 +172,7 @@ async function solapi(method: "GET" | "POST", path: string, body?: unknown): Pro
   }
   if (!res.ok) {
     const msg = data?.errorMessage || data?.message || `HTTP ${res.status}`;
-    throw new Error(String(msg).slice(0, 300));
+    throw new SolapiHttpError(String(msg).slice(0, 300), res.status);
   }
   return data;
 }

@@ -9,6 +9,7 @@ import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductC
 import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
+import { registerNoticeMessageRoutes } from "./notice-message";
 import { registerCustomerActivityRoutes } from "./customer-activity";
 import { registerAutomationRoutes, startAutomation, createBackupFile } from "./automation";
 import { registerAlimtalkRoutes, sendOrderReceived, sendOrderAlertSms, sendOwnerSms } from "./alimtalk";
@@ -3645,6 +3646,7 @@ export async function registerRoutes(
   registerBoardRoutes(app, storage);
   registerStaffRoutes(app, storage);
   registerPopupNoticeRoutes(app);
+  registerNoticeMessageRoutes(app);
   registerCustomerActivityRoutes(app);
   registerAutomationRoutes(app);
   registerAlimtalkRoutes(app);

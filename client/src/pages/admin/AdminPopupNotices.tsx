@@ -16,6 +16,8 @@ import type { PopupNotice } from "@shared/schema";
 import { POPUP_IMAGE_ACCEPT, POPUP_IMAGE_MAX_BYTES, POPUP_IMAGE_TYPES } from "@shared/popup-image";
 import { Loader2, Trash2, Eye, EyeOff, Megaphone, MonitorPlay, ImagePlus, Pencil, X } from "lucide-react";
 import { PopupNoticeCard } from "@/components/PopupNotice";
+import { NoticeMessageComposer } from "@/components/NoticeMessageComposer";
+import { useAuth } from "@/lib/auth";
 
 function today(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
@@ -46,6 +48,8 @@ const EMPTY: Draft = {
 const KEY = "/api/admin/popup-notices";
 
 export default function AdminPopupNotices() {
+  const { user } = useAuth();
+  const [messageNoticeId, setMessageNoticeId] = useState<number | null>(null);
   const { toast } = useToast();
   const [d, setD] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -330,7 +334,10 @@ export default function AdminPopupNotices() {
                       )}
                       {n.imageUrl && <img src={n.imageUrl} alt={`${n.title} 이미지`} className="mt-2 h-20 max-w-full rounded border object-contain" />}
                     </div>
-                    <div className="flex shrink-0 items-center gap-0.5">
+                    <div className="flex flex-wrap shrink-0 items-center gap-0.5">
+                      {user?.adminRole === "owner" && <Button size="sm" variant="outline" onClick={() => setMessageNoticeId(messageNoticeId === n.id ? null : n.id)} aria-expanded={messageNoticeId === n.id}>
+                        <Megaphone className="h-3.5 w-3.5" />거래처에게 보내기
+                      </Button>}
                       <Button size="sm" variant="outline" onClick={() => edit(n)} disabled={busy} aria-label={`${n.title} 수정`}>
                         <Pencil className="h-3.5 w-3.5" />수정
                       </Button>
@@ -352,6 +359,7 @@ export default function AdminPopupNotices() {
                       </Button>
                     </div>
                   </div>
+                  {messageNoticeId === n.id && user?.adminRole === "owner" && <NoticeMessageComposer key={n.id} notice={n} onClose={() => setMessageNoticeId(null)} />}
                 </div>
               ))}
             </div>
