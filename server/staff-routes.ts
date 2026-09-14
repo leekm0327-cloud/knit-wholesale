@@ -1,4 +1,5 @@
 import { registerStaffAlerts, queueSupplyAlert } from "./staff-alerts";
+import { staffPhoneSchema } from "../shared/staff-phone";
 import {registerScheduleApproval,applyLeaveDecision} from "./schedule-approval";
 import { registerWorkspaceFeatures } from "./workspace-features";
 import { registerAdminOperations } from "./admin-operations";
@@ -168,10 +169,9 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
 
   /** 본인이 바꿀 수 있는 항목 — 연락처만 */
   app.patch("/api/staff/me", requireStaff, async (req, res) => {
-    const phone = typeof req.body?.phone === "string" ? req.body.phone.trim() : undefined;
-    if (phone === undefined) return res.status(400).json({ message: "변경할 내용이 없습니다." });
-    if (phone.length > 30) return res.status(400).json({ message: "연락처가 너무 깁니다." });
-    const row = await staffStorage.updateStaff(req.session.staffId!, { phone });
+    const parsed = staffPhoneSchema.safeParse(req.body?.phone);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    const row = await staffStorage.updateStaff(req.session.staffId!, { phone: parsed.data });
     if (!row) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
     res.json(row);
   });

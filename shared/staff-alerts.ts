@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export { isStaffMobile as mobilePhone } from './staff-phone';
 
 export const alertKinds = ['supply_order', 'supply_received', 'clock_in', 'clock_out', 'recipe', 'waste', 'production'] as const;
 export type AlertKind = typeof alertKinds[number];
@@ -42,7 +43,6 @@ export const defaultAlertConfig: AlertConfig = {
 export const kstDay = (now = Date.now()) => new Date(now + 9 * 3600000).toISOString().slice(0, 10);
 export const dayPlus = (day: string, n: number) => new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 export const kstStamp = (day: string, time: string) => Date.parse(`${day}T${time}:00+09:00`);
-export const mobilePhone = (v: string) => /^01[016789]\d{7,8}$/.test(v.replace(/\D/g, ''));
 export function effectiveHours(config: AlertConfig, shift: { workDate: string; position: string; startTime: string; endTime: string }) {
   const slot = (shift.position === 'Close2' ? 'Close' : shift.position) as keyof AlertConfig['weekday'];
   const dow = new Date(shift.workDate + 'T00:00:00Z').getUTCDay();

@@ -2,6 +2,7 @@ import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { popupImageSchema } from "./popup-image";
+import { staffPhoneSchema } from "./staff-phone";
 
 // ===== 비밀번호 재설정 토큰 (#26) =====
 export const passwordResetTokens = sqliteTable("password_reset_tokens", {
@@ -1582,7 +1583,7 @@ export const insertStaffSchema = z.object({
     ),
   password: z.string().min(6, "비밀번호는 6자 이상이어야 합니다."),
   name: z.string().min(1, "이름을 입력해 주세요."),
-  phone: z.string().optional().default(""),
+  phone: staffPhoneSchema.optional().default(""),
   position: z.string().optional().default("바리스타"),
   staffRole: z.enum(STAFF_ROLES).optional().default("staff"),
   memo: z.string().optional().default(""),
@@ -1592,7 +1593,7 @@ export const insertStaffSchema = z.object({
 
 export const updateStaffSchema = z.object({
   name: z.string().min(1).optional(),
-  phone: z.string().optional(),
+  phone: staffPhoneSchema.optional(),
   position: z.string().optional(),
   staffRole: z.enum(STAFF_ROLES).optional(),
   active: z.number().int().min(0).max(1).optional(),

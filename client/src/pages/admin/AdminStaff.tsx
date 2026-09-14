@@ -13,6 +13,8 @@ import { errMsg, fmtDate } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import { STAFF_ROLE_LABEL, type PublicStaff, type StaffRole } from "@shared/schema";
 import { Loader2, Plus, Users, KeyRound, Check, X } from "lucide-react";
+import StaffPhoneEditor from "@/components/StaffPhoneEditor";
+import { isStaffMobile } from "@shared/staff-phone";
 
 type NewStaff = {
   loginId: string;
@@ -139,8 +141,8 @@ export default function AdminStaff() {
                 <Input value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="김민지" />
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">연락처</Label>
-                <Input value={d.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="010-0000-0000" />
+                <Label htmlFor="new-staff-phone" className="text-xs text-muted-foreground">휴대전화 · 알림톡 수신 번호</Label>
+                <Input id="new-staff-phone" type="tel" inputMode="tel" maxLength={30} value={d.phone} onChange={(e) => set({ phone: e.target.value })} placeholder="010-1234-5678" />
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">직책</Label>
@@ -185,6 +187,9 @@ export default function AdminStaff() {
         <Card className="overflow-hidden">
           <div className="border-b p-5">
             <h2 className="text-sm font-semibold text-foreground">등록된 직원</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{isOwner ? '직원별 휴대전화번호를 입력하고 ‘번호 저장’을 눌러 주세요. 저장한 번호를 직원 알림톡에 사용합니다.' : '휴대전화번호 등록·수정은 소유자 또는 직원 본인이 할 수 있습니다.'}</p>
+            {list && <p className="mt-1 text-xs text-muted-foreground">근무 중인 직원 {list.filter(s => s.active === 1 && isStaffMobile(s.phone || '')).length}/{list.filter(s => s.active === 1).length}명 번호 등록</p>}
+            <p className="mt-1 text-xs text-muted-foreground">직원 본인은 <a className="underline" href="#/staff/me" target="_blank" rel="noreferrer">직원 화면 → 내 정보</a>에서 등록할 수 있습니다.</p>
           </div>
           {isLoading ? (
             <div className="space-y-2 p-5">
@@ -251,6 +256,8 @@ export default function AdminStaff() {
                       </div>
                     )}
                   </div>
+
+                  {isOwner && <StaffPhoneEditor staff={s} />}
 
                   {pwFor === s.id && (
                     <div className="mt-3 flex gap-2">

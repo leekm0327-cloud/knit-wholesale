@@ -5,6 +5,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { Loader2, LogOut } from "lucide-react";
+import { staffPhoneSchema } from "@shared/staff-phone";
 
 export default function StaffProfile() {
   const { toast } = useToast();
@@ -25,11 +26,16 @@ export default function StaffProfile() {
   }, [me]);
 
   async function savePhone() {
+    const parsed = staffPhoneSchema.safeParse(phone);
+    if (!parsed.success) { toast({ variant: 'destructive', title: '휴대전화번호 확인', description: parsed.error.errors[0].message }); return; }
     setSavingPhone(true);
     try {
-      await apiRequest("PATCH", "/api/staff/me", { phone: phone.trim() });
-      toast({ title: "연락처가 저장되었습니다." });
+      await apiRequest("PATCH", "/api/staff/me", { phone: parsed.data });
+      setPhone(parsed.data);
+      toast({ title: "휴대전화번호가 저장되었습니다." });
       queryClient.invalidateQueries({ queryKey: ["/api/staff/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/staff"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/alerts"] });
     } catch (err) {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
     } finally {
@@ -87,10 +93,15 @@ export default function StaffProfile() {
         이름·아이디·직책은 대표님만 바꿀 수 있습니다.
       </p>
 
-      <div className="s-sect">연락처</div>
+      <div className="s-sect">휴대전화 · 알림톡 수신 번호</div>
       <div className="s-card">
+        <p className="mb-3 text-xs" style={{ color: 'var(--s-muted)' }}>본인 휴대전화번호를 등록해 주세요. 근무와 업무 기록 안내를 이 번호로 받습니다.</p>
         <input
           className="s-input"
+          type="tel"
+          aria-label="내 휴대전화번호"
+          autoComplete="tel-national"
+          maxLength={30}
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="010-0000-0000"
@@ -103,7 +114,7 @@ export default function StaffProfile() {
           disabled={savingPhone}
           data-testid="button-save-phone"
         >
-          {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : "연락처 저장"}
+          {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : "휴대전화번호 저장"}
         </button>
       </div>
 

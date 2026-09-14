@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import StaffWeekTeam from "@/components/StaffWeekTeam";
 import StaffQueryError from "@/components/StaffQueryError";
-import { StaffLayout } from "@/components/StaffLayout";
+import { StaffLayout, useStaff } from "@/components/StaffLayout";
+import { isStaffMobile } from "@shared/staff-phone";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
@@ -32,6 +33,7 @@ function fmtToday(iso: string): string {
 }
 
 export default function StaffHome() {
+  const { data: me } = useStaff();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -154,6 +156,7 @@ export default function StaffHome() {
       </div>
 
       <StaffWorkStatus />
+      {me && !isStaffMobile(me.phone || '') && <button type="button" className="s-card mt-3 w-full text-left" onClick={() => navigate('/staff/me')} data-testid="register-my-phone"><span className="text-sm font-medium">알림 받을 휴대전화번호 등록하기 →</span><p className="mt-1 text-xs" style={{ color: 'var(--s-muted)' }}>근무·업무 기록 안내를 받을 본인 번호를 확인해 주세요.</p></button>}
 
       {/* 새 인수인계 — 출퇴근 아래에서 펼쳐 읽고 확인한다 */}
       {newHandovers.length > 0 && (
