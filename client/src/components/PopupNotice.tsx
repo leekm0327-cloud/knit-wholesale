@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import type { PopupNotice } from "@shared/schema";
 import { X, CalendarX2, CalendarCheck2, Truck } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
 
 const KEY = "knit.popupNotice.hidden.v1";
 
@@ -77,7 +78,7 @@ export function PopupNoticeCard({
   onClose,
   onHideToday,
 }: {
-  notice: Pick<PopupNotice, "id" | "title" | "body" | "orderUntil" | "orderResume" | "deliveryNote">;
+  notice: Pick<PopupNotice, "id" | "title" | "body" | "orderUntil" | "orderResume" | "deliveryNote"> & { imageUrl?: string };
   onClose: () => void;
   onHideToday?: () => void;
 }) {
@@ -88,20 +89,17 @@ export function PopupNoticeCard({
   ].filter((r) => r.value.trim().length > 0);
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-      style={{ background: "rgba(20,20,18,.55)" }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={notice.title}
-    >
-      <div
-        className="w-full max-w-sm overflow-hidden bg-background"
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+      <Dialog.Overlay className="fixed inset-0 z-[60]" style={{ background: "rgba(20,20,18,.55)" }} />
+      <Dialog.Content
+        className={`fixed left-1/2 top-1/2 z-[61] flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden bg-background ${notice.imageUrl ? "max-w-2xl" : "max-w-sm"}`}
         style={{ borderRadius: 2, boxShadow: "0 18px 50px rgba(0,0,0,.28)" }}
         data-testid="popup-notice"
+        onPointerDownOutside={(event) => event.preventDefault()}
       >
-        <div className="flex items-start justify-between gap-3 border-b px-5 pb-3 pt-5">
-          <h2 className="font-display text-base font-semibold leading-snug text-foreground">{notice.title}</h2>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 pb-3 pt-5">
+          <Dialog.Title className="font-display text-base font-semibold leading-snug text-foreground">{notice.title}</Dialog.Title>
           <button
             onClick={onClose}
             className="-mr-1 -mt-1 shrink-0 p-1 text-muted-foreground hover:text-foreground"
@@ -111,6 +109,12 @@ export function PopupNoticeCard({
             <X className="h-4 w-4" />
           </button>
         </div>
+        <Dialog.Description className="sr-only">공지 내용을 확인해 주세요. 긴 내용은 아래로 내려 볼 수 있습니다.</Dialog.Description>
+
+        <div className="min-h-0 overflow-y-auto overscroll-contain" data-testid="popup-notice-content">
+        {notice.imageUrl && (
+          <img src={notice.imageUrl} alt={notice.title} className="block h-auto w-full" data-testid="popup-notice-image" />
+        )}
 
         {rows.length > 0 && (
           <div className="divide-y border-b bg-muted/30">
@@ -130,8 +134,9 @@ export function PopupNoticeCard({
         {notice.body.trim() && (
           <p className="whitespace-pre-wrap px-5 py-4 text-[13px] leading-relaxed text-foreground">{notice.body}</p>
         )}
+        </div>
 
-        <div className="flex border-t">
+        <div className="flex shrink-0 border-t">
           <button
             onClick={onHideToday ?? onClose}
             className="flex-1 border-r py-3 text-[12px] text-muted-foreground hover:text-foreground"
@@ -147,7 +152,8 @@ export function PopupNoticeCard({
             확인
           </button>
         </div>
-      </div>
-    </div>
+      </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

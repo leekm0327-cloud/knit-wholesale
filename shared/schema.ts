@@ -1,6 +1,7 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { popupImageSchema } from "./popup-image";
 
 // ===== 비밀번호 재설정 토큰 (#26) =====
 export const passwordResetTokens = sqliteTable("password_reset_tokens", {
@@ -1962,6 +1963,7 @@ export const popupNotices = sqliteTable("popup_notices", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   body: text("body").notNull().default(""),
+  imageUrl: text("image_url").notNull().default(""), // 첨부 이미지 data URL
   orderUntil: text("order_until").notNull().default(""), // 예: 8월 13일 (목)까지
   orderResume: text("order_resume").notNull().default(""), // 예: 8월 18일 (화)부터
   deliveryNote: text("delivery_note").notNull().default(""), // 예: 13일 주문분은 17~18일 도착 예정
@@ -1975,6 +1977,7 @@ export const popupNotices = sqliteTable("popup_notices", {
 export const insertPopupNoticeSchema = z.object({
   title: z.string().trim().min(1, "제목을 입력해 주세요.").max(80),
   body: z.string().max(1000).optional().default(""),
+  imageUrl: popupImageSchema.optional().default(""),
   orderUntil: z.string().max(60).optional().default(""),
   orderResume: z.string().max(60).optional().default(""),
   deliveryNote: z.string().max(200).optional().default(""),

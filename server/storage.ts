@@ -503,6 +503,10 @@ for (const [table, col] of [
   ["store_sales", "sector TEXT NOT NULL DEFAULT 'store'"],
   ["expenses", "sector TEXT NOT NULL DEFAULT 'common'"],
   ["fixed_cost_items", "sector TEXT NOT NULL DEFAULT 'common'"],
+  // 팝업 테이블은 별도 모듈에서 생성하므로 기존 DB에 있을 때만 컬럼을 추가한다.
+  ...(sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='popup_notices'").get()
+    ? [["popup_notices", "image_url TEXT NOT NULL DEFAULT ''"]]
+    : []),
 ]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);

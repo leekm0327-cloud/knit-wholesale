@@ -1,5 +1,5 @@
 import { AdminFold } from "@/components/AdminFold";
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import type { PopupNotice } from "@shared/schema";
-import { Loader2, Trash2, Eye, EyeOff, Megaphone, MonitorPlay } from "lucide-react";
+import { POPUP_IMAGE_ACCEPT, POPUP_IMAGE_MAX_BYTES, POPUP_IMAGE_TYPES } from "@shared/popup-image";
+import { Loader2, Trash2, Eye, EyeOff, Megaphone, MonitorPlay, ImagePlus, Pencil, X } from "lucide-react";
 import { PopupNoticeCard } from "@/components/PopupNotice";
 
 function today(): string {
@@ -23,6 +24,7 @@ function today(): string {
 type Draft = {
   title: string;
   body: string;
+  imageUrl: string;
   orderUntil: string;
   orderResume: string;
   deliveryNote: string;
@@ -33,6 +35,7 @@ type Draft = {
 const EMPTY: Draft = {
   title: "",
   body: "",
+  imageUrl: "",
   orderUntil: "",
   orderResume: "",
   deliveryNote: "",
@@ -47,6 +50,11 @@ export default function AdminPopupNotices() {
   const [d, setD] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<PopupNotice | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const formCard = useRef<HTMLDivElement>(null);
+  const imageRequest = useRef(0);
 
   const { data, isLoading } = useQuery<PopupNotice[]>({ queryKey: [KEY] });
   const invalidate = () => {
@@ -56,19 +64,70 @@ export default function AdminPopupNotices() {
   };
   const set = (patch: Partial<Draft>) => setD((p) => ({ ...p, ...patch }));
 
+  function resetDraft() {
+    imageRequest.current++;
+    setImageLoading(false);
+    setEditingId(null);
+    setD({ ...EMPTY, startDate: today() });
+    if (fileInput.current) fileInput.current.value = "";
+  }
+
+  function edit(n: PopupNotice) {
+    resetDraft();
+    setEditingId(n.id);
+    setD({
+      title: n.title, body: n.body, imageUrl: n.imageUrl || "",
+      orderUntil: n.orderUntil, orderResume: n.orderResume, deliveryNote: n.deliveryNote,
+      startDate: n.startDate, endDate: n.endDate,
+    });
+    formCard.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function attachImage(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!POPUP_IMAGE_TYPES.includes(file.type) || file.size > POPUP_IMAGE_MAX_BYTES) {
+      toast({ variant: "destructive", title: "5MB 이하의 JPG, PNG, WEBP, GIF 이미지를 선택해 주세요." });
+      return;
+    }
+    const request = ++imageRequest.current;
+    setImageLoading(true);
+    try {
+      const imageUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("이미지 파일을 읽지 못했습니다."));
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsDataURL(file);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("이미지를 열지 못했습니다. 다른 파일을 선택해 주세요."));
+        img.src = imageUrl;
+      });
+      if (request === imageRequest.current) set({ imageUrl });
+    } catch (err) {
+      if (request === imageRequest.current) toast({ variant: "destructive", title: "이미지 첨부 실패", description: errMsg(err) });
+    } finally {
+      if (request === imageRequest.current) setImageLoading(false);
+    }
+  }
+
   async function create() {
+    if (busy || imageLoading) return;
     if (!d.title.trim()) {
       toast({ variant: "destructive", title: "제목을 입력해 주세요." });
       return;
     }
     setBusy(true);
     try {
-      await apiRequest("POST", KEY, d);
-      toast({ title: "팝업 공지를 등록했습니다." });
-      setD(EMPTY);
+      await apiRequest(editingId === null ? "POST" : "PATCH", editingId === null ? KEY : `${KEY}/${editingId}`, d);
+      toast({ title: editingId === null ? "팝업 공지를 등록했습니다." : "팝업 공지를 수정했습니다." });
+      resetDraft();
       invalidate();
     } catch (err) {
-      toast({ variant: "destructive", title: "등록 실패", description: errMsg(err) });
+      toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
     } finally {
       setBusy(false);
     }
@@ -87,6 +146,7 @@ export default function AdminPopupNotices() {
     if (!confirm(`'${n.title}' 팝업을 지울까요?`)) return;
     try {
       await apiRequest("DELETE", `${KEY}/${n.id}`);
+      if (editingId === n.id) resetDraft();
       invalidate();
     } catch (err) {
       toast({ variant: "destructive", title: "삭제 실패", description: errMsg(err) });
@@ -108,18 +168,36 @@ export default function AdminPopupNotices() {
         </p></AdminFold>
 
         {/* 등록 */}
-        <Card className="mb-6 p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">새 팝업 만들기</h2>
+        <Card className="mb-6 scroll-mt-4 p-5" ref={formCard}>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">{editingId === null ? "새 팝업 만들기" : "팝업 수정"}</h2>
 
-          <div className="space-y-4">
+          <fieldset className="space-y-4" disabled={busy}>
             <div>
               <Label className="text-xs text-muted-foreground">제목</Label>
               <Input
                 value={d.title}
+                maxLength={80}
                 onChange={(e) => set({ title: e.target.value })}
                 placeholder="예: 8월 14일 택배 휴무 안내"
                 data-testid="input-popup-title"
               />
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="popup-image" className="text-xs text-muted-foreground">공지 이미지 (선택)</Label>
+              <input id="popup-image" ref={fileInput} type="file" accept={POPUP_IMAGE_ACCEPT}
+                onChange={attachImage} className="sr-only" data-testid="input-popup-image" />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => fileInput.current?.click()} data-testid="button-attach-popup-image">
+                  {imageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {d.imageUrl ? "이미지 바꾸기" : "이미지 첨부"}
+                </Button>
+                {(d.imageUrl || imageLoading) && <Button type="button" variant="ghost" onClick={() => {
+                  imageRequest.current++; setImageLoading(false); set({ imageUrl: "" });
+                }} data-testid="button-remove-popup-image"><X className="h-4 w-4" />이미지 제거</Button>}
+              </div>
+              <p className="text-xs text-muted-foreground">JPG, PNG, WEBP, GIF · 최대 5MB. 이미지에 안내가 모두 담겨 있으면 아래 글 항목은 비워도 됩니다.</p>
+              {d.imageUrl && <img src={d.imageUrl} alt="첨부한 공지 이미지" className="max-h-72 max-w-full rounded border object-contain" data-testid="popup-image-preview" />}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -184,12 +262,13 @@ export default function AdminPopupNotices() {
                   className="w-40"
                 />
               </div>
-              <Button onClick={create} disabled={busy} data-testid="button-create-popup">
+              <Button onClick={create} disabled={busy || imageLoading} data-testid="button-create-popup">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
-                등록
+                {editingId === null ? "등록" : "수정 저장"}
               </Button>
               <Button
                 variant="outline"
+                disabled={busy || imageLoading}
                 onClick={() =>
                   setPreview({
                     id: 0,
@@ -204,11 +283,12 @@ export default function AdminPopupNotices() {
                 <MonitorPlay className="h-4 w-4" />
                 미리보기
               </Button>
+              {editingId !== null && <Button variant="ghost" onClick={resetDraft} disabled={busy}>수정 취소</Button>}
             </div>
             <p className="text-[11px] text-muted-foreground">
               종료일을 비우면 직접 끌 때까지 계속 뜹니다. 종료일이 지나면 자동으로 사라집니다.
             </p>
-          </div>
+          </fieldset>
         </Card>
 
         {/* 목록 */}
@@ -228,7 +308,7 @@ export default function AdminPopupNotices() {
             <div className="divide-y">
               {data!.map((n) => (
                 <div key={n.id} className="p-4" data-testid={`popup-row-${n.id}`}>
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-sm font-semibold text-foreground">{n.title}</span>
@@ -248,18 +328,23 @@ export default function AdminPopupNotices() {
                       {n.body && (
                         <p className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground">{n.body}</p>
                       )}
+                      {n.imageUrl && <img src={n.imageUrl} alt={`${n.title} 이미지`} className="mt-2 h-20 max-w-full rounded border object-contain" />}
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">
+                      <Button size="sm" variant="outline" onClick={() => edit(n)} disabled={busy} aria-label={`${n.title} 수정`}>
+                        <Pencil className="h-3.5 w-3.5" />수정
+                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => setPreview(n)} aria-label="미리보기">
                         <MonitorPlay className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => toggle(n)} aria-label="노출 전환">
+                      <Button size="sm" variant="ghost" onClick={() => toggle(n)} disabled={busy} aria-label="노출 전환">
                         {n.active === 1 ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={() => remove(n)}
+                        disabled={busy}
                         className="text-muted-foreground hover:text-destructive"
                         aria-label="삭제"
                       >

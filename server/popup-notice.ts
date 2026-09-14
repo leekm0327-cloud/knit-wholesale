@@ -10,6 +10,7 @@ sqlite.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     body TEXT NOT NULL DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
     order_until TEXT NOT NULL DEFAULT '',
     order_resume TEXT NOT NULL DEFAULT '',
     delivery_note TEXT NOT NULL DEFAULT '',
