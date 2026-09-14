@@ -1,3 +1,4 @@
+import { StaffWorkStatus } from "@/components/StaffWorkStatus";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -51,6 +52,7 @@ export default function StaffHome() {
       await apiRequest("POST", `/api/staff/attendance/${kind}`);
       toast({ title: kind === "clock-in" ? "출근 기록되었습니다." : "퇴근 기록되었습니다." });
       queryClient.invalidateQueries({ queryKey: ["/api/staff/home"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/staff/work-status"] });
     } catch (err) {
       toast({ variant: "destructive", title: "실패", description: errMsg(err) });
     } finally {
@@ -150,6 +152,8 @@ export default function StaffHome() {
           </>
         )}
       </div>
+
+      <StaffWorkStatus />
 
       {/* 새 인수인계 — 출퇴근 아래에서 펼쳐 읽고 확인한다 */}
       {newHandovers.length > 0 && (

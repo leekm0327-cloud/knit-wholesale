@@ -20,7 +20,7 @@ export function initSupplyWorkflow(db: Database.Database) {
   CREATE TABLE IF NOT EXISTS staff_bean_stock_logs (id INTEGER PRIMARY KEY AUTOINCREMENT,product_id INTEGER NOT NULL,grams INTEGER,minimum_grams INTEGER,tracked INTEGER NOT NULL,staff_id INTEGER NOT NULL,staff_name TEXT NOT NULL,created_at INTEGER NOT NULL);
   CREATE INDEX IF NOT EXISTS idx_bean_stock_history ON staff_bean_stock_logs(product_id,id);`);
 }
-export function registerSupplyWorkflow(app: Express, db: Database.Database, auth: RequestHandler, admin?: RequestHandler) {
+export function registerSupplyWorkflow(app: Express, db: Database.Database, auth: RequestHandler, admin?: RequestHandler, onEvent?: (id:number,kind:"supply_order"|"supply_received",name:string,now:number)=>void) {
     initSupplyWorkflow(db);
     const route = (fn: (req: any, res: any, me: any) => void): RequestHandler => (req, res, next) => {
         try {
@@ -39,7 +39,7 @@ export function registerSupplyWorkflow(app: Express, db: Database.Database, auth
         }
     };
     const get = (id: number) => db.prepare(select + ' WHERE o.id=?').get(id) as any;
-    const event = (id: number, status: string, note: string, me: any, now: number) => db.prepare('INSERT INTO supply_order_events(order_id,status,note,staff_id,staff_name,created_at) VALUES(?,?,?,?,?,?)').run(id, status, note, me.id, me.name, now);
+    const event = (id: number, status: string, note: string, me: any, now: number) => { db.prepare('INSERT INTO supply_order_events(order_id,status,note,staff_id,staff_name,created_at) VALUES(?,?,?,?,?,?)').run(id, status, note, me.id, me.name, now); if (!note.startsWith('내용 수정') && (status === 'ordered' || status === 'received')) onEvent?.(id,status === 'ordered' ? 'supply_order' : 'supply_received',me.name,now); };
     const meta = (id: number, p: any, me: any, now: number) => db.prepare(`INSERT INTO supply_order_meta(order_id,status,destination,expected_date,link,note,received_by,received_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(order_id) DO UPDATE SET status=excluded.status,destination=excluded.destination,expected_date=excluded.expected_date,link=excluded.link,note=excluded.note,received_by=excluded.received_by,received_at=excluded.received_at`).run(id, p.status, p.destination, p.expectedDate, p.link, p.note, p.status === 'received' ? (p.receivedBy || me.name) : (p.receivedBy || ''), p.status === 'received' ? (p.receivedAt || now) : (p.receivedAt || null));
     const insert = (p: any, me: any) => { const now = Date.now(); const id = Number(db.prepare('INSERT INTO supply_orders(order_date,vendor,body,amount,staff_id,staff_name,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(p.orderDate, p.vendor, p.body, p.status === 'needed' ? 0 : p.amount, me.id, me.name, now, now).lastInsertRowid); meta(id, p, me, now); event(id, p.status, '기록 생성', me, now); return id; };
     const check = (req: any, res: any) => { const id = z.coerce.number().int().positive().parse(req.params.id); const row = get(id); if (!row) {

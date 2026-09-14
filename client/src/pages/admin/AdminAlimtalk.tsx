@@ -1,3 +1,4 @@
+import StaffAlertSettings from "@/components/StaffAlertSettings";
 import { AdminFold } from "@/components/AdminFold";
 // 카카오 알림톡 — 설정, 테스트 발송, 미수금 안내 수동 발송, 발송 기록.
 // 승인된 템플릿 ID 는 코드에 박지 않고 여기서 골라 쓴다.
@@ -247,6 +248,8 @@ export default function AdminAlimtalk() {
                 </div>
               </Card>
             )}
+
+            <StaffAlertSettings />
 
             {/* 설정 */}
             <Card className="p-5">

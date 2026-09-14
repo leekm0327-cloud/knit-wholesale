@@ -1,3 +1,4 @@
+import AttendanceRequests from "@/components/AttendanceRequests";
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -136,6 +137,7 @@ export default function AdminStaffAttendance() {
           직원이 직접 찍은 출퇴근 기록입니다. 빠뜨렸거나 잘못 찍힌 기록은 이 화면에서 고칠 수 있습니다.
         </p></AdminFold>
 
+        <AttendanceRequests />
         <Card className="mb-5 p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>

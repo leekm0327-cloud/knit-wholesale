@@ -74,8 +74,11 @@ export function StaffLayout({
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isError && !staff) navigate("/staff/login");
-  }, [isLoading, isError, staff, navigate]);
+    if (!isLoading && !isError && !staff) {
+      if (location.startsWith('/staff') && location !== '/staff/login') sessionStorage.setItem('knit.staffReturnTo', location);
+      navigate("/staff/login");
+    }
+  }, [isLoading, isError, staff, navigate, location]);
 
   if (isError) {
     return <div className="staff-ui min-h-screen p-4"><div className="mx-auto max-w-xl"><StaffQueryError retry={refetch} /></div></div>;

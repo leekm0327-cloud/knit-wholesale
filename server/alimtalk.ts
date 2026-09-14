@@ -303,6 +303,8 @@ type SendOne = {
    * 켜기 전에 실제로 어떻게 도착하는지 확인하는 게 순서상 맞다.
    */
   force?: boolean;
+  /** Per-message fallback override for staff templates. */
+  disableSms?: boolean;
 };
 
 /** 변수 키를 #{이름} 형태로 맞춘다 */
@@ -360,7 +362,7 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
             pfId: s.pfId,
             templateId: msg.templateId,
             variables,
-            disableSms: s.disableSms,
+            disableSms: msg.disableSms ?? s.disableSms,
           },
         },
       ],

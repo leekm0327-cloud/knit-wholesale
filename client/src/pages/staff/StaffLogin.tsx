@@ -6,6 +6,11 @@ import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
 import { Loader2 } from "lucide-react";
 
+function staffDestination() {
+  const path = sessionStorage.getItem('knit.staffReturnTo');
+  sessionStorage.removeItem('knit.staffReturnTo');
+  return path && /^\/staff(?:\/|$)/.test(path) && path !== '/staff/login' ? path : '/staff';
+}
 export default function StaffLogin() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -23,7 +28,7 @@ export default function StaffLogin() {
     staleTime: 60 * 1000,
   });
   useEffect(() => {
-    if (me && (me as any).id) navigate("/staff");
+    if (me && (me as any).id) navigate(staffDestination());
   }, [me, navigate]);
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
@@ -37,7 +42,6 @@ export default function StaffLogin() {
       const res = await apiRequest("POST", "/api/staff/login", { loginId, password });
       const me = await res.json();
       queryClient.setQueryData(["/api/staff/me"], me);
-      navigate("/staff");
     } catch (err) {
       toast({ variant: "destructive", title: "로그인 실패", description: errMsg(err) });
     } finally {

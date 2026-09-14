@@ -1,3 +1,4 @@
+import { noteDailySubmission } from "./staff-alerts";
 import {assertNoLeave} from "./schedule-approval";
 // 직원 내부 관리 시스템 — 저장소
 // 테이블 생성(멱등) + CRUD. 기존 storage.ts 의 db 핸들을 그대로 사용합니다.
@@ -733,6 +734,8 @@ export class StaffStorage {
           .run();
       }
     }
+    // A submitted zero is a completed daily record too.
+    noteDailySubmission(sqlite, prodDate, kind, staffId);
     return this.listDessertLogs(prodDate, prodDate);
   }
 

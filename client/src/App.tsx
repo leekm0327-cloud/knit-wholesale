@@ -265,6 +265,7 @@ function AppRouter() {
       {/* 직원 내부 관리 — 직원 화면 (자체 인증) */}
       <Route path="/staff/login" component={StaffLogin} />
       <Route path="/staff" component={StaffHome} />
+      <Route path="/staff/attendance" component={StaffHome} />
       <Route path="/staff/espresso" component={StaffEspresso} />
       <Route path="/staff/dessert" component={StaffDessert} />
       <Route path="/staff/schedule" component={StaffSchedule} />

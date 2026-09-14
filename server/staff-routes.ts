@@ -1,3 +1,4 @@
+import { registerStaffAlerts, queueSupplyAlert } from "./staff-alerts";
 import {registerScheduleApproval,applyLeaveDecision} from "./schedule-approval";
 import { registerWorkspaceFeatures } from "./workspace-features";
 import { registerAdminOperations } from "./admin-operations";
@@ -9,7 +10,7 @@ import { sqlite } from "./storage";
 import type { Express, Request, Response, NextFunction } from "express";
 import { staffStorage, seedOwnerStaff, importEspressoHistory, kstToday, kstMonthStart, toPublicStaff, workedMinutes, dateSpanDays } from "./staff-storage";
 import type { IStorage } from "./storage";
-import { sendOwnerSms, sendPlainSms } from "./alimtalk";
+import { sendOwnerSms, sendPlainSms, sendAlimtalk, getSettings as getAlimtalkSettings, isAlimtalkConfigured, listTemplates, solapi } from "./alimtalk";
 import { sendKakaoMemo } from "./kakao";
 import {
   staffLoginSchema,
@@ -114,7 +115,14 @@ function rangeOf(req: Request): { from: string; to: string } {
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
   registerScheduleApproval(app,sqlite,requireStaff,requireOwner,(r)=>(storage as any).createNotification(r));
-  registerSupplyWorkflow(app, sqlite, requireStaff, requireAdmin);
+  registerStaffAlerts(app, sqlite, {owner: requireOwner, admin: requireAdmin, staff: requireStaff}, {
+    ready: () => { const s=getAlimtalkSettings(); return [...(!isAlimtalkConfigured()?['솔라피 연결 정보가 없습니다.']:[]), ...(!s.enabled?['기본 알림톡 사용을 켜 주세요.']:[]), ...(!s.pfId||!s.sender?['발신프로필과 발신번호를 확인해 주세요.']:[])]; },
+    templates: listTemplates,
+    template: async (id) => { const t=await solapi('GET', '/kakao/v2/templates/'+encodeURIComponent(id)); const channel=t.channelId||t.pfId; if(channel && channel!==getAlimtalkSettings().pfId) throw Error('알림톡 발신 채널이 다릅니다.'); return t; },
+    send: sendAlimtalk,
+    notify: (p) => (storage as any).createNotification(p),
+  });
+  registerSupplyWorkflow(app, sqlite, requireStaff, requireAdmin, (id,kind,name,now)=>queueSupplyAlert(sqlite,id,kind,name,now));
   registerAdminOperations(app, sqlite, requireAdmin);
   registerWorkspaceFeatures(app, sqlite, { admin: requireAdmin, owner: requireOwner, staff: requireStaff }, storage);
   seedOwnerStaff();
@@ -508,16 +516,12 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
     const me = await staffStorage.getStaff(req.session.staffId!);
     if (!me) return res.status(404).json({ message: "계정을 찾을 수 없습니다." });
-    res.json(
-      await staffStorage.createSupplyOrder({
-        orderDate: parsed.data.orderDate,
-        vendor: parsed.data.vendor.trim(),
-        body: parsed.data.body,
-        amount: parsed.data.amount,
-        staffId: me.id,
-        staffName: me.name,
-      }),
-    );
+    const row = await staffStorage.createSupplyOrder({
+      orderDate: parsed.data.orderDate, vendor: parsed.data.vendor.trim(), body: parsed.data.body,
+      amount: parsed.data.amount, staffId: me.id, staffName: me.name,
+    });
+    queueSupplyAlert(sqlite, row.id, 'supply_order', me.name);
+    res.json(row);
   }));
 
   app.delete("/api/staff/supply-orders/:id", requireStaff, safe(async (req, res) => {
