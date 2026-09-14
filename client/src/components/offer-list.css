@@ -1,0 +1,46 @@
+.offer-page{max-width:1100px;margin:0 auto;padding:28px 28px 60px}
+.offer-heading{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:20px}
+.offer-heading h1{font-size:25px;font-weight:600;margin:0}
+.offer-heading p{font-size:13px;color:#71777d;margin-top:7px;line-height:1.7}
+.offer-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.offer-controls{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:16px 0}
+.offer-controls label{display:flex;align-items:center;gap:8px;font-size:13px}
+.offer-state{font-size:12px;color:#667069;margin:12px 0;line-height:1.8}
+.offer-error{border:1px solid #dbbba9;padding:16px;background:#fff9f5;font-size:13px;margin:16px 0;line-height:1.7}
+.offer-copy-box{margin:14px 0;padding:16px;border:1px solid #d9dce0;background:white}
+.offer-copy-box textarea{width:100%;min-height:220px;font-size:12px;margin-top:10px;padding:10px;border:1px solid #d9dce0}
+.offer-document{box-sizing:border-box;max-width:794px;margin:24px auto 0;background:#fff;color:#272e20;border:1px solid #e2e4df;padding:44px 48px;font-family:"Noto Serif KR",Georgia,"Apple SD Gothic Neo",serif;word-break:keep-all;overflow-wrap:anywhere;line-height:1.65}
+.offer-document *{box-sizing:border-box}
+.offer-masthead{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:36px}
+.offer-masthead img{width:88px;height:auto;display:block}
+.offer-masthead>div{text-align:right}
+.offer-masthead .offer-kicker{font-family:Arial,sans-serif;font-size:9px;letter-spacing:1.5px;color:#7a806f;margin:0 0 3px}
+.offer-masthead h2{font-family:"mendl-serif-dusk",Georgia,serif;font-size:42px;font-weight:400;line-height:1.1;margin:0 0 8px;letter-spacing:0}
+.offer-masthead p{font-size:11px;margin:0;color:#777d71}
+.offer-intro{display:flex;justify-content:space-between;gap:12px;border-top:2px solid #303925;padding-top:14px;font-size:13px}
+.offer-intro>span:last-child{font-family:Georgia,serif;color:#787e70;font-size:11px}
+.offer-price-note{font-size:10px;color:#717568;margin:10px 0 0;line-height:1.8}
+.offer-group{margin-top:28px}
+.offer-group h3{margin:0 0 4px;font-size:16px;font-weight:600;break-after:avoid}
+.offer-group h3>span{font-family:Georgia,serif;font-size:11px;font-weight:400;color:#8b927d;margin-right:12px}
+.offer-document table{width:100%;border-collapse:collapse;table-layout:fixed}
+.offer-document th{font-family:Arial,"Apple SD Gothic Neo",sans-serif;font-size:9px;text-align:left;font-weight:400;color:#7b8271;border-bottom:1px solid #bfc5b6;padding:7px 0}
+.offer-document td{padding:14px 0;border-bottom:1px solid #e1e5dc;vertical-align:top}
+.offer-document td strong{display:block;font-size:14px;font-weight:600;line-height:1.6}
+.offer-document .offer-price{width:114px;text-align:right;padding-left:12px;font-variant-numeric:tabular-nums}
+.offer-document td.offer-price{font-family:Georgia,"Apple SD Gothic Neo",serif;font-size:14px;white-space:nowrap}
+.offer-document td p{margin:3px 0 0;font-size:11px}
+.offer-document .offer-origin{color:#757d6b}
+.offer-document .offer-notes{color:#424e36}
+.offer-document .offer-detail{font-size:10px;color:#7b8172}
+.offer-footer{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-top:30px;padding-top:18px;border-top:1px solid #303925;font-size:10px;color:#707867;break-inside:avoid}
+.offer-footer a{font-family:Georgia,serif;text-decoration:none;color:#303925}
+@media(max-width:640px){.offer-page{padding:22px 16px 40px}.offer-heading{align-items:flex-start;flex-direction:column}.offer-document{padding:25px 20px}.offer-masthead{gap:14px;margin-bottom:25px}.offer-masthead img{width:65px}.offer-masthead h2{font-size:32px}.offer-document .offer-price{width:95px}.offer-document td.offer-price{font-size:12px}.offer-document td strong{font-size:13px}.offer-footer{align-items:flex-start;flex-direction:column;gap:10px}.offer-controls{align-items:flex-start;flex-direction:column}}
+@media print{.offer-page{padding:0;max-width:none}.offer-document.print-area{max-width:none!important;font-size:11px}.offer-document tr{break-inside:avoid;page-break-inside:avoid}.offer-document thead{display:table-header-group}.offer-document .offer-masthead{margin-bottom:24px}.offer-document .offer-group{margin-top:22px}.offer-document a{color:#272e20!important;text-decoration:none!important}.offer-document .offer-price{width:114px}.offer-document .offer-masthead img{width:88px}.offer-document .offer-masthead h2{font-size:42px}.offer-document td strong,.offer-document td.offer-price{font-size:13px}.offer-document .offer-footer{flex-direction:row;align-items:flex-end}.offer-document td{padding:11px 0}.offer-heading,.offer-controls,.offer-state,.offer-error,.offer-copy-box{display:none!important}}
+@media print {
+  body:has(.offer-document),body:has(.offer-document) #root,
+  .erp-shell:has(.offer-document),.erp-body:has(.offer-document),
+  .erp-body:has(.offer-document)>main,.offer-page{min-height:0!important;height:auto!important;display:block!important}
+  .offer-page>:not(.offer-document){display:none!important}
+  .offer-document.print-area{position:static!important}
+}

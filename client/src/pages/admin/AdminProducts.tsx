@@ -1,5 +1,6 @@
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
+import { Link } from "wouter";
 import { ProductDetailEditor, emptyDetailFields, type DetailFields } from "./ProductDetailEditor";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -38,7 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { won, CATEGORY_LABEL, errMsg } from "@/lib/format";
 import type { Product } from "@shared/schema";
-import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, FileText } from "lucide-react";
 
 type FormState = {
   name: string;
@@ -239,9 +240,12 @@ export default function AdminProducts() {
             <h1 className="font-display mt-1 text-xl font-semibold text-foreground">상품 관리</h1>
             <AdminFold id="AdminProducts.tsx-intro-0"><p className="mt-0.5 text-sm text-muted-foreground">중량별로 상품을 별도로 등록하세요.</p></AdminFold>
           </div>
+          <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" asChild><Link href="/admin/offer-list"><FileText className="mr-1.5 h-4 w-4"/>오퍼리스트</Link></Button>
           <Button onClick={openNew} data-testid="button-new-product">
             <Plus className="mr-1.5 h-4 w-4" /> 상품 추가
           </Button>
+          </div>
         </div>
 
         {isLoading ? (

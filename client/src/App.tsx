@@ -47,6 +47,7 @@ import Dashboard from "@/pages/admin/Dashboard";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminOrderNew from "@/pages/admin/AdminOrderNew";
 import AdminProducts from "@/pages/admin/AdminProducts";
+import AdminOfferList from "@/pages/admin/AdminOfferList";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
 import AdminBalances from "@/pages/admin/AdminBalances";
 import AdminCustomerLedger from "@/pages/admin/AdminCustomerLedger";
@@ -208,6 +209,7 @@ function AppRouter() {
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/orders/new" component={AdminOrderNew} />
       <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin/offer-list" component={AdminOfferList} />
       <Route path="/admin/product-categories" component={AdminProductCategories} />
       <Route path="/admin/customers" component={AdminCustomers} />
       <Route path="/admin/customers/:id/ledger" component={AdminCustomerLedger} />

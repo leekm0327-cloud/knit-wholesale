@@ -80,6 +80,7 @@ export const adminNavigation = [
     "owner": false,
     "group": "sales"
   },
+ {path:"/admin/offer-list",label:"오퍼리스트",owner:false,group:"sales"},
   {
     "path": "/admin/quotes",
     "label": "견적서",
