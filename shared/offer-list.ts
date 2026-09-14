@@ -1,5 +1,6 @@
 import type { Product, ProductCategory } from "./schema";
 
+export const OFFER_SHARE_URL = "https://wholesale.knitcoffee.co.kr/offer-list";
 export const OFFER_ORDER_URL = "https://wholesale.knitcoffee.co.kr/#/catalog";
 export const OFFER_PRICE_NOTE = "기본 도매가 · 부가세 별도 · 상품명에 표기된 중량/포장 기준";
 

@@ -1,5 +1,5 @@
 import { OFFER_ORDER_URL, OFFER_PRICE_NOTE, offerDate, offerPrice, type OfferList } from "@shared/offer-list";
-import "./offer-list.css";
+import React from "react";
 
 export function OfferListDocument({ list, showPrice }: { list: OfferList; showPrice: boolean }) {
   return <article className="offer-document print-area" aria-label="오퍼리스트 미리보기">

@@ -76,12 +76,42 @@ try {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.equal((await response.json()).count, 4);
+  const publicUrl = `http://127.0.0.1:${address.port}/offer-list`;
+  const publicResponse = await fetch(publicUrl);
+  assert.equal(publicResponse.status, 200, "shared page needs no login or cookie");
+  assert.equal(publicResponse.headers.get("cache-control"), "no-store");
+  assert.match(publicResponse.headers.get("content-type") || "", /text\/html/);
+  const html = await publicResponse.text();
+  assert(html.includes("상품 1 1kg") && html.includes("25,000원"));
+  assert(html.includes('property="og:title" content="니트커피 오퍼리스트"'));
+  assert(html.includes('href="/offer-list.css"'));
+  for (const forbidden of ["costPrice", "13777", "PRIVATE-CODE", "PRIVATE-IMAGE", "SECRET-COST", "excluded", "상품 3 1kg", "상품 4 1kg", "상품 5 1kg", "/admin", "상품 관리"]) {
+    assert(!html.includes(forbidden), `public HTML must not expose ${forbidden}`);
+  }
+  const original = rows;
+  rows = [product(99, { name: '<script>alert("stored")</script>', origin: '<img src=x onerror=alert(1)>', detailJson: JSON.stringify({flavorNotes: "A & B"}) })];
+  const escaped = await (await fetch(publicUrl)).text();
+  assert(!escaped.includes("<script>"));
+  assert(!escaped.includes("<img src=x"));
+  assert(escaped.includes("&lt;script&gt;") && escaped.includes("A &amp; B"));
+  rows = [];
+  const empty = await (await fetch(publicUrl)).text();
+  assert(empty.includes("현재 주문 가능한 상품을 준비하고 있습니다"));
+  rows = original;
   rows = rows.map(p => p.id === 1 ? { ...p, available: 0 } : p);
   response = await get();
   assert.equal((await response.json()).count, 3, "each request reflects current availability");
+  const updatedPublic = await (await fetch(publicUrl)).text();
+  assert(!updatedPublic.includes("상품 1 1kg"), "shared page also reflects newly sold-out products");
   fail = true;
   response = await get();
   assert.equal(response.status, 503);
   assert(!(await response.text()).includes("DATABASE-PRIVATE-DETAIL"));
+  const publicError = await fetch(publicUrl);
+  assert.equal(publicError.status, 503);
+  const errorHtml = await publicError.text();
+  assert(errorHtml.includes("잠시 후 다시 확인해 주세요"));
+  assert(!errorHtml.includes("DATABASE-PRIVATE-DETAIL"));
+  assert(!errorHtml.includes("상품 1 1kg"), "never return stale products after source failure");
 } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
-console.log("PASS offer list: availability/category filtering, exact base price, public field whitelist, sorting, KST date, detail fallback, price-hidden text, fresh reads, guard and safe failure.");
+console.log("PASS offer list: availability/category filtering, exact base price, public field whitelist, sorting, KST date, detail fallback, price-hidden text, fresh reads, guard, anonymous HTML sharing, escaped product text, live availability and safe failure.");
