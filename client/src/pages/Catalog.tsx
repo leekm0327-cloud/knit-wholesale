@@ -467,9 +467,9 @@ export default function Catalog() {
           </div>
         )}
 
-        {/* 에스프레소 추출 로그 (공개 집계) */}
+        {/* 에스프레소 추출 가이드 (공개 집계) */}
         <section id="espresso-section" className="mt-12 mb-24 scroll-mt-20" data-testid="section-espresso">
-          <h2 className="mb-1 font-display text-lg font-semibold text-foreground">에스프레소 추출 로그</h2>
+          <h2 className="mb-1 font-display text-lg font-semibold text-foreground">에스프레소 추출 가이드</h2>
           <p className="mb-4 text-sm text-muted-foreground">매장에서 매 세팅마다 기록한 추출 데이터를 집계했습니다.</p>
           <EspressoLogCharts />
         </section>

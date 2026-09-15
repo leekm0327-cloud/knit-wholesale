@@ -1,3 +1,5 @@
+import { EspressoSensorySummary } from "@/components/EspressoSensory";
+import { readNotes } from "@shared/espresso-sensory";
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -93,7 +95,7 @@ export default function AdminStaffLogs() {
             ) : (
               <div className="divide-y">
                 {espresso!.map((l) => {
-                  const tags: string[] = (() => { try { return JSON.parse(l.flavorTags); } catch { return []; } })();
+                  const tags = readNotes(l.flavorTags);
                   return (
                     <div key={l.id} className="p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -114,6 +116,8 @@ export default function AdminStaffLogs() {
                           {tags.map((t) => <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>)}
                         </div>
                       )}
+                      <EspressoSensorySummary raw={l.sensory} />
+                      {l.recommendToPartners === 1 && <p className="mt-2 text-xs">파트너 권장 레시피로 공유한 기록</p>}
                       {l.memo && <p className="mt-1.5 text-xs text-muted-foreground">{l.memo}</p>}
                     </div>
                   );

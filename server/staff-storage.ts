@@ -281,6 +281,8 @@ for (const [table, col] of [
   ["espresso_logs", "grinder_temp REAL NOT NULL DEFAULT 0"],
   ["espresso_logs", "roast_days REAL NOT NULL DEFAULT 0"],
   ["espresso_logs", "source TEXT NOT NULL DEFAULT 'staff'"],
+  ["espresso_logs", "sensory TEXT"],
+  ["espresso_logs", "recommend_to_partners INTEGER NOT NULL DEFAULT 0"],
 ]) {
   try {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${col};`);
@@ -616,6 +618,8 @@ export class StaffStorage {
         tds: p.tds ?? "",
         rating: p.rating ?? 0,
         flavorTags: JSON.stringify(p.flavorTags ?? []),
+        sensory: p.sensory ? JSON.stringify(p.sensory) : null,
+        recommendToPartners: p.recommendToPartners ? 1 : 0,
         memo: p.memo ?? "",
         roomTemp: p.roomTemp ?? 0,
         roomHumidity: p.roomHumidity ?? 0,

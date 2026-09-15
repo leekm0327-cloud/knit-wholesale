@@ -1,6 +1,7 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { espressoSensorySchema, noteListSchema } from "./espresso-sensory";
 import { popupImageSchema } from "./popup-image";
 import { staffPhoneSchema } from "./staff-phone";
 
@@ -1446,6 +1447,8 @@ export const espressoLogs = sqliteTable("espresso_logs", {
   tds: text("tds").notNull().default(""),
   rating: integer("rating").notNull().default(0), // 1~5, 0이면 미평가
   flavorTags: text("flavor_tags").notNull().default("[]"), // JSON string[]
+  sensory: text("sensory"), // JSON; null = legacy, never infer scores from old labels
+  recommendToPartners: integer("recommend_to_partners").notNull().default(0),
   memo: text("memo").notNull().default(""),
   // 구글폼으로 받던 항목들 — 거래처 공개 페이지의 환경별 집계에 쓰인다
   roomTemp: real("room_temp").notNull().default(0), // 실내 온도(℃)
@@ -1623,12 +1626,16 @@ export const insertEspressoLogSchema = z.object({
   waterTemp: z.number().min(0).optional().default(0),
   tds: z.string().optional().default(""),
   rating: z.number().int().min(0).max(5).optional().default(0),
-  flavorTags: z.array(z.string()).optional().default([]),
+  flavorTags: noteListSchema.optional().default([]),
+  sensory: espressoSensorySchema.optional(),
+  recommendToPartners: z.boolean().optional().default(false),
   memo: z.string().optional().default(""),
   roomTemp: z.number().min(0).optional().default(0),
   roomHumidity: z.number().min(0).optional().default(0),
   grinderTemp: z.number().min(0).optional().default(0),
   roastDays: z.number().min(0).optional().default(0),
+}).refine(p => !p.recommendToPartners || (p.doseG > 0 && p.yieldG > 0 && p.timeSec > 0), {
+  path: ["recommendToPartners"], message: "권장 레시피로 공유하려면 도징·추출량·시간을 입력해 주세요.",
 });
 
 export const insertDessertItemSchema = z.object({

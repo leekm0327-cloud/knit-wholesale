@@ -19,6 +19,7 @@ import { mailStatus, sendNewOrderEmail, sendOrderProcessedEmail, sendOrderUpdate
 import { isKakaoConfigured, getKakaoAuthUrl, exchangeCodeForToken, getKakaoStatus, sendKakaoMemo, sendKakaoMemoDetailed } from "./kakao";
 import { fetchWebAnalytics, isWebAnalyticsConfigured } from "./cloudflare";
 import { aggregateLogs, type EspressoLogRow } from "./espressoLog";
+import { buildPartnerBrewGuide } from "./espresso-guide";
 import { staffStorage } from "./staff-storage";
 import path from "node:path";
 import fs from "node:fs";
@@ -2308,6 +2309,15 @@ export async function registerRoutes(
     res.json(await storage.getPosCompare(a, b, category, groupOrigin, range));
   });
 
+  app.get("/api/espresso-brew-guide", async (_req, res) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(buildPartnerBrewGuide(await staffStorage.listEspressoLogs("0000-01-01", "9999-12-31")));
+    } catch {
+      res.status(500).json({ message: "추출 가이드를 불러오지 못했습니다." });
+    }
+  });
+
   // 에스프레소 추출 로그 집계 (공개) — 직원 앱에 쌓인 기록으로 집계한다.
   // 공개 페이지라 조회가 잦아, 30초 동안은 계산 결과를 재사용한다.
   let espressoStatsCache: { at: number; value: any } | null = null;
@@ -2329,11 +2339,13 @@ export async function registerRoutes(
           roomTemp: l.roomTemp,
           roomHumidity: l.roomHumidity,
           rating: l.rating,
-          note: [l.memo, tags.join(", ")].filter(Boolean).join(" · "),
-          staff: l.staffName,
+          note: tags.join(", "),
+          staff: "",
         };
       });
       const value = aggregateLogs(rows);
+      // Legacy clients may still call this route; internal comments never leave the staff app.
+      value.byBeanRecipe.forEach(bean => { bean.notes = []; });
       espressoStatsCache = { at: Date.now(), value };
       res.json(value);
     } catch (e: any) {

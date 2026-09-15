@@ -10,7 +10,7 @@ export default function Espresso() {
           <StackedLogo />
           <p className="eyebrow mt-6">Espresso Extraction Log</p>
           <h1 className="font-display mt-3 break-keep text-3xl font-semibold tracking-tight text-foreground">
-            에스프레소 추출 로그
+            에스프레소 추출 가이드
           </h1>
           <p className="mt-3 max-w-lg break-keep text-[15px] leading-relaxed text-muted-foreground">
             니트커피는 매 세팅마다 추출 데이터를 기록하고 관리합니다.

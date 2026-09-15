@@ -14,7 +14,8 @@ import {
 } from "@shared/schema";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
 
-const FLAVORS = ["단맛", "산미", "쓴맛", "고소", "과일", "초콜릿", "너티", "플로럴", "묵직", "가벼움"];
+import { EspressoSensoryEditor, EspressoSensorySummary } from "@/components/EspressoSensory";
+import { emptySensory, readNotes, type EspressoSensory } from "@shared/espresso-sensory";
 
 type Draft = {
   logDate: string;
@@ -30,6 +31,8 @@ type Draft = {
   roomHumidity: string;
   rating: number;
   flavorTags: string[];
+  sensory: EspressoSensory;
+  recommendToPartners: boolean;
   memo: string;
 };
 
@@ -52,6 +55,8 @@ function emptyDraft(): Draft {
     roomHumidity: "",
     rating: 0,
     flavorTags: [],
+    sensory: emptySensory(),
+    recommendToPartners: false,
     memo: "",
   };
 }
@@ -105,13 +110,6 @@ export default function StaffEspresso() {
     setD((prev) => ({ ...prev, ...patch }));
   }
 
-  function toggleFlavor(f: string) {
-    setD((prev) => ({
-      ...prev,
-      flavorTags: prev.flavorTags.includes(f) ? prev.flavorTags.filter((x) => x !== f) : [...prev.flavorTags, f],
-    }));
-  }
-
   function resetForm() {
     setOpen(false);
     setBeanEtc(false);
@@ -158,11 +156,15 @@ export default function StaffEspresso() {
         roastDays: Number(d.roastDays) || 0,
         rating: d.rating,
         flavorTags: d.flavorTags,
+        sensory: d.sensory,
+        recommendToPartners: d.recommendToPartners,
         memo: d.memo.trim(),
       });
       toast({ title: "기록되었습니다." });
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["/api/staff/espresso-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/espresso-brew-guide"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/espresso-log-stats"] });
     } catch (err) {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
     } finally {
@@ -175,6 +177,8 @@ export default function StaffEspresso() {
     try {
       await apiRequest("DELETE", `/api/staff/espresso-logs/${id}`);
       queryClient.invalidateQueries({ queryKey: ["/api/staff/espresso-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/espresso-brew-guide"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/espresso-log-stats"] });
     } catch (err) {
       toast({ variant: "destructive", title: "삭제 실패", description: errMsg(err) });
     }
@@ -307,57 +311,24 @@ export default function StaffEspresso() {
             </p>
           </details>
 
-          {/* 평가 */}
-          <div className="s-sect">종합 평가</div>
+          <div className="s-sect">향미 · 감각 평가</div>
           <div className="s-card">
-            <div className="grid grid-cols-5 gap-1.5">
-              {ESPRESSO_RATINGS.map((r) => {
-                const on = d.rating === r.value;
-                const tone = ratingTone(r.value);
-                return (
-                  <button
-                    key={r.value}
-                    onClick={() => set({ rating: on ? 0 : r.value })}
-                    className="rounded-[10px] py-2.5 text-[11px] leading-tight"
-                    style={
-                      on
-                        ? { background: "var(--s-ink)", color: "#fff", fontWeight: 600 }
-                        : { background: tone.bg, color: tone.fg }
-                    }
-                    data-testid={`rating-${r.value}`}
-                  >
-                    {r.label.replace(" ", "\n")}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-4">
-              <label className="s-label">맛 코멘트</label>
-              <textarea
-                className="s-input"
-                value={d.memo}
-                onChange={(e) => set({ memo: e.target.value })}
-                rows={3}
-                placeholder="어떤 맛이었는지, 세팅을 바꿨다면 그 이유를 적어주세요."
-                data-testid="input-memo"
-              />
-            </div>
-
-            <div className="mt-3">
-              <label className="s-label">맛 노트 (선택)</label>
-              <div className="flex flex-wrap gap-1.5">
-                {FLAVORS.map((f) => (
-                  <button
-                    key={f}
-                    className={`s-chip ${d.flavorTags.includes(f) ? "on" : ""}`}
-                    onClick={() => toggleFlavor(f)}
-                  >
-                    {f}
-                  </button>
-                ))}
+            <EspressoSensoryEditor value={d.sensory} onChange={sensory => set({ sensory })} notes={d.flavorTags} onNotesChange={flavorTags => set({ flavorTags })}>
+              <div className="mt-4">
+                <label className="s-label">종합 평가 · 내부 기록</label>
+                <div className="grid grid-cols-5 gap-1">
+                  {ESPRESSO_RATINGS.map(r => <button type="button" key={r.value} aria-pressed={d.rating === r.value} className={d.rating === r.value ? "selected" : ""} onClick={() => set({ rating: d.rating === r.value ? 0 : r.value })} data-testid={`rating-${r.value}`}>{r.label}</button>)}
+                </div>
               </div>
-            </div>
+              <div className="mt-4">
+                <label className="s-label" htmlFor="espresso-memo">내부 메모</label>
+                <textarea id="espresso-memo" className="s-input" value={d.memo} onChange={e => set({ memo: e.target.value })} rows={2} placeholder="세팅을 바꾼 이유, 다음 추출 때 참고할 점" data-testid="input-memo" />
+              </div>
+            </EspressoSensoryEditor>
+            <label className="mt-4 flex items-start gap-2 border-t pt-3 text-xs leading-relaxed">
+              <input type="checkbox" className="mt-0.5" checked={d.recommendToPartners} onChange={e => set({ recommendToPartners: e.target.checked })} />
+              <span>이 세팅을 파트너 권장 레시피로 공유<br /><span style={{ color: "var(--s-muted)" }}>도징·추출량·시간을 확인한 경우 선택해 주세요.</span></span>
+            </label>
           </div>
 
           <div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2">
@@ -444,13 +415,7 @@ export default function StaffEspresso() {
         </div>
       ) : (
         logs!.map((l) => {
-          const tags: string[] = (() => {
-            try {
-              return JSON.parse(l.flavorTags);
-            } catch {
-              return [];
-            }
-          })();
+          const tags = readNotes(l.flavorTags);
           const tone = ratingTone(l.rating);
           return (
             <div key={l.id} className="s-card" data-testid={`row-espresso-${l.id}`}>
@@ -509,6 +474,8 @@ export default function StaffEspresso() {
                 </div>
               )}
 
+              <EspressoSensorySummary raw={l.sensory} />
+              {l.recommendToPartners === 1 && <p className="mt-2 text-xs">파트너 권장 레시피로 공유한 기록</p>}
               {l.memo && (
                 <p className="mt-2.5 text-[12.5px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
                   {l.memo}
@@ -530,9 +497,9 @@ export default function StaffEspresso() {
       )}
 
       <p className="mt-4 px-2 text-center text-[11px] leading-relaxed" style={{ color: "var(--s-muted)" }}>
-        여기 남긴 기록이 거래처가 보는 에스프레소 추출 로그에 그대로 반영됩니다.
+        향미·기본 강도·추출 세팅은 파트너 가이드에 반영됩니다. 품질 평가와 메모는 내부에서만 확인해요.
         <br />
-        담당자 이름과 개인적인 내용은 공개 페이지에서 지워집니다.
+        평가하지 않은 항목은 빈 값으로 저장되고 평균에 포함되지 않아요.
       </p>
     </StaffLayout>
   );
