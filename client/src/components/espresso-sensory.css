@@ -10,8 +10,17 @@
 .espresso-sensory select:focus, .espresso-sensory input:focus { outline-color: #657b68; }
 .espresso-sensory summary { cursor: pointer; padding: 9px 0; font-weight: 600; }
 .espresso-sensory .sensory-note-picker { margin-top: 4px; }
-.espresso-sensory .sensory-groups { margin: 10px 0; }
-.espresso-sensory .sensory-options { max-height: 190px; overflow-y: auto; padding-bottom: 4px; }
+.espresso-sensory .sensory-category-nav { margin: 10px 0 12px; padding: 8px 10px 4px; background: #f0f2ed; border-radius: 6px; }
+.espresso-sensory .sensory-picker-label { font-size: 10px; color: #72746e; margin-bottom: 3px; }
+.espresso-sensory .sensory-groups { display: flex; flex-wrap: wrap; gap: 1px 12px; }
+.espresso-sensory .sensory-groups button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 4px 0; color: #72746e; }
+.espresso-sensory .sensory-groups button[aria-pressed="true"] { border-bottom-color: #344b3c; color: #344b3c; font-weight: 700; }
+.espresso-sensory .sensory-picker-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-bottom: 8px; }
+.espresso-sensory .sensory-options { max-height: 220px; overflow-y: auto; padding: 2px 4px 4px 2px; }
+.espresso-sensory .sensory-note-group + .sensory-note-group { margin-top: 12px; }
+.espresso-sensory .sensory-note-category { font-size: 10px; font-weight: 600; color: #72746e; border-left: 2px solid #d8dbd3; padding-left: 6px; margin-bottom: 5px; }
+.espresso-sensory .sensory-note-option { display: inline-flex; align-items: center; gap: 5px; border-radius: 16px; background: #fff; }
+.espresso-sensory .sensory-note-check { width: 12px; text-align: center; opacity: .75; }
 .espresso-sensory .sensory-add { margin-top: 8px; }
 .espresso-sensory .sensory-details { border-top: 1px solid #e4e6df; margin-top: 13px; }
 .espresso-sensory .sensory-choices { margin-top: 14px; }

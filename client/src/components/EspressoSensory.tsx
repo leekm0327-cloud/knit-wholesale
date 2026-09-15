@@ -11,6 +11,11 @@ export function EspressoSensoryEditor({ value, onChange, notes, onNotesChange, c
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("전체");
   const [notice, setNotice] = useState("");
+  const selectedNotes = normalizeNotes(notes);
+  const visibleNotes = new Set(matchingNotes(query, group));
+  const visibleGroups = Object.entries(FLAVOR_GROUPS)
+    .map(([category, options]) => ({ category, options: options.filter(n => visibleNotes.has(n)) }))
+    .filter(({ options }) => options.length > 0);
   const patch = (p: Partial<EspressoSensory>) => onChange({ ...value, ...p });
   function toggleNote(raw: string) {
     const note = canonicalNote(raw);
@@ -29,17 +34,27 @@ export function EspressoSensoryEditor({ value, onChange, notes, onNotesChange, c
   }
   return <div className="espresso-sensory">
     <div className="sensory-tags" aria-label="선택한 향미">
-      {normalizeNotes(notes).map(n => <button type="button" key={n} className="selected" onClick={() => toggleNote(n)} aria-label={`${n} 선택 해제`}>{n} ×</button>)}
+      {selectedNotes.map(n => <button type="button" key={n} className="selected" onClick={() => toggleNote(n)} aria-label={`${n} 선택 해제`}>{n} ×</button>)}
       {!notes.length && <span className="sensory-muted">선택한 향미 없음</span>}
     </div>
     <details className="sensory-note-picker">
       <summary>+ 향미 선택</summary>
       <input aria-label="향미 검색" placeholder="향미 검색 · 없으면 직접 추가" value={query} maxLength={30} onChange={e => { setQuery(e.target.value); setNotice(""); }} />
-      <div className="sensory-tags sensory-groups">
-        {["전체", ...Object.keys(FLAVOR_GROUPS)].map(g => <button type="button" key={g} aria-pressed={group === g} className={group === g ? "selected" : ""} onClick={() => { setGroup(g); setQuery(""); }}>{g}</button>)}
+      <div className="sensory-category-nav" role="group" aria-label="향미 계열로 좁혀보기">
+        <div className="sensory-picker-label">계열로 좁혀보기</div>
+        <div className="sensory-groups">
+          {["전체", ...Object.keys(FLAVOR_GROUPS)].map(g => <button type="button" key={g} aria-pressed={!query && group === g} onClick={() => { setGroup(g); setQuery(""); }}>{g}</button>)}
+        </div>
       </div>
-      <div className="sensory-tags sensory-options">
-        {matchingNotes(query, group).map(n => <button type="button" key={n} aria-pressed={notes.includes(n)} className={notes.includes(n) ? "selected" : ""} onClick={() => toggleNote(n)}>{n}</button>)}
+      <div className="sensory-picker-title"><strong>{query ? "향미 검색 결과" : "느껴지는 향미 선택"}</strong><span className="sensory-muted">여러 개 선택 · {selectedNotes.length}개 선택됨</span></div>
+      <div className="sensory-options" role="group" aria-label="선택할 향미">
+        {visibleGroups.map(({ category, options }) => <div className="sensory-note-group" key={category} role="group" aria-label={`${category} 계열 향미`}>
+          <div className="sensory-note-category">{category}</div>
+          <div className="sensory-tags">
+            {options.map(n => <button type="button" key={n} aria-pressed={selectedNotes.includes(n)} className={`sensory-note-option${selectedNotes.includes(n) ? " selected" : ""}`} onClick={() => toggleNote(n)}><span className="sensory-note-check" aria-hidden="true">{selectedNotes.includes(n) ? "✓" : "+"}</span>{n}</button>)}
+          </div>
+        </div>)}
+        {!visibleGroups.length && <p className="sensory-muted">일치하는 향미가 없어요. 아래에서 직접 추가할 수 있어요.</p>}
       </div>
       {query.trim() && <button type="button" className="sensory-add" onClick={() => {
         const name = canonicalNote(query);
