@@ -6,6 +6,7 @@ import { BASIC_SENSES, SENSE_LABELS, type PartnerBrewGuide, type PublicExtractio
 
 const dateText = (s: string) => s.replace(/-/g, ".");
 const numberText = (n: number, suffix = "") => n > 0 ? `${n}${suffix}` : "미기록";
+const PARTNER_BEAN_ORDER = ["코튼 블렌드", "실크 블렌드", "디카페인"];
 
 export function EspressoLogCharts() {
   const [selected, setSelected] = useState("");
@@ -17,14 +18,17 @@ export function EspressoLogCharts() {
     refetchOnWindowFocus: true,
   });
   const { data: setup = [] } = useQuery<EspressoSetupItem[]>({ queryKey: ["/api/espresso-setup"] });
-  const bean = guide.data?.beans.find(b => b.bean === selected) ?? guide.data?.beans[0];
+  const beans = (guide.data?.beans ?? [])
+    .filter(b => PARTNER_BEAN_ORDER.includes(b.bean))
+    .sort((a, b) => PARTNER_BEAN_ORDER.indexOf(a.bean) - PARTNER_BEAN_ORDER.indexOf(b.bean));
+  const bean = beans.find(b => b.bean === selected) ?? beans[0];
   return <div className="space-y-3 text-sm" data-testid="partner-brew-guide">
     {guide.isLoading ? <p className="py-5 text-muted-foreground">추출 기록을 불러오는 중입니다.</p> : guide.isError ? (
       <div className="rounded-lg border p-4"><p>추출 가이드를 불러오지 못했습니다.</p><button className="mt-2 underline" onClick={() => guide.refetch()}>다시 시도</button></div>
     ) : !bean ? <p className="py-5 text-muted-foreground">아직 추출 기록이 없습니다.</p> : <>
       <label className="flex items-center gap-3"><span className="text-xs text-muted-foreground">원두</span>
         <select aria-label="가이드 원두 선택" className="min-h-10 min-w-0 flex-1 rounded-md border bg-background px-3 sm:max-w-xs" value={bean.bean} onChange={e => setSelected(e.target.value)}>
-          {guide.data!.beans.map(b => <option key={b.bean} value={b.bean}>{b.bean}</option>)}
+          {beans.map(b => <option key={b.bean} value={b.bean}>{b.bean}</option>)}
         </select>
       </label>
       <BeanGuide key={bean.bean} bean={bean} from={guide.data!.from} to={guide.data!.to} />
