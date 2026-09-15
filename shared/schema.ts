@@ -1475,7 +1475,7 @@ export function espressoRatingLabel(n: number): string {
   return ESPRESSO_RATINGS.find((r) => r.value === n)?.label ?? "";
 }
 
-/** 디저트 품목 마스터 — 관리자가 관리하고, 직원은 여기에 수량만 입력한다 */
+/** 디저트 품목 마스터 — 직원도 추가할 수 있고, 순서 변경·숨김은 관리자가 처리한다 */
 export const dessertItems = sqliteTable("dessert_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -1639,8 +1639,9 @@ export const insertEspressoLogSchema = z.object({
 });
 
 export const insertDessertItemSchema = z.object({
-  name: z.string().trim().min(1, "품목명을 입력해 주세요.").max(40, "품목명이 너무 깁니다."),
-  unit: z.string().trim().optional().default("개"),
+  name: z.string().transform((value) => value.normalize("NFC").trim().replace(/\s+/g, " "))
+    .pipe(z.string().min(1, "품목명을 입력해 주세요.").max(40, "품목명이 너무 깁니다.")),
+  unit: z.string().trim().max(10, "단위는 10자 이내로 입력해 주세요.").optional().default("개"),
 });
 
 export const updateDessertItemSchema = z.object({

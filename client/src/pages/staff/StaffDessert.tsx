@@ -49,11 +49,15 @@ export default function StaffDessert() {
   const [draft, setDraft] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [addingItem, setAddingItem] = useState(false);
+  const [itemName, setItemName] = useState("");
+  const [itemUnit, setItemUnit] = useState("개");
+  const [itemBusy, setItemBusy] = useState(false);
   const cachedDrafts = useRef<Record<string, Record<number, string>>>({});
   const draftKey = `knit.dessertDraft:${me?.id}:${date}:${kind}`;
 
   const key = `/api/staff/dessert-logs/day?date=${date}`;
-  const { data, isLoading, isError, refetch } = useQuery<DayRes>({ queryKey: [key] });
+  const { data, isLoading, isError, refetch } = useQuery<DayRes>({ queryKey: [key], staleTime: 0, refetchOnWindowFocus: true });
 
   // 날짜나 모드가 바뀌면 서버 값으로 입력칸을 다시 채운다
   useEffect(() => {
@@ -65,18 +69,14 @@ export default function StaffDessert() {
         if (value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every((v) => typeof v === "string" && /^\d*$/.test(v))) saved = value;
       } catch { /* 메모리의 초안은 저장소 사용 불가 시에도 유지한다. */ }
     }
-    if (saved) {
-      setDraft(saved);
-      setDirty(true);
-      return;
-    }
     const next: Record<number, string> = {};
     for (const r of data.rows) {
       const v = kind === "produce" ? r.qty : r.discardQty;
       next[r.itemId] = v ? String(v) : "";
     }
-    setDraft(next);
-    setDirty(false);
+    // 품목 추가로 목록을 갱신해도 작성 중인 수량은 유지한다.
+    setDraft(saved ? { ...next, ...saved } : next);
+    setDirty(Boolean(saved));
   }, [data, kind, date, draftKey, me]);
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function StaffDessert() {
   }
 
   async function save() {
-    if (!data || busy || isError) return;
+    if (!data || busy || itemBusy || isError) return;
     setBusy(true);
     try {
       await apiRequest("POST", "/api/staff/dessert-logs/save", {
@@ -112,6 +112,27 @@ export default function StaffDessert() {
       toast({ variant: "destructive", title: "저장 실패", description: errMsg(err) });
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function addItem(event: React.FormEvent) {
+    event.preventDefault();
+    if (!itemName.trim() || itemBusy || busy) return;
+    setItemBusy(true);
+    try {
+      await apiRequest("POST", "/api/staff/dessert-items", { name: itemName, unit: itemUnit });
+      await queryClient.invalidateQueries({ predicate: (query) => {
+        const path = String(query.queryKey[0]);
+        return path.startsWith("/api/staff/dessert-") || path === "/api/admin/staff/dessert-items";
+      } });
+      setItemName("");
+      setItemUnit("개");
+      setAddingItem(false);
+      toast({ title: "디저트를 추가했습니다.", description: "생산·폐기 목록에서 함께 사용할 수 있어요." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "디저트 추가 실패", description: errMsg(err) });
+    } finally {
+      setItemBusy(false);
     }
   }
 
@@ -170,6 +191,47 @@ export default function StaffDessert() {
       <div id="staff-prep-section" />
       <PrepTasks date={date} />
 
+      <div className="mt-3 mb-2 flex items-center justify-between">
+        <span className="text-[13px] font-semibold">디저트 라인업</span>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded-md px-2 py-2 text-[12px]"
+          style={{ color: "var(--s-accent)" }}
+          aria-expanded={addingItem}
+          aria-controls="dessert-item-form"
+          disabled={busy || itemBusy}
+          onClick={() => setAddingItem((open) => !open)}
+          data-testid="button-toggle-dessert-item"
+        >
+          {addingItem ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          {addingItem ? "닫기" : "디저트 추가"}
+        </button>
+      </div>
+      {addingItem && (
+        <form id="dessert-item-form" className="s-card mb-2.5" onSubmit={addItem}>
+          <div className="flex items-end gap-2">
+            <label className="min-w-0 flex-1 text-[12px]">
+              디저트 이름
+              <input className="s-input mt-1 w-full" autoFocus required maxLength={40} value={itemName}
+                onChange={(e) => setItemName(e.target.value)} disabled={itemBusy}
+                placeholder="예: 레몬 마들렌" data-testid="input-new-dessert-name" />
+            </label>
+            <label className="w-[64px] shrink-0 text-[12px]">
+              단위
+              <input className="s-input mt-1 w-full" maxLength={10} value={itemUnit}
+                onChange={(e) => setItemUnit(e.target.value)} disabled={itemBusy}
+                placeholder="개" data-testid="input-new-dessert-unit" />
+            </label>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[11px]" style={{ color: "var(--s-muted)" }}>모든 근무자의 생산·폐기 목록에 추가돼요.</span>
+            <button type="submit" className="s-pill shrink-0" disabled={itemBusy || busy || !itemName.trim()} data-testid="button-create-dessert-item">
+              {itemBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} 추가
+            </button>
+          </div>
+        </form>
+      )}
+
       {isError ? <StaffQueryError retry={refetch} /> : isLoading ? (
         <div className="mt-2.5 space-y-2.5">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -185,7 +247,7 @@ export default function StaffDessert() {
           <div className="s-empty">
             등록된 디저트 품목이 없습니다.
             <br />
-            대표님께 품목 등록을 요청해 주세요.
+            위의 ‘디저트 추가’로 첫 품목을 등록해 주세요.
           </div>
         </div>
       ) : (
@@ -217,6 +279,7 @@ export default function StaffDessert() {
                     onChange={(e) => updateQuantity(r.itemId, e.target.value)}
                     inputMode="numeric"
                     placeholder="0"
+                    aria-label={`${r.name} ${isProduce ? "생산량" : "폐기량"}`}
                     data-testid={`input-${kind}-${r.itemId}`}
                   />
                 </div>
@@ -231,7 +294,7 @@ export default function StaffDessert() {
             <span className="text-[19px] font-semibold tracking-tight">{total}</span>
           </div>
 
-          <button className="s-pill wide mt-2.5" onClick={save} disabled={busy} data-testid="button-save-dessert">
+          <button className="s-pill wide mt-2.5" onClick={save} disabled={busy || itemBusy} data-testid="button-save-dessert">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {isProduce ? "생산량 저장" : "폐기량 저장"}
           </button>

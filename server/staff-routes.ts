@@ -262,6 +262,15 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json(await staffStorage.listDessertItems());
   });
 
+  app.post("/api/staff/dessert-items", requireStaff, safe(async (req, res) => {
+    const member = await staffStorage.getStaff(req.session.staffId!);
+    if (!member || member.active !== 1)
+      return res.status(403).json({ message: "재직 중인 직원만 디저트를 추가할 수 있습니다." });
+    const parsed = insertDessertItemSchema.safeParse(req.body);
+    if (!parsed.success) return badRequest(res, parsed.error);
+    res.status(201).json(await staffStorage.createDessertItem(parsed.data));
+  }));
+
   /** 그날의 품목별 입력값 (없으면 0) */
   app.get("/api/staff/dessert-logs/day", requireStaff, async (req, res) => {
     const date = typeof req.query.date === "string" && req.query.date ? req.query.date : kstToday();
@@ -1050,11 +1059,11 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json({ ok: true });
   }));
 
-  app.post("/api/admin/staff/dessert-items", requireOwner, async (req, res) => {
+  app.post("/api/admin/staff/dessert-items", requireOwner, safe(async (req, res) => {
     const parsed = insertDessertItemSchema.safeParse(req.body);
     if (!parsed.success) return badRequest(res, parsed.error);
     res.json(await staffStorage.createDessertItem(parsed.data));
-  });
+  }));
 
   app.patch("/api/admin/staff/dessert-items/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);

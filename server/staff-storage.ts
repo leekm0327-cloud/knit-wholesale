@@ -743,7 +743,7 @@ export class StaffStorage {
     return this.listDessertLogs(prodDate, prodDate);
   }
 
-  // ===== 디저트 품목 (관리자) =====
+  // ===== 디저트 품목 (직원 추가 / 관리자 관리) =====
   async listDessertItems(includeInactive = false): Promise<DessertItem[]> {
     const rows = db
       .select()
@@ -754,18 +754,25 @@ export class StaffStorage {
   }
 
   async createDessertItem(p: InsertDessertItem): Promise<DessertItem> {
-    const rows = await this.listDessertItems(true);
-    return db
-      .insert(dessertItems)
-      .values({
-        name: p.name,
-        unit: p.unit && p.unit.length > 0 ? p.unit : "개",
-        sortOrder: rows.length,
-        active: 1,
-        createdAt: Date.now(),
-      })
-      .returning()
-      .get();
+    // 확인과 추가를 한 트랜잭션에서 처리해 동시 등록도 중복되지 않게 한다.
+    return sqlite.transaction(() => {
+      const rows = db.select().from(dessertItems).all();
+      const nameKey = (name: string) => name.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+      if (rows.some((row) => row.active === 1 && nameKey(row.name) === nameKey(p.name))) {
+        throw Object.assign(new Error("이미 등록된 디저트입니다. 목록에서 해당 품목을 사용해 주세요."), { status: 409 });
+      }
+      return db
+        .insert(dessertItems)
+        .values({
+          name: p.name,
+          unit: p.unit && p.unit.length > 0 ? p.unit : "개",
+          sortOrder: Math.max(-1, ...rows.map((row) => row.sortOrder)) + 1,
+          active: 1,
+          createdAt: Date.now(),
+        })
+        .returning()
+        .get();
+    })();
   }
 
   async updateDessertItem(id: number, patch: Partial<DessertItem>): Promise<DessertItem | undefined> {

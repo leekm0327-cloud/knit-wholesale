@@ -165,7 +165,10 @@ function DessertItemManager() {
   const [busy, setBusy] = useState(false);
 
   const { data: items, isLoading } = useQuery<DessertItem[]>({ queryKey: ["/api/admin/staff/dessert-items"] });
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/dessert-items"] });
+  const invalidate = () => queryClient.invalidateQueries({ predicate: (query) => {
+    const path = String(query.queryKey[0]);
+    return path === "/api/admin/staff/dessert-items" || path.startsWith("/api/staff/dessert-");
+  } });
   const active = (items ?? []).filter((i) => i.active === 1);
 
   async function add() {
@@ -213,7 +216,7 @@ function DessertItemManager() {
       <div className="border-b p-5">
         <h2 className="text-sm font-semibold text-foreground">디저트 품목</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          여기 등록한 품목이 직원 앱의 생산일지에 그대로 나옵니다. 직원은 수량만 입력합니다.
+          직원 생산일지에서도 새 디저트를 추가할 수 있습니다. 순서 변경과 목록에서 빼기는 여기서 관리합니다.
         </p>
       </div>
 
