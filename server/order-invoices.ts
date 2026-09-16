@@ -8,13 +8,20 @@ export function orderInvoiceLines(orders:any[]){
  const lines:any[]=[];
  for(const o of orders){
   const items=JSON.parse(o.items);if(!Array.isArray(items)||!items.length)fail('품목이 없습니다.');
+  const firstLine=lines.length;
   let sum=0,vat=0;
-  for(const i of items){if(!Number.isSafeInteger(i.amount)||i.amount<0||!Number.isFinite(i.qty)||i.qty<=0||!Number.isFinite(i.unitPrice)||i.unitPrice<0)fail('품목 금액을 확인해 주세요.');sum+=i.amount;
-   const tax=Math.floor(i.amount/10);vat+=tax;lines.push({name:String(i.name),qty:String(i.qty),unitPrice:String(i.unitPrice),amount:i.amount,tax,description:o.order_no});}
+  // Administrator-entered returns use a negative quantity at the original positive price.
+  for(const i of items){if(!Number.isSafeInteger(i.amount)||!Number.isFinite(i.qty)||i.qty===0||!Number.isFinite(i.unitPrice)||i.unitPrice<0||i.amount!==i.qty*i.unitPrice)fail('품목 수량·단가와 금액이 일치하는지 확인해 주세요.');sum+=i.amount;
+   const tax=Math.trunc(i.amount/10);vat+=tax;lines.push({name:String(i.name),qty:String(i.qty),unitPrice:String(i.unitPrice),amount:i.amount,tax,description:o.order_no});}
   const discount=o.discount_amount||0;
   if(discount){const tax=-Math.floor(discount/10);vat+=tax;lines.push({name:'주문 할인',qty:'',unitPrice:'',amount:-discount,tax,description:o.order_no});}
   if(sum-discount!==o.supply_amount||o.supply_amount+o.vat!==o.total_amount)fail('주문 합계와 품목 합계가 다릅니다.');
-  lines[lines.length-1].tax+=o.vat-vat;
+  // Preserve the saved order VAT without making a small refund's tax positive.
+  let adjustmentLine=lines.length-1;
+  if(items.some((i:any)=>i.amount<0)){
+   for(let n=firstLine;n<lines.length;n++)if(lines[n].amount>0&&(lines[adjustmentLine].amount<=0||lines[n].amount>lines[adjustmentLine].amount))adjustmentLine=n;
+  }
+  lines[adjustmentLine].tax+=o.vat-vat;
  }
  if(lines.length>99)fail('품목이 99개를 넘습니다. 주문을 나누어 선택해 주세요.');return lines;
 }

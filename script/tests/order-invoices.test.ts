@@ -2,16 +2,18 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import express from 'express';
 import {registerTaxInvoices} from '../../server/tax-invoices';
+import {orderInvoiceLines} from '../../server/order-invoices';
 const db:any=new DatabaseSync(':memory:');db.exec('CREATE TABLE payments(id INTEGER); CREATE TABLE expenses(id INTEGER);');
 const app=express();app.use(express.json());const creds={key:'fixture-no-secret',corp:'1111111111',id:'fixture'};
 registerTaxInvoices(app,db,(req,res,next)=>req.headers['x-role']==='owner'?next():res.sendStatus(403),()=>creds);
 const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
 const base=`http://127.0.0.1:${(server.address() as any).port}/api/admin/tax-invoices`;
-const original=globalThis.fetch;let calls:string[]=[],mode='success';
+const original=globalThis.fetch;let calls:string[]=[],mode='success',lastIssuedXml='';
 globalThis.fetch=(async(input:any,options:any)=>{
  if(String(input).startsWith(base))return original(input,options);
  const method=String(options.headers.SOAPAction).split('/').pop()!.replaceAll('"','');calls.push(method);let value='1';
  if(method==='RegistAndIssueTaxInvoice'){
+  lastIssuedXml=String(options.body);
   assert(String(options.body).includes('<SendSMS>false</SendSMS>'));assert(String(options.body).includes('<ForceIssue>false</ForceIssue>'));assert(String(options.body).includes('A &amp; B'));
   if(mode==='timeout')throw new Error('timeout');if(mode==='reject')value='-123';
  }
@@ -54,6 +56,46 @@ try{
  assert.equal((await call('/production/orders')).data.rows.find((r:any)=>r.id===5).state,'external');
  assert.equal((await call('/production/order-drafts',request([5]))).status,400);
  assert.equal((await call('/test/order-drafts',request([5]))).status,200);
+
+ // Unissued sales can include a partial return at its original positive unit price.
+ const sale={name:'A & B',unitPrice:30000,qty:4,amount:120000};
+ const refund={name:'Silk refund',unitPrice:30000,qty:-1,amount:-30000};
+ function addOrder(id:number,items:any[],discount=0){
+  const supply=items.reduce((s,i)=>s+i.amount,0)-discount,vat=Math.round(supply/10);
+  db.prepare('INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,'ORDER'+id,1,'{}',JSON.stringify(items),discount,supply,vat,supply+vat,'done',0,0,'2026-09-01',1,null);
+ }
+ addOrder(9,[sale,refund]);addOrder(10,[sale,refund],1000);addOrder(11,[sale]);
+ addOrder(12,[refund]);addOrder(13,[{...sale,qty:1,amount:30000},refund]);
+ addOrder(14,[sale,{...refund,qty:1}]); // A negative amount must match its quantity and price.
+ const refundResult=await call('/production/order-drafts',request([9]));
+ assert.equal(refundResult.status,200);
+ const refundDoc=refundResult.data.rows[0];
+ assert.equal(refundDoc.payload.amount,90000);assert.equal(refundDoc.payload.tax,9000);
+ assert.deepEqual(refundDoc.payload.lines[1],{name:'Silk refund',qty:'-1',unitPrice:'30000',amount:-30000,tax:-3000,description:'ORDER9'});
+ assert.equal((await call(`/production/drafts/${refundDoc.id}/issue`,{confirm:refundDoc.id,duplicateChecked:true})).data.state,'issued');
+ assert(lastIssuedXml.includes('<ChargeableUnit>-1</ChargeableUnit>'));
+ assert(lastIssuedXml.includes('<Amount>-30000</Amount><Tax>-3000</Tax>'));
+ assert(lastIssuedXml.includes('<AmountTotal>90000</AmountTotal><TaxTotal>9000</TaxTotal><TotalAmount>99000</TotalAmount>'));
+ assert.equal((await call('/production/order-drafts',request([9]))).status,400);
+ const grouped=(await call('/production/order-drafts',request([10,11]))).data.rows[0].payload;
+ assert.equal(grouped.amount,209000);assert.equal(grouped.tax,20900);
+ assert.deepEqual(grouped.lines.map((l:any)=>l.amount),[120000,-30000,-1000,120000]);
+ assert.equal(grouped.lines.reduce((s:number,l:any)=>s+l.tax,0),grouped.tax);
+ for(const id of [12,13,14])assert.equal((await call('/production/order-drafts',request([id]))).status,400);
+ addOrder(15,[sale,refund]);
+ assert.equal((await call('/production/order-drafts',{...request([15]),groups:[{ids:[15],buyer:draft.buyer},{ids:[14],buyer:draft.buyer}]})).status,400);
+ assert.equal(db.prepare('SELECT count(*) n FROM tax_invoice_order_links WHERE order_id=15').get().n,0);
+ assert.equal(db.prepare('SELECT count(*) n FROM tax_invoice_order_links WHERE order_id=14').get().n,0);
+
+ // Per-line rounding must keep a tiny return's tax non-positive and preserve total VAT.
+ const tinyItems=[...Array.from({length:10},()=>({name:'Tiny sale',qty:1,unitPrice:1,amount:1})),{name:'Tiny return',qty:-1,unitPrice:1,amount:-1}];
+ const tinyOrder={items:JSON.stringify(tinyItems),discount_amount:0,supply_amount:9,vat:1,total_amount:10,order_no:'TINY'};
+ const tinyLines=orderInvoiceLines([tinyOrder]);
+ assert.equal(tinyLines.reduce((s,l)=>s+l.tax,0),1);assert(tinyLines.at(-1).tax<=0);
+ for(const invalid of [{...refund,qty:0},{...refund,unitPrice:-30000},{...refund,amount:-29999},{...refund,qty:null}]){
+  assert.throws(()=>orderInvoiceLines([{...tinyOrder,items:JSON.stringify([sale,invalid])}]),/수량·단가/);
+ }
+ assert.throws(()=>orderInvoiceLines([{...tinyOrder,items:JSON.stringify([sale,refund])}]),/합계/);
  assert.equal(db.prepare('SELECT count(*) n FROM payments').get().n,0);
- console.log('PASS full order lines and discounts, aggregate totals, mixed buyer and duplicate rejection, atomic reservation rollback, discard and rebuild, changed-order block, equal-value distinct orders, external linkage, environment isolation');
+ console.log('PASS full order lines and discounts, partial returns through mocked issuance, signed quantities and VAT rounding, aggregate totals, non-positive order rejection, mixed buyer and duplicate rejection, atomic reservation rollback, discard and rebuild, changed-order block, equal-value distinct orders, external linkage, environment isolation');
 }finally{globalThis.fetch=original;server.close();db.close();}
