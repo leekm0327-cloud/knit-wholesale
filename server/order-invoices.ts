@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {invoiceDraft,invoiceParty,taxDate,taxEnvironment} from '../shared/tax-invoices';
+import {buyerRepresentatives} from './tax-buyer-representatives';
 const fail=(s:string)=>{throw new Error('바로빌 주문 연결: '+s);};
 export function orderSnapshot(o:any){return JSON.stringify([o.customer_id,o.items,o.discount_amount,o.supply_amount,o.vat,o.total_amount,o.status,o.is_store_order,o.is_sample,o.ecount_date]);}
 export function orderInvoiceLines(orders:any[]){
@@ -26,8 +27,10 @@ export function registerOrderInvoices(app:any,db:any,owner:any,route:any,credent
  const unlinked=(env:string,o:any)=>{if(!eligible(o))fail('처리 완료된 유상 외부 주문만 선택할 수 있습니다.');if(db.prepare('SELECT id FROM tax_invoice_order_links WHERE environment=? AND order_id=? AND active=1').get(env,o.id))fail('이미 연결된 주문입니다. 기존 문서를 확인해 주세요.');};
  app.get(base+'/orders',owner,route((req:any,res:any)=>{
   const env=taxEnvironment.parse(req.params.environment);
+  let supplierCorp='';try{supplierCorp=credentials(env).corp;}catch{}
+  const representatives=buyerRepresentatives(db,env,supplierCorp);
   const rows=db.prepare(`SELECT o.*,c.is_store,c.business_name,c.biz_reg_no,c.tax_email,c.email,c.manager_name,c.default_address,l.draft_id,l.snapshot,d.state FROM orders o LEFT JOIN customers c ON c.id=o.customer_id LEFT JOIN tax_invoice_order_links l ON l.order_id=o.id AND l.environment=? AND l.active=1 LEFT JOIN tax_invoice_drafts d ON d.id=l.draft_id ORDER BY o.created_at DESC`).all(env);
-  res.json({rows:rows.filter((o:any)=>eligible(o)||o.draft_id).map((o:any)=>({id:o.id,orderNo:o.order_no,customerId:o.customer_id,name:o.business_name||JSON.parse(o.customer_snapshot).businessName||'거래처',date:o.ecount_date||new Date(o.created_at).toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'}),amount:o.supply_amount,tax:o.vat,total:o.total_amount,items:JSON.parse(o.items),discount:o.discount_amount||0,ecountSent:!!o.ecount_sent_at,draftId:o.draft_id,state:o.draft_id?(o.snapshot!==orderSnapshot(o)?'changed':o.state):'unissued',buyer:{corpNum:(o.biz_reg_no||'').replace(/\D/g,''),name:o.business_name||'',ceo:'',address:o.default_address||'',bizType:'',bizClass:'',contact:o.manager_name||'',email:o.tax_email||o.email||''}}))});
+  res.json({buyerRepresentatives:representatives,rows:rows.filter((o:any)=>eligible(o)||o.draft_id).map((o:any)=>({id:o.id,orderNo:o.order_no,customerId:o.customer_id,name:o.business_name||JSON.parse(o.customer_snapshot).businessName||'거래처',date:o.ecount_date||new Date(o.created_at).toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'}),amount:o.supply_amount,tax:o.vat,total:o.total_amount,items:JSON.parse(o.items),discount:o.discount_amount||0,ecountSent:!!o.ecount_sent_at,draftId:o.draft_id,state:o.draft_id?(o.snapshot!==orderSnapshot(o)?'changed':o.state):'unissued',buyer:{corpNum:(o.biz_reg_no||'').replace(/\D/g,''),name:o.business_name||'',ceo:representatives[(o.biz_reg_no||'').replace(/\D/g,'')]||'',address:o.default_address||'',bizType:'',bizClass:'',contact:o.manager_name||'',email:o.tax_email||o.email||''}}))});
  }));
  app.post(base+'/order-drafts',owner,route((req:any,res:any)=>{
   const env=taxEnvironment.parse(req.params.environment),p=z.object({supplier:invoiceParty,date:taxDate,purpose:z.enum(['1','2']),groups:z.array(z.object({ids:z.array(z.number().int().positive()).min(1).max(100),buyer:invoiceParty})).min(1).max(100)}).parse(req.body);

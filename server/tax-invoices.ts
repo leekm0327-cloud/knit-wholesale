@@ -1,4 +1,5 @@
 import {registerOrderInvoices,assertOrderInvoiceCurrent} from './order-invoices';
+import {buyerRepresentatives} from './tax-buyer-representatives';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
@@ -19,7 +20,7 @@ export function registerTaxInvoices(app:Express,db:Database.Database,owner:Reque
  app.get(base,owner,route((req,res)=>{
   const env=taxEnvironment.parse(req.params.environment);let configured=false,corp='';try{const c=credentials(env);configured=true;corp=c.corp;}catch{}
   const profile=db.prepare('SELECT payload FROM tax_invoice_profiles WHERE environment=?').get(env) as any;
-  res.json({configured,corp,profile:profile?JSON.parse(profile.payload):null,rows:(db.prepare('SELECT * FROM tax_invoice_drafts WHERE environment=? ORDER BY created_at DESC LIMIT 300').all(env) as any[]).map(view)});
+  res.json({configured,corp,profile:profile?JSON.parse(profile.payload):null,buyerRepresentatives:buyerRepresentatives(db,env,corp),rows:(db.prepare('SELECT * FROM tax_invoice_drafts WHERE environment=? ORDER BY created_at DESC LIMIT 300').all(env) as any[]).map(view)});
  }));
  app.put(base+'/profile',owner,route((req,res)=>{const env=taxEnvironment.parse(req.params.environment),p=invoiceParty.parse(req.body),c=credentials(env);if(p.corpNum!==c.corp){res.status(400).json({message:'연결된 사업자번호와 공급자 사업자번호가 다릅니다.'});return;}
  db.prepare('INSERT INTO tax_invoice_profiles VALUES(?,?) ON CONFLICT(environment) DO UPDATE SET payload=excluded.payload').run(env,JSON.stringify(p));res.json({ok:true});}));

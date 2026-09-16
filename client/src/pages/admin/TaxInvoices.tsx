@@ -5,7 +5,7 @@ import { AdminLayout } from '@/components/AdminLayout';
 import { AdminFold } from '@/components/AdminFold';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/lib/auth';
-import { blankParty, type InvoiceDraft } from '@shared/tax-invoices';
+import { blankParty, updateBuyerParty, type InvoiceDraft } from '@shared/tax-invoices';
 const money=(v:unknown)=>Number(v||0).toLocaleString('ko-KR');
 const today=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});
 const states:Record<string,string>={draft:'발행 전',sending:'요청 중 · 상태 확인',unknown:'응답 확인 필요',rejected:'발행 실패',issued:'발행 완료',cancelled:'취소됨',external:'기존 발행 기록',discarded:'작성 취소'};
@@ -25,6 +25,7 @@ function TaxPage({env}:{env:'test'|'production'}){
  const [date,setDate]=useState(today()),[item,setItem]=useState('원두'),[amount,setAmount]=useState(''),[tax,setTax]=useState(''),[purpose,setPurpose]=useState<'1'|'2'>('1'),[remark,setRemark]=useState('');
  const [selected,setSelected]=useState<any>(null),[confirmed,setConfirmed]=useState(false);
  useEffect(()=>{if(selected)document.getElementById('tax-invoice-preview')?.scrollIntoView({behavior:'smooth',block:'start'});},[selected?.id]);
+ useEffect(()=>{if(q.data?.buyerRepresentatives)setBuyer(current=>current.ceo?current:{...current,ceo:q.data.buyerRepresentatives[current.corpNum]||''});},[q.data?.buyerRepresentatives]);
  const supplier:Party=profile||q.data?.profile||{...blankParty,corpNum:q.data?.corp||''};
  const act=async(fn:()=>Promise<void>)=>{setBusy(true);setMessage('');try{await fn();await q.refetch();await cache.invalidateQueries({queryKey:[base+'/orders']});}catch(e:any){setMessage(e.message||'처리하지 못했습니다.');}finally{setBusy(false);}};
  const post=async(path:string,body:any={})=>(await apiRequest('POST',base+path,body)).json();
@@ -43,10 +44,10 @@ function TaxPage({env}:{env:'test'|'production'}){
  <OrderInvoiceQueue env={env} supplier={supplier} PartyFields={PartyFields} onDocument={r=>{setSelected(r);setConfirmed(false);}}/>
  <p className="text-sm my-4">이 화면에서 작성하고 바로빌로 발행 요청한 문서의 내용·발행 상태·국세청 전송 상태를 확인합니다.</p>
  <div className="flex gap-3 my-4"><button className="border rounded px-4 py-2" disabled={busy||!q.data?.configured} onClick={()=>setCompose(!compose)}>{compose?'작성 접기':'새 세금계산서 작성'}</button><button onClick={()=>q.refetch()}>목록 새로고침</button></div>
- {compose&&<section className="border rounded p-5 my-4"><h2 className="font-semibold">일반 과세 세금계산서 작성</h2><p className="text-sm my-2">거래처 정보를 가져온 뒤 사업자등록증 기준으로 대표자·주소를 확인해 주세요. 담당자명과 배송지는 법정 정보와 다를 수 있습니다.</p>
- <label>거래처 <select aria-label="발행 거래처" value={customer} onChange={e=>{setCustomer(e.target.value);const c=customers.data?.find(c=>String(c.id)===e.target.value);setBuyer(c?{...blankParty,corpNum:(c.bizRegNo||'').replace(/\D/g,''),name:c.businessName||'',address:c.defaultAddress||'',contact:c.managerName||'',email:c.taxEmail||c.email||''}:{...blankParty});}}><option value="">직접 입력</option>{(customers.data||[]).filter(c=>c.role==='customer'&&!c.isStore).map(c=><option value={c.id} key={c.id}>{c.businessName}</option>)}</select></label>
+ {compose&&<section className="border rounded p-5 my-4"><h2 className="font-semibold">일반 과세 세금계산서 작성</h2><p className="text-sm my-2">대표자명은 같은 사업자번호로 저장한 최근 문서에서 가져옵니다. 한 번 입력하고 문서를 저장하면 다음에도 자동으로 채워져요. 사업자등록증 기준으로 확인하고 수정할 수 있습니다.</p>
+ <label>거래처 <select aria-label="발행 거래처" value={customer} onChange={e=>{setCustomer(e.target.value);const c=customers.data?.find(c=>String(c.id)===e.target.value);setBuyer(c?{...blankParty,corpNum:(c.bizRegNo||'').replace(/\D/g,''),name:c.businessName||'',ceo:q.data?.buyerRepresentatives?.[(c.bizRegNo||'').replace(/\D/g,'')]||'',address:c.defaultAddress||'',contact:c.managerName||'',email:c.taxEmail||c.email||''}:{...blankParty});}}><option value="">직접 입력</option>{(customers.data||[]).filter(c=>c.role==='customer'&&!c.isStore).map(c=><option value={c.id} key={c.id}>{c.businessName}</option>)}</select></label>
  {customers.isError&&<p>거래처를 불러오지 못했습니다. 직접 입력하거나 새로고침해 주세요.</p>}
- <PartyFields prefix="공급받는자" value={buyer} onChange={setBuyer}/>
+ <PartyFields prefix="공급받는자" value={buyer} onChange={next=>setBuyer(current=>updateBuyerParty(current,next,q.data?.buyerRepresentatives))}/>
  <div className="flex gap-3 flex-wrap my-3"><label>작성일 <input aria-label="작성일" type="date" value={date} max={today()} onChange={e=>setDate(e.target.value)}/></label><label>구분 <select aria-label="청구·영수 구분" value={purpose} onChange={e=>setPurpose(e.target.value as any)}><option value="1">영수 · 대금 받음</option><option value="2">청구 · 대금 받기 전</option></select></label></div>
  <div className="grid sm:grid-cols-3 gap-3"><label>품목 <input className="border p-2 w-full" aria-label="품목" value={item} maxLength={100} onChange={e=>setItem(e.target.value)}/></label><label>공급가액 <input className="border p-2 w-full" aria-label="공급가액" type="number" min="1" step="1" value={amount} onChange={e=>{setAmount(e.target.value);setTax(String(Math.floor(Number(e.target.value)/10)));}}/></label><label>세액 <input className="border p-2 w-full" aria-label="세액" type="number" min="0" step="1" value={tax} onChange={e=>setTax(e.target.value)}/></label></div>
  <p className="font-semibold my-3">합계 {money(Number(amount)+Number(tax))}원</p><input className="border rounded p-2 w-full" aria-label="비고" placeholder="비고 (선택)" value={remark} maxLength={150} onChange={e=>setRemark(e.target.value)}/>

@@ -18,3 +18,17 @@ export const invoiceDraft = z.object({
 }).refine(v=>!v.lines||(v.lines.reduce((s,l)=>s+l.amount,0)===v.amount&&v.lines.reduce((s,l)=>s+l.tax,0)===v.tax),'품목 합계가 일치하지 않습니다.').refine(v=>Math.abs(v.tax-v.amount/10)<=Math.max(1,v.lines?.length||1), '일반 과세 세액을 확인해 주세요.').refine(v=>v.buyer.corpNum!==v.supplier.corpNum,'공급자와 공급받는자가 같습니다.');
 export type InvoiceDraft = z.infer<typeof invoiceDraft>;
 export const blankParty = {corpNum:'',name:'',ceo:'',address:'',bizType:'',bizClass:'',contact:'',email:''};
+
+/** A different business number must not retain the previous company's legal name. */
+export function updateBuyerParty(previous: typeof blankParty, next: typeof blankParty, representatives: Record<string, string> = {}) {
+ return previous.corpNum === next.corpNum ? next : {...next, ceo: representatives[next.corpNum] || ''};
+}
+
+/** Separate invoices for the same business share the representative name only. */
+export function updateOrderBuyer<T extends {buyer: typeof blankParty}>(groups: T[], index: number, buyer: typeof blankParty, representatives: Record<string, string> = {}): T[] {
+ const previous = groups[index].buyer;
+ const next = updateBuyerParty(previous, buyer, representatives);
+ return groups.map((group, n) => n === index ? {...group, buyer: next}
+  : /^\d{10}$/.test(next.corpNum) && next.ceo !== previous.ceo && group.buyer.corpNum === next.corpNum
+    ? {...group, buyer: {...group.buyer, ceo: next.ceo}} : group);
+}
