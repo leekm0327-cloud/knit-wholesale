@@ -69,7 +69,7 @@ export function registerScheduleApproval(app:Express,db:Database.Database,staffA
   const result=db.prepare("UPDATE schedule_change_requests SET status='cancelled',decided_at=? WHERE id=? AND staff_id=? AND status='pending'").run(Date.now(),Number(req.params.id),req.session.staffId);
   res.status(result.changes?200:409).json({message:result.changes?'취소했습니다.':'대기 중인 본인 신청만 취소할 수 있습니다.'});
  });
- app.get('/api/admin/staff/schedule-requests',ownerAuth,(_req,res)=>res.json(db.prepare('SELECT * FROM schedule_change_requests ORDER BY id DESC LIMIT 200').all()));
+ app.get('/api/admin/staff/schedule-requests',ownerAuth,(_req,res)=>res.json(db.prepare("SELECT * FROM schedule_change_requests WHERE status='pending' OR id IN (SELECT id FROM schedule_change_requests WHERE status<>'pending' ORDER BY id DESC LIMIT 200) ORDER BY id DESC").all()));
  app.patch('/api/admin/staff/schedule-requests/:id',ownerAuth,(req,res)=>{try{
   const p=z.object({status:z.enum(['approved','rejected']),memo:z.string().max(1000).default('')}).parse(req.body);
   res.json(decideSchedule(db,Number(req.params.id),p.status,`owner:${req.session.userId}`,p.memo));

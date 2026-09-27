@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
+import { readTodayTasks } from './today-tasks';
 
 // Read-only overview. Explicit fields avoid exposing staff credentials or payroll.
 export function readOperations(db: Database.Database, now = Date.now()) {
@@ -10,6 +11,12 @@ export function readOperations(db: Database.Database, now = Date.now()) {
   return { today, team, stock, supply };
 }
 export function registerAdminOperations(app: Express, db: Database.Database, auth: RequestHandler) {
+  app.get('/api/admin/operations/tasks', auth, (req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(readTodayTasks(db, req.session.adminRole === 'owner'));
+    } catch (error) { next(error); }
+  });
   app.get('/api/admin/operations', auth, (_req, res, next) => {
     try { res.json(readOperations(db)); } catch (error) { next(error); }
   });

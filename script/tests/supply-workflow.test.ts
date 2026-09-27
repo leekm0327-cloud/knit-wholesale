@@ -65,6 +65,13 @@ try {
     assert.equal(paid.amount, 43190);
     assert.equal((await call('PATCH', `/supply-board/${paid.id}`, { ...order, version: paid.updatedAt }, 1)).status, 403);
     assert((await call('GET', '/supply-board?month=2026-08')).data.some((r: any) => r.id === paid.id));
+    const adminBoard = async (pending: boolean, authenticated=true) => {
+      const response = await fetch(`http://127.0.0.1:${port}/api/admin/staff/supply-board?from=2026-09-01&to=2026-09-30${pending?'&pending=1':''}`, {headers: authenticated?{'x-admin':'owner'}:{}});
+      return {status:response.status,rows:await response.json().catch(()=>[])};
+    };
+    assert.equal((await adminBoard(true,false)).status,403);
+    assert(!(await adminBoard(false)).rows.some((r:any)=>r.id===paid.id));
+    assert((await adminBoard(true)).rows.some((r:any)=>r.id===paid.id));
     assert.equal((await call('POST', `/supply-board/${paid.id}/status`, { status: 'partial', version: paid.updatedAt, note: '' })).status, 400);
     let partial = (await call('POST', `/supply-board/${paid.id}/status`, { status: 'partial', version: paid.updatedAt, note: '우유 1박스 누락' })).data;
     assert.equal((await call('POST', `/supply-board/${paid.id}/status`, { status: 'received', version: paid.updatedAt, note: '' })).status, 409);

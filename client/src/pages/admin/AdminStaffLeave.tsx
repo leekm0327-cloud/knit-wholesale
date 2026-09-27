@@ -1,3 +1,4 @@
+import { useTodayTarget, useTodayScroll } from '@/lib/today-target';
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -38,6 +39,7 @@ function d(n: number): string {
 }
 
 export default function AdminStaffLeave() {
+  const todayTarget = useTodayTarget('leave');
   const { toast } = useToast();
   const { user } = useAuth();
   const isOwner = (user as any)?.adminRole === "owner";
@@ -49,13 +51,14 @@ export default function AdminStaffLeave() {
   const [gDate, setGDate] = useState(today());
   const [gMemo, setGMemo] = useState("");
 
-  const { data, isLoading } = useQuery<Res>({ queryKey: ["/api/admin/staff/leave"], refetchInterval: 60000 });
+  const { data, isLoading } = useQuery<Res>({ queryKey: ["/api/admin/staff/leave"], refetchInterval: 60000, staleTime: 0 });
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/staff/leave"] });
     queryClient.invalidateQueries({ predicate:q=>String(q.queryKey[0]).includes("/staff/") });
   };
 
   const pending = (data?.requests ?? []).filter((r) => r.status === "pending");
+  useTodayScroll(`leave-task-${todayTarget?.id}`, !!todayTarget?.id && !!data);
   const decided = (data?.requests ?? []).filter((r) => r.status !== "pending");
   const nameOf = new Map((data?.staff ?? []).map((s) => [s.id, s.name]));
 
@@ -141,7 +144,8 @@ export default function AdminStaffLeave() {
               {pending.map((r) => (
                 <div
                   key={r.id}
-                  className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  id={`leave-task-${r.id}`} tabIndex={-1}
+                  className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${todayTarget?.id===r.id?'today-target':''}`}
                   data-testid={`row-pending-${r.id}`}
                 >
                   <div className="min-w-0">

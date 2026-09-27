@@ -73,7 +73,9 @@ export function registerSupplyWorkflow(app: Express, db: Database.Database, auth
     if (admin) {
         app.get('/api/admin/staff/supply-board',admin,(req,res,next)=>{try {
             const from = date.parse(req.query.from), to = date.parse(req.query.to);
-            res.json(db.prepare(select+' WHERE o.order_date>=? AND o.order_date<=? ORDER BY o.order_date DESC,o.id DESC').all(from,to));
+            res.json(req.query.pending==='1'
+                ? db.prepare(select+" WHERE m.status IN ('needed','ordered','partial','refund_pending') ORDER BY o.order_date DESC,o.id DESC").all()
+                : db.prepare(select+' WHERE o.order_date>=? AND o.order_date<=? ORDER BY o.order_date DESC,o.id DESC').all(from,to));
         } catch(e) {if(e instanceof z.ZodError) res.status(400).json({message:'기간을 확인해 주세요.'});else next(e);}});
         app.patch('/api/admin/staff/supply-board/:id',admin,(req,res,next)=>{try {
             edit(req,res,{id:-Number(req.session.userId),name:'관리자 #'+req.session.userId},false);

@@ -15,7 +15,7 @@ const result=readOperations(db,Date.parse('2026-09-08T15:01:00Z'));
 assert.equal(result.today,'2026-09-09');assert.equal(result.team.length,1);assert.equal((result.team[0] as any).id,1);
 assert.deepEqual(result.stock.map((s:any)=>s.grams),[5500,null]);assert.equal(result.supply.length,1);
 assert(!JSON.stringify(result).includes('secret'));assert(!JSON.stringify(result).includes('salary'));
-let handlers:any[]=[];const auth=()=>{};registerAdminOperations({get:(path:string,...h:any[])=>{assert.equal(path,'/api/admin/operations');handlers=h;}} as any,db,auth);
+let handlers:any[]=[];const auth=()=>{};registerAdminOperations({get:(path:string,...h:any[])=>{assert(h[0]===auth);if(path==='/api/admin/operations')handlers=h;else assert.equal(path,'/api/admin/operations/tasks');}} as any,db,auth);
 assert.equal(handlers[0],auth);assert.equal(handlers.length,2);
 const before=db.prepare('SELECT COUNT(*) AS n FROM supply_orders').get();readOperations(db);assert.deepEqual(db.prepare('SELECT COUNT(*) AS n FROM supply_orders').get(),before);
 console.log('PASS: KST rollover, explicit staff fields, nullable decimal inventory, legacy/completed supply excluded, admin middleware and read-only query');

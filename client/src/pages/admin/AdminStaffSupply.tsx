@@ -1,3 +1,4 @@
+import { useTodayTarget, useTodayScroll } from '@/lib/today-target';
 import { SupplyOrderEdit } from '@/components/SupplyOrderEdit';
 import type { SupplyRecord } from '@shared/supply-workflow';
 import { AdminFold } from "@/components/AdminFold";
@@ -33,20 +34,23 @@ function fmtDay(iso: string): string {
 }
 
 export default function AdminStaffSupply() {
+  const todayTarget = useTodayTarget('supply');
+  const [pendingOnly, setPendingOnly] = useState(!!todayTarget);
   const { toast } = useToast();
   const { user } = useAuth();
   // 서버가 requireOwner 로 막는 삭제는 매니저에게 버튼 자체를 보이지 않는다 (누르면 403 나던 문제)
   const isOwner = (user as any)?.adminRole === "owner";
-  const [from, setFrom] = useState(monthStart());
-  const [to, setTo] = useState(today());
+  const [from, setFrom] = useState(todayTarget?.date || monthStart());
+  const [to, setTo] = useState(todayTarget?.date || today());
   const [vName, setVName] = useState("");
 
   const key = `/api/admin/staff/supply-orders?from=${from}&to=${to}`;
   const { data, isLoading } = useQuery<{ rows: SupplyOrder[]; summary: SupplyOrderSummary }>({ queryKey: [key] });
   const { data: vendors } = useQuery<SupplyVendor[]>({ queryKey: ["/api/admin/staff/supply-vendors"] });
 
-  const boardKey = `/api/admin/staff/supply-board?from=${from}&to=${to}`;
-  const board = useQuery<SupplyRecord[]>({queryKey:[boardKey]});
+  const boardKey = `/api/admin/staff/supply-board?from=${from}&to=${to}${pendingOnly?'&pending=1':''}`;
+  const board = useQuery<SupplyRecord[]>({queryKey:[boardKey],staleTime:0});
+  useTodayScroll(`supply-task-${todayTarget?.id}`,!!todayTarget?.id&&!!board.data);
   const invalidate = () => {
     queryClient.invalidateQueries({queryKey:[boardKey]});
     queryClient.invalidateQueries({ queryKey: [key] });
@@ -224,6 +228,7 @@ export default function AdminStaffSupply() {
         <Card className="overflow-hidden">
           <div className="border-b p-5">
             <h2 className="text-sm font-semibold text-foreground">기록</h2>
+            <label className="flex gap-2 items-center mt-3 text-sm"><input type="checkbox" checked={pendingOnly} onChange={e=>setPendingOnly(e.target.checked)}/>진행 중인 발주만 보기 · 전체 기간</label>
           </div>
           {isLoading || board.isLoading ? (
             <div className="space-y-2 p-5">
@@ -232,11 +237,11 @@ export default function AdminStaffSupply() {
               ))}
             </div>
           ) : board.isError ? (<p role="alert" className="p-5">발주 기록을 불러오지 못했습니다. <Button onClick={()=>board.refetch()}>다시 불러오기</Button></p>) : (board.data ?? []).length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">이 기간에 남겨진 기록이 없습니다.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{pendingOnly?'진행 중인 발주가 없습니다.':'이 기간에 남겨진 기록이 없습니다.'}</p>
           ) : (
             <div className="divide-y">
               {board.data!.map((r) => (
-                <div key={r.id} className="p-4" data-testid={`admin-supply-${r.id}`}>
+                <div key={r.id} id={`supply-task-${r.id}`} tabIndex={-1} className={`p-4 ${todayTarget?.id===r.id?'today-target':''}`} data-testid={`admin-supply-${r.id}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">

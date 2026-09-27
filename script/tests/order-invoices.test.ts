@@ -35,6 +35,7 @@ for(let i=1;i<=8;i++)db.prepare('INSERT INTO orders VALUES(?,?,?,?,?,?,?,?,?,?,?
 const request=(ids:number[])=>({supplier:party,date:'2026-09-01',purpose:'2',groups:[{ids,buyer:draft.buyer}]});
 try{
  assert.equal((await call('/production/orders')).data.rows.length,7);
+ assert((await call('/production/orders')).data.rows.every((r:any)=>r.needsAttention));
  assert.equal((await call('/production/order-drafts',request([7]))).status,400);
  assert.equal((await call('/production/order-drafts',request([1,8]))).status,400);
  assert.equal((await call('/production/order-drafts',request([1,1]))).status,400);
@@ -54,6 +55,10 @@ try{
  assert.equal((await call(`/production/drafts/${pair[0].id}/discard`,{})).status,400);
  assert.equal((await call('/production/orders/external',{ids:[5],approval:'123456789012345678901234',confirmed:true})).status,200);
  assert.equal((await call('/production/orders')).data.rows.find((r:any)=>r.id===5).state,'external');
+ const attentionRows=(await call('/production/orders')).data.rows;
+ assert(!attentionRows.find((r:any)=>r.id===3).needsAttention);
+ assert(!attentionRows.find((r:any)=>r.id===5).needsAttention);
+ assert(attentionRows.find((r:any)=>r.id===1).needsAttention);
  assert.equal((await call('/production/order-drafts',request([5]))).status,400);
  assert.equal((await call('/test/order-drafts',request([5]))).status,200);
 

@@ -1,3 +1,4 @@
+import { useTodayTarget } from '@/lib/today-target';
 import {OrderTaxLink} from '@/components/OrderTaxLink';
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -37,13 +38,14 @@ function effectiveOrderTs(o: Order): number {
 
 export default function AdminOrders() {
   const [, navigate] = useLocation();
+  const todayTarget = useTodayTarget('orders');
   const { data: orders, isLoading } = useQuery<Order[]>({
     queryKey: ["/api/admin/orders"],
     refetchInterval: 30000,
   });
 
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(todayTarget ? "pending" : "all");
   const [dateRange, setDateRange] = useState("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");

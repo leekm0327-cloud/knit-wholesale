@@ -28,3 +28,28 @@
 .bank-inline-detail{padding:16px;background:#f7f8fa;border-bottom:1px solid #d8dce1}
 .bank-inline-detail>div{max-width:760px;padding:20px;background:white;border:1px solid #d8dce1;border-radius:8px}
 .bank-review-page td{vertical-align:top}
+
+/* Today's actionable queue: bounded previews and touch-friendly links. */
+.today-tasks .erp-panel-head p,.today-updated{font-size:11px;color:#68717a;margin-top:6px}
+.today-total{margin-left:8px;background:#eef0f2;padding:3px 7px;border-radius:4px;font-size:11px}
+.today-refresh{font-size:12px;min-height:44px;padding:8px;white-space:nowrap}
+.today-filters{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid #eceef0}
+.today-filters button{font-size:12px;min-height:44px;padding:8px 11px;border-radius:5px;background:#f4f5f6;color:#525b65}
+.today-filters button[aria-pressed=true]{background:#252a31;color:#fff}
+.today-filters span{margin-left:6px;font-variant-numeric:tabular-nums}
+.today-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.today-group{padding:18px 20px;border-bottom:1px solid #eceef0;min-width:0}
+.today-group:nth-child(odd){border-right:1px solid #eceef0}
+.today-group-heading{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.today-group h3{font-size:13px;font-weight:600}.today-group h3 span{margin-left:3px;color:#6d5540}
+.today-group-heading>a,.today-more{font-size:11px;color:#59636e;padding:8px 0;display:inline-block}
+.today-description{font-size:11px;color:#68717a;margin:4px 0 10px;line-height:1.6}
+.today-group ul{margin:0;padding:0;list-style:none}.today-group li+li{border-top:1px solid #eceef0}
+.today-item{display:flex;gap:10px;align-items:center;min-height:64px;padding:11px 0}.today-item>div{min-width:0;flex:1}
+.today-item strong{display:block;font-size:13px;font-weight:500;overflow-wrap:anywhere}.today-item small{display:block;font-size:11px;color:#68717a;margin-top:4px;overflow-wrap:anywhere;line-height:1.6}
+.today-item-action{font-size:11px;white-space:nowrap;color:#525b65}.today-amount{display:block;font-size:12px;margin-top:5px;font-variant-numeric:tabular-nums}
+.today-none{font-size:12px;color:#68717a;padding:10px 0}.today-complete{padding:16px 20px;font-size:13px;background:#f1f5f1;color:#3e5b48}
+.today-updated{padding:12px 20px;margin:0}.today-item:hover{background:#f7f8f9}.today-tasks :is(a,button):focus-visible{outline:2px solid #515c6b;outline-offset:2px}
+.today-target{outline:2px solid #67776a;outline-offset:-2px;background:#f1f5f1!important;scroll-margin-top:100px}
+@media(max-width:1200px){.today-groups{grid-template-columns:1fr}.today-group:nth-child(odd){border-right:0}}
+@media(min-width:768px) and (max-width:950px){.today-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.today-group:nth-child(odd){border-right:1px solid #eceef0}}
