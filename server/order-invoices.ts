@@ -2,6 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {invoiceDraft,invoiceParty,taxDate,taxEnvironment} from '../shared/tax-invoices';
 import {buyerRepresentatives} from './tax-buyer-representatives';
+import type {OrderInvoiceSummary} from '../shared/order-summary';
 const fail=(s:string)=>{throw new Error('바로빌 주문 연결: '+s);};
 export function orderSnapshot(o:any){return JSON.stringify([o.customer_id,o.items,o.discount_amount,o.supply_amount,o.vat,o.total_amount,o.status,o.is_store_order,o.is_sample,o.ecount_date]);}
 export function orderInvoiceLines(orders:any[]){
@@ -32,6 +33,24 @@ export function registerOrderInvoices(app:any,db:any,owner:any,route:any,credent
  const eligible=(o:any)=>o&&o.status==='done'&&o.total_amount>0&&o.is_sample!==1&&o.is_store_order!==1&&!(o.is_store_order===-1&&o.is_store===1);
  const get=(id:number)=>db.prepare('SELECT o.*,c.is_store FROM orders o LEFT JOIN customers c ON c.id=o.customer_id WHERE o.id=?').get(id);
  const unlinked=(env:string,o:any)=>{if(!eligible(o))fail('처리 완료된 유상 외부 주문만 선택할 수 있습니다.');if(db.prepare('SELECT id FROM tax_invoice_order_links WHERE environment=? AND order_id=? AND active=1').get(env,o.id))fail('이미 연결된 주문입니다. 기존 문서를 확인해 주세요.');};
+ // Read the linked local record only, without credentials or a remote issuance/status request.
+ app.get(base+'/orders/:orderId/summary',owner,route((req:any,res:any)=>{
+  const env=taxEnvironment.parse(req.params.environment);
+  const id=z.coerce.number().int().positive().parse(req.params.orderId);
+  const o=get(id);
+  if(!o){res.status(404).json({message:'주문을 찾을 수 없습니다.'});return;}
+  const link=db.prepare(`SELECT l.draft_id,l.snapshot,d.state FROM tax_invoice_order_links l
+   LEFT JOIN tax_invoice_drafts d ON d.id=l.draft_id AND d.environment=l.environment
+   WHERE l.order_id=? AND l.environment=? AND l.active=1`).get(id,env);
+  const canIssue=Boolean(eligible(o));
+  const result:OrderInvoiceSummary={
+   orderId:id,eligible:canIssue,draftId:link?.draft_id||null,
+   state:link?(link.snapshot!==orderSnapshot(o)?'changed':link.state||'unknown'):(canIssue?'unissued':'not_applicable'),
+   reason:canIssue?null:o.status==='cancelled'?'cancelled':o.is_sample===1?'sample':
+    (o.is_store_order===1||(o.is_store_order===-1&&o.is_store===1))?'internal':o.total_amount<=0?'nonpositive':'pending',
+  };
+  res.json(result);
+ }));
  app.get(base+'/orders',owner,route((req:any,res:any)=>{
   const env=taxEnvironment.parse(req.params.environment);
   let supplierCorp='';try{supplierCorp=credentials(env).corp;}catch{}

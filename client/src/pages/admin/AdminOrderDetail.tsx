@@ -1,4 +1,4 @@
-import {OrderTaxLink} from '@/components/OrderTaxLink';
+import {OrderProgressSummary} from '@/components/OrderProgressSummary';
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
@@ -45,6 +45,7 @@ export default function AdminOrderDetail() {
   const { data: order, isLoading } = useQuery<Order>({
     queryKey: ["/api/orders", id],
     enabled: !!id,
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: 'always',
   });
 
   const [trackingNo, setTrackingNo] = useState("");
@@ -151,9 +152,9 @@ export default function AdminOrderDetail() {
           <Skeleton className="h-[600px] w-full rounded-none" />
         ) : (
           <>
-            <OrderTaxLink orderId={order.id}/>
+            <OrderProgressSummary key={order.id} order={order}/>
             {/* 관리 패널 */}
-            <Card className="no-print mb-6 p-5">
+            <Card id="order-management" tabIndex={-1} className="no-print mb-6 scroll-mt-4 p-5">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-foreground">주문 관리</h2>
                 <div className="flex items-center gap-2">

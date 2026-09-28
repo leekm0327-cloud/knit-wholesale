@@ -5,7 +5,8 @@ import {registerTaxInvoices} from '../../server/tax-invoices';
 import {orderInvoiceLines} from '../../server/order-invoices';
 const db:any=new DatabaseSync(':memory:');db.exec('CREATE TABLE payments(id INTEGER); CREATE TABLE expenses(id INTEGER);');
 const app=express();app.use(express.json());const creds={key:'fixture-no-secret',corp:'1111111111',id:'fixture'};
-registerTaxInvoices(app,db,(req,res,next)=>req.headers['x-role']==='owner'?next():res.sendStatus(403),()=>creds);
+registerTaxInvoices(app,db,(req,res,next)=>req.headers['x-role']==='owner'?next():res.sendStatus(403),()=>{credentialReads++;if(!credentialsAvailable)throw new Error('not configured');return creds;});
+let credentialReads=0,credentialsAvailable=true;
 const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
 const base=`http://127.0.0.1:${(server.address() as any).port}/api/admin/tax-invoices`;
 const original=globalThis.fetch;let calls:string[]=[],mode='success',lastIssuedXml='';
@@ -101,6 +102,44 @@ try{
   assert.throws(()=>orderInvoiceLines([{...tinyOrder,items:JSON.stringify([sale,invalid])}]),/수량·단가/);
  }
  assert.throws(()=>orderInvoiceLines([{...tinyOrder,items:JSON.stringify([sale,refund])}]),/합계/);
+
+ // The order detail summary reads only the active local link in the requested environment.
+ const summary=(id:number,env='production',role='owner')=>call(`/${env}/orders/${id}/summary`,undefined,role);
+ for(const [id,state] of [[1,'changed'],[2,'draft'],[3,'issued'],[5,'external'],[6,'unissued']] as const){
+  const r=await summary(id);assert.equal(r.status,200);assert.equal(r.data.state,state);
+  assert.equal(r.data.orderId,id);assert.equal(r.data.eligible,true);
+  if(id===2)assert.equal(r.data.draftId,again.id); // inactive discarded draft is ignored
+ }
+ const testDraft=(await summary(5,'test')).data;
+ assert.equal(testDraft.state,'draft');assert.notEqual(testDraft.draftId,(await summary(5)).data.draftId);
+ for(const [id,change,reason] of [
+  [16,"status='pending'",'pending'],[17,'is_sample=1','sample'],
+  [18,'is_store_order=1','internal'],[19,'total_amount=0','nonpositive'],
+  [20,'total_amount=-100','nonpositive'],[21,"status='cancelled'",'cancelled'],
+ ] as const){
+  addOrder(id,[sale]);db.exec(`UPDATE orders SET ${change} WHERE id=${id}`);
+  const r=(await summary(id)).data;
+  assert.equal(r.state,'not_applicable');assert.equal(r.reason,reason);assert.equal(r.eligible,false);assert.equal(r.draftId,null);
+ }
+ addOrder(22,[sale]);db.exec('UPDATE customers SET is_store=1 WHERE id=2; UPDATE orders SET customer_id=2,is_store_order=-1 WHERE id=22');
+ assert.equal((await summary(22)).data.reason,'internal');
+ db.exec('UPDATE orders SET is_store_order=0 WHERE id=22');
+ assert.equal((await summary(22)).data.eligible,true); // explicit external order on an internal account
+ const beforeReadCalls=calls.length,beforeCredentialReads=credentialReads;
+ const beforeChanges=db.prepare('SELECT total_changes() n').get().n;
+ credentialsAvailable=false;
+ assert.equal((await summary(3)).data.state,'issued'); // no API key needed to read a saved record
+ assert.equal((await summary(999)).status,404);
+ for(const invalid of [0,-1,1.5])assert.equal((await summary(invalid)).status,400);
+ assert.equal((await summary(1,'invalid')).status,400);
+ for(const role of ['manager','customer',''])assert.equal((await summary(3,'production',role)).status,403);
+ assert.equal(credentialReads,beforeCredentialReads);assert.equal(calls.length,beforeReadCalls);
+ assert.equal(db.prepare('SELECT total_changes() n').get().n,beforeChanges);
+ credentialsAvailable=true;
+ // A linked invoice whose order changed must not silently look issued.
+ db.exec("UPDATE orders SET status='cancelled' WHERE id=3");
+ assert.equal((await summary(3)).data.state,'changed');
+ console.log('PASS read-only order summary: owner permission, input validation, eligibility, active link, changed orders, environment isolation, no credentials or remote calls');
  assert.equal(db.prepare('SELECT count(*) n FROM payments').get().n,0);
  console.log('PASS full order lines and discounts, partial returns through mocked issuance, signed quantities and VAT rounding, aggregate totals, non-positive order rejection, mixed buyer and duplicate rejection, atomic reservation rollback, discard and rebuild, changed-order block, equal-value distinct orders, external linkage, environment isolation');
 }finally{globalThis.fetch=original;server.close();db.close();}
