@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import type { BankCustomerSuggestion } from '@shared/bank-customer-suggestion';
 
-type Row = { id: number; deposit: number; withdraw: number; state: string; targetId: number | null; memo: string; posted: number };
+type Row = { id: number; deposit: number; withdraw: number; state: string; targetId: number | null; memo: string; posted: number; customerSuggestion?: BankCustomerSuggestion | null };
 type Props = {
   row: Row; live: boolean;
   customers: { id: number; name: string }[];
@@ -13,12 +14,16 @@ type Props = {
 };
 
 export default function BankQuickActions({ row, live, customers, categories, onChange, onDetails, detailsOpen, detailsId }: Props) {
-  const [choice, setChoice] = useState(row.state === 'customer' ? String(row.targetId || '') : '');
+  // Derive untouched defaults from fresh history; never replace a user's manual choice.
+  const [manualChoice, setChoice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const locked = useRef(false), base = live ? '/api/admin/bank-live' : '/api/admin/bank-review';
   const expense = row.withdraw > 0;
   const singleDirection = (row.deposit > 0) !== (row.withdraw > 0);
   const allowed = !row.posted && ['pending', 'customer'].includes(row.state) && singleDirection;
+  const suggestion = allowed && !expense && row.state === 'pending' ? row.customerSuggestion : null;
+  const recommended = suggestion?.kind === 'customer' && customers.some(c => c.id === suggestion.customerId) ? suggestion : null;
+  const choice = manualChoice ?? (row.state === 'customer' ? String(row.targetId || '') : recommended ? String(recommended.customerId) : '');
   const selected = expense ? categories.find(x => x.name === choice) : customers.find(x => String(x.id) === choice);
   const run = async (fn: () => Promise<unknown>) => {
     if (locked.current) return;
@@ -49,6 +54,8 @@ export default function BankQuickActions({ row, live, customers, categories, onC
         {busy ? '처리 중…' : `${live ? '' : '테스트 '}${expense ? '비용' : '수금'} 반영`}
       </button>
     </div>}
+    {recommended && <p className="bank-customer-hint">추천 · {recommended.name} <span>(이전 수금 {recommended.count}건)</span></p>}
+    {suggestion?.kind === 'ambiguous' && <p className="bank-customer-hint is-ambiguous">이전 연결이 서로 달라요. 거래처를 직접 선택해 주세요.</p>}
     <div className="bank-quick-tools">
       {!row.posted && singleDirection && (!expense || allowed) && <details className="bank-quick-options">
         <summary>{expense ? '카드대금 분류' : '정산 입금 분류'}</summary>

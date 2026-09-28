@@ -1,4 +1,5 @@
 import { registerBankOnline } from './bank-online';
+import { bankCustomerSuggestions } from './bank-customer-suggestions';
 import { registerTaxInvoices } from './tax-invoices';
 import { registerBankConnection, type BankEnvironment, type BankCredentials } from "./bank-connection";
 import { registerBankPosting } from "./bank-posting";
@@ -64,7 +65,9 @@ export function registerBankReview(app:Express,db:Database.Database,owner:Reques
  const configured=()=>{try{connection(environment);return true;}catch{return false;}};
  const safe=(fn:(req:any,res:any)=>any):RequestHandler=>(req,res)=>{Promise.resolve().then(()=>fn(req,res)).catch(e=>res.status(e instanceof z.ZodError?400:502).json({message:e instanceof z.ZodError?'입력값을 확인해 주세요.':e.message}));};
  app.get(prefix,owner,safe((_req,res)=>{
-  res.json({environment,configured:configured(),rows:db.prepare(`SELECT id,at,deposit,withdraw,remark,state,target_id AS targetId,memo,EXISTS(SELECT 1 FROM ${postingTable} p WHERE p.bank_id=bank_review.id AND p.cancelled_at IS NULL) AS posted,'****'||substr(account,-4) AS account FROM bank_review WHERE environment='${environment}' ORDER BY at DESC,id DESC`).all()});
+  const suggestions=bankCustomerSuggestions(db,environment);
+  const rows=db.prepare(`SELECT id,at,deposit,withdraw,remark,state,target_id AS targetId,memo,EXISTS(SELECT 1 FROM ${postingTable} p WHERE p.bank_id=bank_review.id AND p.cancelled_at IS NULL) AS posted,'****'||substr(account,-4) AS account FROM bank_review WHERE environment='${environment}' ORDER BY at DESC,id DESC`).all() as {id:number}[];
+  res.json({environment,configured:configured(),rows:rows.map(row=>({...row,customerSuggestion:suggestions.get(row.id)??null}))});
  }));
  if(environment==='test')app.post(prefix+'/import',owner,safe((req,res)=>{
   const row=z.object({ref:z.string().min(1).max(100),account:z.string().regex(/^\d{5,30}$/),at:z.string().regex(/^\d{14}$/),deposit:z.number().int().nonnegative().safe(),withdraw:z.number().int().nonnegative().safe(),remark:z.string().max(1000),currency:z.literal('KRW')});

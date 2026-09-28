@@ -6,6 +6,9 @@
 .bank-quick-options summary { cursor: pointer; color: #425674; padding: 3px 0; }
 .bank-quick-options select { display: block; max-width: 100%; margin: 6px 0; border: 1px solid #d8dce1; padding: 6px; border-radius: 4px; background: white; }
 .bank-action-error { color: #9d342b; margin-top: 8px; overflow-wrap: anywhere; }
+.bank-customer-hint { margin: 6px 0; font-size: 12px; line-height: 1.6; color: #3c6046; overflow-wrap: anywhere; }
+.bank-customer-hint span { color: #68717a; }
+.bank-customer-hint.is-ambiguous { color: #8b5129; }
 .bank-review-page :is(button, select, input, summary):focus-visible { outline: 2px solid #536b80; outline-offset: 2px; }
 
 /* One transaction tree keeps form state, focus and Today links intact at every width. */

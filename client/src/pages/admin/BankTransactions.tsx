@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { BankCustomerSuggestion } from '@shared/bank-customer-suggestion';
 import BankQuickActions from './BankQuickActions';
 import './bank-transactions.css';
 
@@ -12,6 +13,7 @@ export const bankStateLabels: Record<string, string> = {
 export type BankRow = {
   id: number; at: string; deposit: number; withdraw: number; remark: string;
   state: string; targetId: number | null; memo: string; account: string; posted: number;
+  customerSuggestion?: BankCustomerSuggestion | null;
 };
 
 type Props = {
