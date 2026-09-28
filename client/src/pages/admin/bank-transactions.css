@@ -1,0 +1,72 @@
+.bank-transactions-wrap { overflow-x: auto; }
+.bank-mobile-label, .bank-mobile-unit, .bank-row-metadata { display: none; }
+.bank-row-remark { overflow-wrap: anywhere; }
+.bank-quick-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 14px; }
+.bank-quick-options { min-width: 0; max-width: 100%; }
+.bank-quick-options summary { cursor: pointer; color: #425674; padding: 3px 0; }
+.bank-quick-options select { display: block; max-width: 100%; margin: 6px 0; border: 1px solid #d8dce1; padding: 6px; border-radius: 4px; background: white; }
+.bank-action-error { color: #9d342b; margin-top: 8px; overflow-wrap: anywhere; }
+.bank-review-page :is(button, select, input, summary):focus-visible { outline: 2px solid #536b80; outline-offset: 2px; }
+
+/* One transaction tree keeps form state, focus and Today links intact at every width. */
+@media (max-width: 767px) {
+  .bank-review-page .erp-page-heading { align-items: flex-start; }
+  .bank-review-page .erp-page-heading > details { max-width: 52%; font-size: 12px; padding-top: 10px; }
+  .bank-review-page .bank-sync-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0 10px; }
+  .bank-sync-controls label { min-width: 0; font-size: 12px; color: #606873; }
+  .bank-sync-controls input { display: block; width: 100%; min-width: 0; margin-top: 5px; }
+  .bank-sync-controls > button { grid-column: 1 / -1; background: white; }
+  .bank-review-page .bank-list-filters { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 8px; align-items: center; }
+  .bank-list-filters > :is(input, select) { width: 100%; min-width: 0; }
+  .bank-list-filters > span { grid-column: 1 / -1; color: #606873; font-size: 12px; line-height: 1.7; }
+  .bank-review-page :is(button, summary) { min-height: 44px; }
+  .bank-review-page :is(input:not([type=checkbox]):not([type=radio]), select, textarea) {
+    min-width: 0; max-width: 100%; min-height: 44px; font-size: 16px;
+    border: 1px solid #d8dce1; border-radius: 5px; background: white; padding: 8px;
+  }
+  .bank-review-page summary { align-content: center; }
+  .bank-transactions-wrap { overflow: visible; }
+  .bank-transactions { display: block; }
+  .bank-transactions > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .bank-transactions .bank-transaction-group { display: block; background: white; border: 1px solid #dfe2e5; border-radius: 10px; margin: 12px 0; padding: 14px; }
+  .bank-transactions .bank-transaction-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 10px; align-items: center; }
+  .bank-transactions .bank-transaction-row > td { display: block; padding: 0; border: 0; min-width: 0; }
+  .bank-transactions .bank-row-date { grid-area: 1 / 1; font-size: 11px; color: #68717a; white-space: normal; }
+  .bank-transactions .bank-row-status { grid-area: 1 / 2; text-align: right; white-space: normal; font-size: 11px; }
+  .bank-state-badge { display: inline-block; background: #eef0f2; color: #4c5762; border-radius: 4px; padding: 4px 6px; }
+  .bank-state-badge.is-pending { background: #fff3e8; color: #8b5129; }
+  .bank-state-badge.is-posted { background: #edf4ee; color: #3c6046; }
+  .bank-transactions .bank-row-remark { grid-area: 2 / 1; font-size: 15px; font-weight: 600; line-height: 1.6; }
+  .bank-transactions .bank-row-amount { grid-area: 2 / 2; text-align: right; font-size: 20px; font-weight: 600; overflow-wrap: anywhere; }
+  .bank-row-amount.bank-deposit { color: #285381; }
+  .bank-row-amount.bank-withdraw { color: #914a37; }
+  .bank-mobile-label { display: block; font-size: 11px; font-weight: 400; margin-bottom: 2px; }
+  .bank-mobile-unit { display: inline; font-size: 12px; font-weight: 400; margin-left: 2px; }
+  .bank-transactions .bank-transaction-row > .bank-zero-amount, .bank-transactions .bank-desktop-account { display: none; }
+  .bank-transactions .bank-row-actions { grid-area: 3 / 1 / auto / -1; padding-top: 12px !important; border-top: 1px solid #eceef0 !important; }
+  .bank-transactions .bank-both-directions .bank-row-remark { grid-column: 1 / -1; }
+  .bank-transactions .bank-both-directions .bank-deposit { grid-area: 3 / 1; text-align: left; }
+  .bank-transactions .bank-both-directions .bank-withdraw { grid-area: 3 / 2; }
+  .bank-transactions .bank-both-directions .bank-row-actions { grid-row: 4; }
+  .bank-transactions .bank-quick-actions { min-width: 0; max-width: none; width: 100%; font-size: 12px; }
+  .bank-transactions .bank-quick-line { gap: 8px; align-items: stretch; }
+  .bank-transactions .bank-quick-line select { flex: 1; width: 0; }
+  .bank-transactions .bank-quick-primary { padding: 8px 12px; min-height: 44px; }
+  .bank-quick-tools > .bank-quick-options[open] { flex-basis: 100%; }
+  .bank-quick-options[open] > select { width: 100%; }
+  .bank-row-metadata { display: block; font-size: 12px; color: #68717a; border-top: 1px solid #eceef0; }
+  .bank-row-metadata summary { cursor: pointer; }
+  .bank-row-metadata dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; padding: 2px 0 12px; }
+  .bank-row-metadata dd { color: #343d47; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bank-transactions .bank-detail-row, .bank-transactions .bank-inline-detail { display: block; }
+  .bank-transactions .bank-inline-detail { padding: 14px 0 0; margin-top: 12px; background: transparent; border-bottom: 0; border-top: 1px solid #dfe2e5; }
+  .bank-transactions .bank-inline-detail > div { padding: 0; border: 0; border-radius: 0; max-width: 100%; background: transparent; }
+  .bank-inline-detail :is(h2, p, label) { overflow-wrap: anywhere; }
+  .bank-inline-detail :is(input:not([type=checkbox]), select, textarea) { width: 100%; }
+  .bank-inline-detail button { white-space: normal; overflow-wrap: anywhere; }
+  .bank-inline-detail .float-right { float: none; display: block; margin: 0 0 12px auto; }
+  .bank-inline-detail .flex { flex-wrap: wrap; }
+  .bank-inline-detail label { max-width: 100%; }
+  .bank-inline-detail .ml-2 { margin-left: 0; margin-top: 8px; }
+  .bank-inline-detail input[type=checkbox] { min-width: 18px; min-height: 18px; vertical-align: middle; }
+}
