@@ -1,3 +1,4 @@
+import { registerBankBulkPayments } from './bank-bulk-payments';
 import type { BankEnvironment } from "./bank-connection";
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
@@ -20,14 +21,13 @@ export function registerBankPosting(app:Express,db:Database.Database,owner:Reque
   const id=idSchema.parse(req.params.id);get(id);
   res.json({environment,history:db.prepare(`SELECT * FROM ${table} WHERE bank_id=? ORDER BY id DESC`).all(id),categories:db.prepare("SELECT name,sector FROM fixed_cost_items WHERE active=1 AND cost_type IN ('cogs','sga') ORDER BY sort_order,id").all()});
  }));
- app.post(prefix+'/:id/posting',owner,safe((req,res)=>{
-  const id=idSchema.parse(req.params.id),p=request.parse(req.body);let postingId:number|bigint=0;
-  db.transaction(()=>{
+ const postInsideTransaction=(id:number,p:z.infer<typeof request>,actor:number)=>{
+  let postingId:number|bigint=0;
    const row=get(id);
    if(environment==='production'&&!p.confirmProduction)throw new Error('운영 장부 반영 확인이 필요합니다.');
    const existing=db.prepare(`SELECT * FROM ${table} WHERE bank_id=? AND cancelled_at IS NULL`).get(id) as any;
    if(existing){
-    if(existing.kind===p.kind&&existing.customer_id===(p.customerId??null)&&existing.category===(p.category??null)&&existing.sector===(p.sector??null)&&existing.memo===p.memo){postingId=existing.id;return;}
+    if(existing.kind===p.kind&&existing.customer_id===(p.customerId??null)&&existing.category===(p.category??null)&&existing.sector===(p.sector??null)&&existing.memo===p.memo){return Number(existing.id);}
     throw new Error('이미 반영한 내역입니다. 취소 후 다시 처리해 주세요.');
    }
    if(['expense','payment','card','transfer','loan','settlement','online','delivery','other'].includes(row.state))throw new Error('이미 연결했거나 비용·수금으로 바로 등록할 수 없는 분류입니다.');
@@ -44,15 +44,21 @@ export function registerBankPosting(app:Express,db:Database.Database,owner:Reque
     const duplicate=p.kind==='expense'?db.prepare('SELECT id FROM expenses WHERE expense_date=? AND amount=? AND category=? AND sector=?').get(day(row),amount,p.category,p.sector):db.prepare('SELECT id FROM payments WHERE paid_at=? AND amount=? AND customer_id=?').get(day(row),amount,p.customerId);
     if(duplicate)throw new Error('같은 날짜·금액의 장부 기록이 있습니다. 기존 기록 연결을 확인해 주세요.');
    }
-   if(p.kind==='payment')db.prepare("UPDATE bank_review SET state='customer',target_id=?,updated_by=?,updated_at=? WHERE id=?").run(p.customerId,req.session.userId,Date.now(),id);
-   const r=db.prepare(`INSERT INTO ${table}(bank_id,kind,amount,posted_date,customer_id,category,sector,memo,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(id,p.kind,amount,day(row),p.customerId??null,p.category??null,p.sector??null,p.memo,req.session.userId,Date.now());postingId=r.lastInsertRowid;
+   if(p.kind==='payment')db.prepare("UPDATE bank_review SET state='customer',target_id=?,updated_by=?,updated_at=? WHERE id=?").run(p.customerId,actor,Date.now(),id);
+   const r=db.prepare(`INSERT INTO ${table}(bank_id,kind,amount,posted_date,customer_id,category,sector,memo,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(id,p.kind,amount,day(row),p.customerId??null,p.category??null,p.sector??null,p.memo,actor,Date.now());postingId=r.lastInsertRowid;
    if(environment==='production'){
     const ledger=p.kind==='expense'?db.prepare('INSERT INTO expenses(expense_date,category,amount,memo,sector,created_at) VALUES(?,?,?,?,?,?)').run(day(row),p.category,amount,p.memo,p.sector,Date.now()):db.prepare('INSERT INTO payments(customer_id,amount,paid_at,method,memo,created_at) VALUES(?,?,?,?,?,?)').run(p.customerId,amount,day(row),'transfer',p.memo,Date.now());
     db.prepare(`UPDATE ${table} SET ledger_id=? WHERE id=?`).run(ledger.lastInsertRowid,postingId);
    }
 
-   db.prepare(`INSERT INTO ${audit}(bank_id,action,actor,at,detail) VALUES(?,?,?,?,?)`).run(id,'post',req.session.userId,Date.now(),JSON.stringify({postingId:Number(postingId),kind:p.kind,amount}));
-  })();res.json({id:Number(postingId),environment,message:environment==='test'?'테스트 장부에 반영했습니다.':'운영 장부에 반영했습니다.'});
+   db.prepare(`INSERT INTO ${audit}(bank_id,action,actor,at,detail) VALUES(?,?,?,?,?)`).run(id,'post',actor,Date.now(),JSON.stringify({postingId:Number(postingId),kind:p.kind,amount}));
+  return Number(postingId);
+ };
+ registerBankBulkPayments(app,db,owner,environment,prefix,postInsideTransaction);
+ app.post(prefix+'/:id/posting',owner,safe((req,res)=>{
+  const id=idSchema.parse(req.params.id),p=request.parse(req.body);
+  const postingId=db.transaction(()=>postInsideTransaction(id,p,req.session.userId))();
+  res.json({id:postingId,environment,message:environment==='test'?'테스트 장부에 반영했습니다.':'운영 장부에 반영했습니다.'});
  }));
  app.post(prefix+'/:id/posting/:postingId/cancel',owner,safe((req,res)=>{
   const id=idSchema.parse(req.params.id),postingId=idSchema.parse(req.params.postingId),p=z.object({reason:z.string().trim().min(1).max(500)}).parse(req.body);
