@@ -440,7 +440,13 @@ export type Quote = typeof quotes.$inferSelect;
 // listPrice = 정가(기준가), prices = 월 사용량 구간별 제안가
 export type QuoteBean = { name: string; listPrice: string; prices: string[] };
 // 별첨(원두 정보) 항목 — 상품 상세페이지에서 가져옴
-export type QuoteAppendix = { name: string; composition: string; flavor: string; roast: string; recipe: string };
+export type QuoteAppendix = {
+  name: string; composition: string; flavor: string; roast: string; recipe: string;
+  // Optional so existing quote snapshots remain valid. New snapshots retain the product description.
+  productId?: number;
+  description?: string;
+  origin?: string;
+};
 // 메뉴 컨설팅 항목 — 항목별 금액, 체크 시 합산
 export type QuoteConsulting = { label: string; desc: string; price: number; checked: boolean };
 // 파싱된 견적서(뷰용)
@@ -487,6 +493,9 @@ export const insertQuoteSchema = z.object({
   consultingFee: z.string().optional().default(""),
   appendix: z.array(z.object({
     name: z.string(),
+    productId: z.number().int().positive().optional(),
+    description: z.string().optional(),
+    origin: z.string().optional(),
     composition: z.string().optional().default(""),
     flavor: z.string().optional().default(""),
     roast: z.string().optional().default(""),

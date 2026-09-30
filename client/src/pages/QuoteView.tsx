@@ -19,7 +19,8 @@ export default function QuoteView() {
     retry: false,
   });
 
-  function print() {
+  async function print() {
+    await document.fonts.ready;
     const prev = document.title;
     const name = (data?.customerName || "견적서").replace(/[\\/:*?"<>|]/g, "").trim();
     document.title = `견적서_${name || "니트커피"}`;
@@ -30,7 +31,7 @@ export default function QuoteView() {
   }
 
   return (
-    <div className="qv-wrap" style={{ minHeight: "100vh", background: "#e6e3db", padding: "28px 16px" }}>
+    <div className="qv-wrap" style={{ minHeight: "100vh", background: "#f1f2ef", padding: "28px 16px" }}>
       <style>{`@media print{
         html,body{height:auto!important;background:#fff!important}
         .qv-wrap{min-height:0!important;padding:0!important;margin:0!important;background:#fff!important}
@@ -42,12 +43,12 @@ export default function QuoteView() {
           <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#9a978f" }} />
         </div>
       ) : isError || !data ? (
-        <div style={{ maxWidth: 620, margin: "60px auto", textAlign: "center", color: "#6f6c5f", fontSize: 14 }}>
+        <div style={{ maxWidth: 736, margin: "60px auto", textAlign: "center", color: "#6f6c5f", fontSize: 14 }}>
           견적서를 찾을 수 없습니다. 링크를 다시 확인해 주세요.
         </div>
       ) : (
         <>
-          <div className="qv-noprint" style={{ maxWidth: 620, margin: "0 auto 14px", display: "flex", justifyContent: "flex-end" }}>
+          <div className="qv-noprint" style={{ maxWidth: 736, margin: "0 auto 14px", display: "flex", justifyContent: "flex-end" }}>
             <button
               onClick={print}
               data-testid="button-print-quote"

@@ -11,7 +11,7 @@ import { QuoteDocument } from "@/components/QuoteDocument";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { QuoteView, QuoteBean, QuoteAppendix, QuoteConsulting, Product } from "@shared/schema";
-import { productToAppendix, stripWeight, beanRank } from "@/lib/quoteAppendix";
+import { productToAppendix, stripWeight, beanRank, appendixMatchesProduct } from "@/lib/quoteAppendix";
 import { Plus, Trash2, X, ExternalLink, Copy, Pencil, FileText } from "lucide-react";
 
 function todayStr(): string {
@@ -124,8 +124,7 @@ export default function AdminQuotes() {
   const consultingTotal = consulting.filter((c) => c.checked).reduce((s, c) => s + (Number(c.price) || 0), 0);
   // 별첨(원두 정보) — 상품 상세페이지에서 가져옴. 상품 선택 시 스냅샷 추가/제거.
   function toggleAppendixProduct(p: Product) {
-    const name = stripWeight(p.name);
-    setAppendix((a) => (a.some((x) => x.name === name) ? a.filter((x) => x.name !== name) : [...a, productToAppendix(p)]));
+    setAppendix((a) => (a.some((x) => appendixMatchesProduct(x, p)) ? a.filter((x) => !appendixMatchesProduct(x, p)) : [...a, productToAppendix(p)]));
   }
   function removeAppendix(i: number) {
     setAppendix((a) => a.filter((_, idx) => idx !== i));
@@ -330,11 +329,11 @@ export default function AdminQuotes() {
           {/* 별첨 · 원두 정보 — 상품 상세페이지에서 자동 */}
           <div className="mt-6">
             <Label className="text-xs">별첨 · 원두 정보 (상품을 선택하면 상세페이지 정보를 가져옵니다)</Label>
-            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">블렌드 구성 · 향미 노트 · 로스팅 레벨 · 권장 레시피를 상품 관리의 상세페이지에서 그대로 불러옵니다. 내용을 바꾸려면 상품 관리에서 수정하세요.</p>
+            <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">원두 설명 · 블렌드 구성 · 향미 노트 · 로스팅 레벨을 상품 관리의 상세페이지에서 가져옵니다. 권장 레시피는 견적서에 표시하지 않습니다. 내용을 바꾸려면 상품 관리에서 수정하세요.</p>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               {beanProducts.map((p) => {
                 const name = stripWeight(p.name);
-                const checked = appendix.some((a) => a.name === name);
+                const checked = appendix.some((a) => appendixMatchesProduct(a, p));
                 return (
                   <label key={p.id} className="flex cursor-pointer items-center gap-2 text-sm" data-testid={`appendix-prod-${p.id}`}>
                     <input type="checkbox" checked={checked} onChange={() => toggleAppendixProduct(p)} className="h-4 w-4 accent-[#6b6a45]" />
@@ -345,6 +344,12 @@ export default function AdminQuotes() {
             </div>
             {appendix.length > 0 && (
               <div className="mt-3 space-y-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => {
+                  setAppendix((items) => items.map((a) => {
+                    const product = beanProducts.find((p) => appendixMatchesProduct(a, p));
+                    return product ? productToAppendix(product) : a;
+                  }));
+                }}>선택한 원두 정보 새로 불러오기</Button>
                 {appendix.map((a, i) => (
                   <div key={i} className="rounded-md border border-border p-3 text-xs" data-testid={`appendix-${i}`}>
                     <div className="mb-1 flex items-center gap-2">
@@ -355,8 +360,9 @@ export default function AdminQuotes() {
                       {a.composition && <div><span className="text-foreground">블렌드 구성</span> · {a.composition}</div>}
                       {a.flavor && <div><span className="text-foreground">향미 노트</span> · {a.flavor}</div>}
                       {a.roast && <div><span className="text-foreground">로스팅 레벨</span> · {a.roast}</div>}
-                      {a.recipe && <div><span className="text-foreground">권장 레시피</span> · {a.recipe}</div>}
-                      {!a.composition && !a.flavor && !a.roast && !a.recipe && <div className="italic">상세페이지 정보가 없습니다. 상품 관리에서 입력하세요.</div>}
+                      {a.description && <div>{a.description}</div>}
+                      {a.origin && <div className="whitespace-pre-line">{a.origin}</div>}
+                      {!a.composition && !a.flavor && !a.roast && !a.description && !a.origin && <div className="italic">상세페이지 정보가 없습니다. 상품 관리에서 입력하세요.</div>}
                     </div>
                   </div>
                 ))}
