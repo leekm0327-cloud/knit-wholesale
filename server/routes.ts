@@ -1,3 +1,6 @@
+import { purchaseDuplicateCheck } from './purchase-duplicates';
+import { registerSettlements } from './settlement-review';
+import { registerPurchaseLinks, applyPurchasePlan, syncManagedPurchase, purchaseLocked } from "./purchase-link";
 import { registerBankReview } from "./bank-review";
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
@@ -274,6 +277,8 @@ export async function registerRoutes(
   }
 
   registerBankReview(app, sqlite, requireOwner);
+  registerPurchaseLinks(app, sqlite, requireAdmin);
+  registerSettlements(app, sqlite, requireOwner);
 
   // actor 정보 추출 헬퍼
   async function getActor(req: Request) {
@@ -1579,7 +1584,7 @@ export async function registerRoutes(
           sourceCustomer = JSON.parse(o.customerSnapshot)?.businessName ?? "";
         } catch {}
       }
-      return { ...p, sourceCustomer, sourceOrderNo };
+      return { ...p, sourceCustomer, sourceOrderNo, locked: purchaseLocked(sqlite, p.id) };
     });
     res.json(enriched);
   });
@@ -1612,6 +1617,9 @@ export async function registerRoutes(
       amount: Math.round(it.qty * it.unitPrice),
     }));
     const totalAmount = items.reduce((s, i) => s + i.amount, 0);
+    const duplicate = purchaseDuplicateCheck(sqlite, {...parsed.data, items});
+    if (duplicate.candidates.length && req.body.allowDuplicateToken !== duplicate.token)
+      return res.status(409).json({ message: "같은 날·거래처·품목·수량의 발주가 있습니다.", duplicate });
     const purchase = await storage.createPurchase({
       supplierId: parsed.data.supplierId,
       purchaseDate: parsed.data.purchaseDate,
@@ -1647,7 +1655,7 @@ export async function registerRoutes(
       ecountSentAt: number | null; items: PurchaseItem[];
     }> = [];
     for (const p of all) {
-      if (p.purchaseDate < from || p.purchaseDate > to) continue;
+      if (p.purchaseDate < from || p.purchaseDate > to || purchaseLocked(sqlite, p.id)) continue;
       let items: PurchaseItem[] = [];
       try { items = JSON.parse(p.items); } catch { continue; }
       // 상품 ID로 맞추되, 손으로 넣어 ID가 없는 줄은 품목명으로도 찾는다
@@ -1714,7 +1722,7 @@ export async function registerRoutes(
     let changed = 0;
     for (const row of r.rows) {
       const cur = await storage.getPurchase(row.id);
-      if (!cur) continue;
+      if (!cur || purchaseLocked(sqlite, row.id)) continue;
       await storage.updatePurchase(row.id, {
         supplierId: cur.supplierId,
         purchaseDate: cur.purchaseDate,
@@ -1756,6 +1764,7 @@ export async function registerRoutes(
   app.patch("/api/admin/purchases/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
+    if (purchaseLocked(sqlite, id)) return res.status(409).json({ message: "확정된 발주는 직접 수정할 수 없습니다. 정산 조정 내역으로 처리해 주세요." });
     const existing = await storage.getPurchase(id);
     if (!existing) return res.status(404).json({ message: "발주 내역을 찾을 수 없습니다." });
     const parsed = insertPurchaseSchema.safeParse(req.body);
@@ -1772,6 +1781,7 @@ export async function registerRoutes(
       amount: Math.round(it.qty * it.unitPrice),
     }));
     const totalAmount = items.reduce((s, i) => s + i.amount, 0);
+    if (purchaseLocked(sqlite, id)) return res.status(409).json({ message: "확정된 발주는 수정할 수 없습니다." });
     const updated = await storage.updatePurchase(id, {
       supplierId: parsed.data.supplierId,
       purchaseDate: parsed.data.purchaseDate,
@@ -1795,9 +1805,12 @@ export async function registerRoutes(
 
   app.delete("/api/admin/purchases/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
+    if (purchaseLocked(sqlite, id)) return res.status(409).json({ message: "확정된 발주는 삭제할 수 없습니다." });
     const purchase = await storage.getPurchase(id);
     if (!purchase) return res.status(404).json({ message: "발주 내역을 찾을 수 없습니다." });
     const actor = await getActor(req);
+    if (purchaseLocked(sqlite, id)) return res.status(409).json({ message: "확정된 발주는 삭제할 수 없습니다." });
+    sqlite.prepare("DELETE FROM purchase_links WHERE purchase_id=?").run(id);
     await storage.deletePurchase(id);
     await storage.logActivity({
       ...actor,
@@ -2567,6 +2580,13 @@ export async function registerRoutes(
     const updated = await storage.updateOrder(Number(req.params.id), patch);
     if (!updated) return res.status(404).json({ message: "주문 없음" });
 
+    if (itemsChanged || patch.ecountDate !== undefined || patch.status === "done") {
+      try { syncManagedPurchase(sqlite, updated.id, req.session.userId!); }
+      catch (e: any) {
+        await storage.createNotification({ type: "purchase", title: "주문·발주 확인 필요", body: `${updated.orderNo}: ${e.message}`, link: `/admin/orders/${updated.id}` });
+      }
+    }
+
     // items 변경 시 활동 로그 + 거래처 알림 메일 (#11)
     if (itemsChanged) {
       const actor = await getActor(req);
@@ -2576,6 +2596,7 @@ export async function registerRoutes(
         targetType: "order",
         targetId: String(updated.id),
         summary: `관리자가 주문 #${updated.orderNo} 수정`,
+        metadata: { beforeItems: JSON.parse(order.items), afterItems: JSON.parse(updated.items), beforeDate: order.ecountDate, afterDate: updated.ecountDate },
       });
       const cust = await storage.getCustomer(updated.customerId);
       if (cust) {
@@ -2634,97 +2655,13 @@ export async function registerRoutes(
           }).catch((e) => console.warn("[alimtalk] 처리완료 알림 실패:", e?.message ?? e));
         }
 
-        // A-3: pending → done 전환 시 클라리멘토(대표 공급처)에 원두 자동발주 등록
-        //  - skipAutoPurchase=true 이면 생략, 이미 자동발주된 주문(autoPurchaseId 존재)이면 재생성 안 함
-        const skipAutoPurchase = req.body.skipAutoPurchase === true;
-        //  손상·반품 차감(음수 라인)이 섞인 주문은 공장에 다시 발주할 일이 아니므로 자동발주를 건너뛴다.
-        //  공급처 쪽 정산이 필요하면 발주 관리에서 따로 처리한다.
-        let hasNegativeLine = false;
-        try {
-          hasNegativeLine = (JSON.parse(updated.items) as any[]).some((it) => Number(it.qty) < 0);
-        } catch { /* noop */ }
-        if (hasNegativeLine) {
-          console.log(`[auto-purchase] ${updated.orderNo} 차감 라인이 있어 자동발주를 건너뜁니다.`);
-        }
-        if (!skipAutoPurchase && !hasNegativeLine && order.status === "pending" && !updated.autoPurchaseId) {
+        if (req.body.skipAutoPurchase !== true && order.status === "pending" && !updated.autoPurchaseId) {
           try {
-            const supplier = await storage.getPrimarySupplier();
-            if (supplier) {
-              let orderItems: any[] = [];
-              try { orderItems = JSON.parse(updated.items); } catch { /* noop */ }
-              const autoBeanKeys = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
-              if (autoBeanKeys.size === 0) ["blend", "decaf", "single"].forEach((k) => autoBeanKeys.add(k));
-              const beanItems = orderItems.filter((it) => autoBeanKeys.has(it.category));
-              if (beanItems.length > 0) {
-                const purchaseItems: PurchaseItem[] = [];
-                const zeroPricedNames: string[] = [];
-                for (const it of beanItems) {
-                  const productId = typeof it.productId === "number" ? it.productId : null;
-                  const name = it.productName ?? it.name ?? "";
-                  // 단가: 최근 매입가 → 없으면 상품 매입원가(costPrice) 폴백.
-                  // 둘 다 없으면 0원 발주가 되어 '매출만 있고 원가가 없는' 상태가 되므로 따로 알린다.
-                  let unitPrice = await storage.lastPurchaseUnitPrice(supplier.id, { productId, name });
-                  if (unitPrice == null && productId != null) {
-                    const prod = await storage.getProduct(productId);
-                    if (prod && prod.costPrice > 0) unitPrice = prod.costPrice;
-                  }
-                  if (unitPrice == null || unitPrice <= 0) {
-                    unitPrice = 0;
-                    zeroPricedNames.push(name || `상품#${productId ?? "?"}`);
-                  }
-                  const qty = it.qty;
-                  purchaseItems.push({
-                    productId,
-                    name,
-                    qty,
-                    unitPrice,
-                    amount: Math.round(qty * unitPrice),
-                  });
-                }
-                const totalAmount = purchaseItems.reduce((s, i) => s + i.amount, 0);
-                // 발주일은 서버 로컬(배포 환경 UTC)이 아니라 한국시간(KST) 기준이어야 함.
-                // UTC로 계산하면 KST 00~09시 주문의 원가가 전날(=전월)로 잡혀 매출과 다른 달에 귀속된다.
-                const purchaseDate = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-                // 매장 내부 계정의 주문이면 발주 부문을 'store'(매장 매출원가)로 태그
-                const orderCust = await storage.getCustomer(updated.customerId);
-                // 매장 여부는 주문 스냅샷을 우선 사용 (거래처가 삭제되었거나 이후 변경되어도 일관)
-                const snap = (updated as any).isStoreOrder;
-                const isStoreOrd = typeof snap === "number" && snap >= 0 ? snap === 1 : !!(orderCust as any)?.isStore;
-                const purchaseSegment = isStoreOrd ? "store" : "wholesale";
-                const purchase = await storage.createPurchase({
-                  supplierId: supplier.id,
-                  purchaseDate,
-                  items: purchaseItems,
-                  totalAmount,
-                  memo: `거래처주문 ${updated.orderNo} 자동발주`,
-                  segment: purchaseSegment,
-                  customerId: updated.customerId ?? null,
-                  customerName: orderCust?.businessName ?? "",
-                });
-                await storage.updateOrder(updated.id, { autoPurchaseId: purchase.id });
-                // 단가를 못 찾아 0원으로 잡힌 품목이 있으면 알림센터로 통지 (매출만 있고 원가가 0인 상태 방지)
-                if (zeroPricedNames.length > 0) {
-                  try {
-                    await storage.createNotification({
-                      type: "purchase",
-                      title: "자동발주 단가 확인 필요",
-                      body: `${updated.orderNo} 자동발주에 매입 단가를 찾지 못한 품목이 있습니다: ${zeroPricedNames.join(", ")}. 발주 관리에서 단가를 입력해 주세요.`,
-                      link: `/admin/purchases`,
-                    });
-                  } catch { /* 알림 실패는 주문 처리에 영향 없음 */ }
-                }
-                const actor = await getActor(req);
-                await storage.logActivity({
-                  ...actor,
-                  action: "purchase.auto_create",
-                  targetType: "purchase",
-                  targetId: String(purchase.id),
-                  summary: `주문 #${updated.orderNo} 처리완료 → ${supplier.name} 자동발주 ${purchase.purchaseNo}`,
-                });
-              }
-            }
-          } catch (e) {
-            console.error("[auto-purchase] 자동발주 실패:", e);
+            const plan = applyPurchasePlan(sqlite, updated.id, req.session.userId!, undefined, true);
+            updated.autoPurchaseId = plan.purchaseId ?? null;
+          } catch (e: any) {
+            await storage.createNotification({ type: "purchase", title: "발주 확인 필요",
+              body: `${updated.orderNo}: ${e.message}`, link: `/admin/orders/${updated.id}` });
           }
         }
       }
@@ -2748,16 +2685,20 @@ export async function registerRoutes(
     });
     if (!updated) return res.status(404).json({ message: "주문 없음" });
 
-    // 발생주의 연동: 이 주문으로 자동 생성된 공장 발주가 있으면 함께 삭제한다.
+    // 확정 발주는 주문 취소와 별도로 정산 조정한다.
+    // 발생주의 연동: 미확정 자동 발주만 함께 삭제한다.
     //  → 발주가 사라지면 대시보드의 홀세일 지출(공장 매입)에서도 자동으로 빠진다.
     let removedPurchaseNo = "";
     if (order.autoPurchaseId) {
-      try {
-        const linked = await storage.getPurchase(order.autoPurchaseId);
-        removedPurchaseNo = linked?.purchaseNo ?? "";
-        await storage.deletePurchase(order.autoPurchaseId);
-      } catch { /* 이미 삭제된 발주면 무시 */ }
-      await storage.updateOrder(id, { autoPurchaseId: null });
+      sqlite.transaction(() => {
+        if (purchaseLocked(sqlite, order.autoPurchaseId!)) return;
+        const linked = sqlite.prepare("SELECT * FROM purchases WHERE id=?").get(order.autoPurchaseId!) as any;
+        removedPurchaseNo = linked?.purchase_no ?? "";
+        if (linked) sqlite.prepare("INSERT INTO purchase_link_history(order_id,purchase_id,before_json,after_json,actor_id,created_at) VALUES(?,?,?,?,?,?)").run(order.id,linked.id,JSON.stringify(linked),JSON.stringify({cancelled:true}),req.session.userId!,Date.now());
+        sqlite.prepare("DELETE FROM purchase_links WHERE order_id=?").run(order.id);
+        sqlite.prepare("DELETE FROM purchases WHERE id=?").run(order.autoPurchaseId!);
+        sqlite.prepare("UPDATE orders SET auto_purchase_id=NULL WHERE id=?").run(id);
+      })();
     }
 
     const actor = await getActor(req);

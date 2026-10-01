@@ -1,3 +1,4 @@
+import { OrderPurchaseCheck } from "@/components/OrderPurchaseCheck";
 import {OrderProgressSummary} from '@/components/OrderProgressSummary';
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -153,6 +154,7 @@ export default function AdminOrderDetail() {
         ) : (
           <>
             <OrderProgressSummary key={order.id} order={order}/>
+            <OrderPurchaseCheck orderId={order.id} version={JSON.stringify([order.items,(order as any).ecountDate,order.status])}/>
             {/* 관리 패널 */}
             <Card id="order-management" tabIndex={-1} className="no-print mb-6 scroll-mt-4 p-5">
               <div className="mb-4 flex items-center justify-between">

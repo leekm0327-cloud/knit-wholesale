@@ -1,3 +1,4 @@
+import AdminSettlementReview from "@/pages/admin/AdminSettlementReview";
 import {AppUpdateNotice} from '@/components/AppUpdateNotice';
 import TaxInvoices from '@/pages/admin/TaxInvoices';
 import BankReview from "@/pages/admin/BankReview";
@@ -231,6 +232,7 @@ function AppRouter() {
       <Route path="/admin/suppliers/:id/ledger" component={AdminSupplierLedger} />
       <Route path="/admin/suppliers" component={AdminSuppliers} />
       <Route path="/admin/purchases" component={AdminPurchases} />
+      <Route path="/admin/settlement-review" component={AdminSettlementReview} />
       <Route path="/admin/supplier-payments" component={AdminSupplierPayments} />
       <Route path="/admin/supplier-balances" component={AdminSupplierBalances} />
       <Route path="/admin/dashboard-pnl" component={AdminDashboardPnl} />

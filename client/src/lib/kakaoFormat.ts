@@ -38,6 +38,8 @@ export function orderToKakaoText(order: Order): string {
     items = [];
   }
 
+  const returns = items.filter(it => it.qty < 0);
+  items = items.filter(it => it.qty > 0);
   const businessName = snap.businessName || "(상호명 없음)";
   const address = snap.defaultAddress || "-";
   const managerName = snap.managerName || "-";
@@ -45,6 +47,8 @@ export function orderToKakaoText(order: Order): string {
 
   const lines: string[] = [];
   lines.push(`1. ${businessName}`);
+  lines.push(`[발주번호 ${order.orderNo}]`);
+  lines.push(`현재 전체 수량 — 같은 발주번호의 이전 내용을 대체합니다.`);
   lines.push(`- 주소: ${address}`);
   lines.push(`- 연락처: ${managerName} / ${phone}`);
 
@@ -59,5 +63,6 @@ export function orderToKakaoText(order: Order): string {
     });
   }
 
+  if (returns.length) lines.push(`- 반품·차감 확인 (발주 수량 제외): ${returns.map(it=>`${it.name} ${it.qty}`).join(", ")}`);
   return lines.join("\n");
 }

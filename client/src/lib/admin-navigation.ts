@@ -93,6 +93,7 @@ export const adminNavigation = [
     "owner": true,
     "group": "finance"
   },
+ {path:"/admin/settlement-review",label:"정산 대조",owner:true,group:"finance"},
   {
     "path": "/admin/bank-review",
     "label": "통장 내역",

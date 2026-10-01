@@ -167,13 +167,16 @@ export default function AdminPurchases() {
         });
         toast({ title: "발주가 수정되었습니다." });
       } else {
-        await apiRequest("POST", "/api/admin/purchases", {
-          supplierId: Number(supplierId),
-          purchaseDate,
-          items,
-          memo,
-          ...customerPayload,
-        });
+        const payload = {supplierId: Number(supplierId), purchaseDate, items, memo, ...customerPayload};
+        const send = (extra = {}) => fetch("/api/admin/purchases", {method:"POST", credentials:"include", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...payload,...extra})});
+        let response = await send();
+        let result = await response.json();
+        if (response.status === 409 && result.duplicate) {
+          if (!window.confirm(`${result.duplicate.candidates.map((p:any)=>p.purchaseNo).join(", ")}에 같은 수량이 있습니다. 별도로 실제 발주한 건이 맞아 추가할까요?`)) return;
+          response = await send({allowDuplicateToken:result.duplicate.token});
+          result = await response.json();
+        }
+        if (!response.ok) throw new Error(result.message || "발주 등록 실패");
         toast({ title: "발주가 등록되었습니다." });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/admin/purchases"] });
@@ -444,10 +447,10 @@ export default function AdminPurchases() {
 
                         <td className="px-4 py-3 text-right whitespace-nowrap">
 
-                          <Button variant="ghost" size="icon" onClick={() => startEdit(p)} aria-label="수정" data-testid={`button-edit-purchase-${p.id}`}>
+                          <Button disabled={!!(p as any).locked} variant="ghost" size="icon" onClick={() => startEdit(p)} aria-label="수정" title={(p as any).locked ? "출고·정산 확정된 발주" : "수정"} data-testid={`button-edit-purchase-${p.id}`}>
                             <Pencil className="h-4 w-4 text-muted-foreground" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => remove(p)} aria-label="삭제" data-testid={`button-delete-purchase-${p.id}`}>
+                          <Button disabled={!!(p as any).locked} variant="ghost" size="icon" onClick={() => remove(p)} aria-label="삭제" data-testid={`button-delete-purchase-${p.id}`}>
                             <Trash2 className="h-4 w-4 text-muted-foreground" />
                           </Button>
                         </td>
