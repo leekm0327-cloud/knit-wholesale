@@ -1,3 +1,4 @@
+import { registerPayroll } from './payroll';
 import { registerStaffAlerts, queueSupplyAlert } from "./staff-alerts";
 import { staffPhoneSchema } from "../shared/staff-phone";
 import {registerScheduleApproval,applyLeaveDecision} from "./schedule-approval";
@@ -115,6 +116,7 @@ function rangeOf(req: Request): { from: string; to: string } {
 }
 
 export function registerStaffRoutes(app: Express, storage: IStorage) {
+  registerPayroll(app, sqlite, requireOwner);
   registerScheduleApproval(app,sqlite,requireStaff,requireOwner,(r)=>(storage as any).createNotification(r));
   registerStaffAlerts(app, sqlite, {owner: requireOwner, admin: requireAdmin, staff: requireStaff}, {
     ready: () => { const s=getAlimtalkSettings(); return [...(!isAlimtalkConfigured()?['솔라피 연결 정보가 없습니다.']:[]), ...(!s.enabled?['기본 알림톡 사용을 켜 주세요.']:[]), ...(!s.pfId||!s.sender?['발신프로필과 발신번호를 확인해 주세요.']:[])]; },

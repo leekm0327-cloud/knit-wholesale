@@ -9,7 +9,7 @@ export default function AttendanceRequests(){
  const {user}=useAuth(),allowed=(user as any)?.adminRole==='owner',qc=useQueryClient();
  const {data,isError}=useQuery<{requests:any[];missing:any[]}>({queryKey:[API],enabled:allowed,refetchInterval:60000});
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
- async function decide(id:number,approved:boolean){const memo=approved?'':prompt('반려 사유를 적어주세요.');if(memo===null)return;setBusy(true);setError('');try{await apiRequest('POST',API+'/'+id,{approved,memo});await qc.invalidateQueries({queryKey:[API]});qc.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/admin/staff/attendance')});}catch(e){setError(errMsg(e));}finally{setBusy(false);}}
+ async function decide(id:number,approved:boolean){const memo=approved?'':prompt('반려 사유를 적어주세요.');if(memo===null)return;setBusy(true);setError('');try{await apiRequest('POST',API+'/'+id,{approved,memo});await qc.invalidateQueries({queryKey:[API]});qc.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/admin/staff/attendance')||String(q.queryKey[0]).startsWith('/api/admin/payroll/')});}catch(e){setError(errMsg(e));}finally{setBusy(false);}}
  if(!allowed)return null;
  if(isError)return <p role="alert">퇴근 수정 신청을 불러오지 못했습니다.</p>;
  const pending=data?.requests.filter(r=>r.status==='pending')??[];

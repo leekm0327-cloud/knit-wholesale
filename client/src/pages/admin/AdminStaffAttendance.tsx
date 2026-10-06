@@ -1,3 +1,4 @@
+import StaffPayroll from '@/components/StaffPayroll';
 import AttendanceRequests from "@/components/AttendanceRequests";
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
@@ -60,7 +61,7 @@ export default function AdminStaffAttendance() {
   const key = `/api/admin/staff/attendance?from=${from}&to=${to}`;
   const { data, isLoading } = useQuery<Res>({ queryKey: [key] });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: [key] });
+  const invalidate = () => { queryClient.invalidateQueries({ queryKey: [key] }); queryClient.invalidateQueries({predicate:q=>String(q.queryKey[0]).startsWith('/api/admin/payroll/')}); };
 
   async function saveRow(r: Row) {
     const e = edit[r.id] ?? { inT: hhmm(r.clockInAt), outT: hhmm(r.clockOutAt), brk: String(r.breakMinutes) };
@@ -138,6 +139,7 @@ export default function AdminStaffAttendance() {
         </p></AdminFold>
 
         <AttendanceRequests />
+        <StaffPayroll />
         <Card className="mb-5 p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>
