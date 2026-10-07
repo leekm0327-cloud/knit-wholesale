@@ -70,7 +70,7 @@ assert.equal(purchaseDuplicateCheck(db,{supplierId:1,purchaseDate:'2026-09-18',c
 seedOrder(db,2,[{...item(9,1),name:'단가 없음'}]);assert.throws(()=>applyPurchasePlan(db,2,99),/매입단가/);
 db.prepare("UPDATE orders SET status='cancelled' WHERE id=1").run();assert.throws(()=>applyPurchasePlan(db,1,99),/취소/);
 const kakao=orderToKakaoText({orderNo:'KC-TEST-1',customerSnapshot:JSON.stringify({businessName:'예시 카페'}),items:JSON.stringify([item(1,2),item(2,-1)])} as any);
-assert(kakao.includes('[발주번호 KC-TEST-1]'));assert(!kakao.includes('실크 블렌드 1kg * -1'));assert(kakao.includes('반품·차감 확인'));
+assert(!kakao.includes('KC-TEST-1'));assert(!kakao.includes('이전 내용을 대체'));assert(!kakao.includes('실크 블렌드 1kg * -1'));assert(kakao.includes('반품·차감 확인'));
 assert.deepEqual(period('2026-01'),{from:'2025-12-26',to:'2026-01-25'});
 assert.equal(csvRows(csv).length,3);const chat=parseChat(csv);assert.equal(chat.lines.length,1);assert.equal(chat.lines[0].customer,'예시 카페');assert.equal(chat.issues.length,1);
 const parsed=parseSettlement(workbook);assert.equal(parsed.lines.length,2);assert.equal(parsed.lines[0].amount,43632);assert.equal(parsed.supplyAmount,43632);assert(parsed.lines[1].warnings.length);

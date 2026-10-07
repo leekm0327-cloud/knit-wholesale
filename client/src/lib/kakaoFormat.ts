@@ -47,8 +47,6 @@ export function orderToKakaoText(order: Order): string {
 
   const lines: string[] = [];
   lines.push(`1. ${businessName}`);
-  lines.push(`[발주번호 ${order.orderNo}]`);
-  lines.push(`현재 전체 수량 — 같은 발주번호의 이전 내용을 대체합니다.`);
   lines.push(`- 주소: ${address}`);
   lines.push(`- 연락처: ${managerName} / ${phone}`);
 
