@@ -1,3 +1,4 @@
+import {useShiftTypes} from '@/components/ShiftTypesEditor';
 import { StaffWorkStatus } from "@/components/StaffWorkStatus";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +10,7 @@ import { isStaffMobile } from "@shared/staff-phone";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { errMsg } from "@/lib/format";
-import { slotLabel, type StaffHome as StaffHomeData } from "@shared/schema";
+import { type StaffHome as StaffHomeData } from "@shared/schema";
 import { LogIn, LogOut, Loader2, ChevronRight, AlertCircle, Check } from "lucide-react";
 
 function hhmm(ts: number | null | undefined): string {
@@ -33,6 +34,7 @@ function fmtToday(iso: string): string {
 }
 
 export default function StaffHome() {
+  const {label:slotLabel}=useShiftTypes(false);
   const { data: me } = useStaff();
   const [, navigate] = useLocation();
   const { toast } = useToast();

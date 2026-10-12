@@ -1,3 +1,4 @@
+import {readShiftTypes} from './shift-types';
 import type Database from 'better-sqlite3';
 import type { Express, RequestHandler } from 'express';
 import { z } from 'zod';
@@ -29,7 +30,11 @@ export function initStaffAlerts(db: DB) {
 }
 export function readAlertState(db: DB): State {
   const r = db.prepare('SELECT * FROM staff_alert_settings WHERE id=1').get() as any;
-  return { config: alertConfigSchema.parse(JSON.parse(r.config)), templates: JSON.parse(r.templates), version: r.version, activeAt: r.active_at, scheduleFrom: r.schedule_from };
+  const config=alertConfigSchema.parse(JSON.parse(r.config));
+  if(db.prepare("SELECT name FROM sqlite_master WHERE name='shift_type_settings'").get()&&db.prepare('SELECT id FROM shift_type_settings WHERE id=1').get()){
+   const types=readShiftTypes(db).types;config.weekday=Object.fromEntries(types.map(t=>[t.id,t.weekday]));config.weekend=Object.fromEntries(types.map(t=>[t.id,t.weekend]));config.shiftRoles=Object.fromEntries(types.map(t=>[t.id,t.role]));config.shiftLabels=Object.fromEntries(types.map(t=>[t.id,t.label]));
+  }
+  return { config, templates: JSON.parse(r.templates), version: r.version, activeAt: r.active_at, scheduleFrom: r.schedule_from };
 }
 const audit = (db: DB, actor: number, action: string, detail: unknown, now = Date.now()) => db.prepare('INSERT INTO staff_alert_audit(actor_id,action,detail,created_at) VALUES(?,?,?,?)').run(actor, action, JSON.stringify(detail), now);
 const people = (db: DB) => db.prepare('SELECT id,name,phone FROM staff WHERE active=1 ORDER BY id').all() as { id: number; name: string; phone: string }[];
@@ -61,7 +66,7 @@ export function scheduledDeliveries(db: DB, now: number, state = readAlertState(
       const first = team.reduce((a, b) => a.hours.startAt < b.hours.startAt ? a : b);
       const last = team.reduce((a, b) => a.hours.endAt > b.hours.endAt ? a : b);
       const att = attendance(db, staffId, day);
-      const vars = { 이름: first.name, 근무일: day, 날짜: day, 출근시간: first.hours.start, 퇴근시간: last.hours.end, 조: team.map(s => s.position).join(' / ') };
+      const vars = { 이름: first.name, 근무일: day, 날짜: day, 출근시간: first.hours.start, 퇴근시간: last.hours.end, 조: team.map(s => c.shiftLabels?.[s.position]||s.position).join(' / ') };
       const add = (kind: AlertKind, due: number, expires: number, missing: boolean, suffix = '0') => {
         if (c.events[kind] && missing && now >= due && now <= expires) result.push({ key: `${day}:${staffId}:${kind}:${suffix}`, kind, staffId, day, due, variables: vars });
       };
@@ -69,9 +74,9 @@ export function scheduledDeliveries(db: DB, now: number, state = readAlertState(
       const snooze = db.prepare('SELECT * FROM staff_alert_snoozes WHERE staff_id=? AND work_date=?').get(staffId, day) as any;
       const outDue = Math.max(last.hours.endAt + c.clockOutAfter * 60000, snooze?.until_at ?? 0);
       add('clock_out', outDue, last.hours.endAt + 4 * 3600000, !!att?.clock_in_at && !att?.clock_out_at && !pendingRequest(db, staffId, day), String(snooze?.count ?? 0));
-      if (team.some(s => s.position === 'Open')) add('recipe', first.hours.startAt + c.recipeAfter * 60000, last.hours.endAt, !recorded(db, day, 'recipe'));
-      if (team.some(s => s.position === 'Close' || s.position === 'Close2')) add('waste', last.hours.endAt - c.wasteBefore * 60000, last.hours.endAt + 30 * 60000, !recorded(db, day, 'waste'));
-      if (team.some(s => s.position === 'Baker')) add('production', last.hours.endAt - c.productionBefore * 60000, last.hours.endAt + 30 * 60000, !recorded(db, day, 'production'));
+      if (team.some(s => (c.shiftRoles?.[s.position]??(s.position==='Open'?'recipe':'none')) === 'recipe')) add('recipe', first.hours.startAt + c.recipeAfter * 60000, last.hours.endAt, !recorded(db, day, 'recipe'));
+      if (team.some(s => (c.shiftRoles?.[s.position]??(['Close','Close2'].includes(s.position)?'waste':'none')) === 'waste')) add('waste', last.hours.endAt - c.wasteBefore * 60000, last.hours.endAt + 30 * 60000, !recorded(db, day, 'waste'));
+      if (team.some(s => (c.shiftRoles?.[s.position]??(s.position==='Baker'?'production':'none')) === 'production')) add('production', last.hours.endAt - c.productionBefore * 60000, last.hours.endAt + 30 * 60000, !recorded(db, day, 'production'));
     }
   }
   return result;

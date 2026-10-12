@@ -18,8 +18,10 @@ export const alertDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => {
 }, '날짜를 확인해 주세요.');
 export const alertTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const hours = z.object({ start: alertTime, end: alertTime }).refine(v => v.start < v.end, '종료 시간은 시작 시간 이후여야 합니다.');
-const shiftHours = z.object({ Open: hours, Baker: hours, Close: hours, Part: hours });
+const shiftHours = z.record(hours);
 export const alertConfigSchema = z.object({
+  shiftRoles: z.record(z.enum(['none','recipe','production','waste'])).optional(),
+  shiftLabels: z.record(z.string()).optional(),
   enabled: z.boolean(),
   events: z.object(Object.fromEntries(alertKinds.map(k => [k, z.boolean()])) as Record<AlertKind, z.ZodBoolean>),
   recipients: z.array(z.number().int().positive()).max(10),
@@ -44,7 +46,7 @@ export const kstDay = (now = Date.now()) => new Date(now + 9 * 3600000).toISOStr
 export const dayPlus = (day: string, n: number) => new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 export const kstStamp = (day: string, time: string) => Date.parse(`${day}T${time}:00+09:00`);
 export function effectiveHours(config: AlertConfig, shift: { workDate: string; position: string; startTime: string; endTime: string }) {
-  const slot = (shift.position === 'Close2' ? 'Close' : shift.position) as keyof AlertConfig['weekday'];
+  const slot = (shift.position === 'Close2' && !config.weekday.Close2 ? 'Close' : shift.position) as keyof AlertConfig['weekday'];
   const dow = new Date(shift.workDate + 'T00:00:00Z').getUTCDay();
   const base = (dow === 0 || dow === 6 || config.holidays.includes(shift.workDate) ? config.weekend : config.weekday)[slot];
   const start = shift.startTime || base?.start, end = shift.endTime || base?.end;

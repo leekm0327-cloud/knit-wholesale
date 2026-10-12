@@ -1,13 +1,15 @@
+import {useShiftTypes} from './ShiftTypesEditor';
 import { useTodayTarget, useTodayScroll } from '@/lib/today-target';
 import {useState} from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {apiRequest,queryClient} from '@/lib/queryClient';
 import {useAuth} from '@/lib/auth';
 import {useStaff} from '@/components/StaffLayout';
-import {SHIFT_SLOTS,slotLabel,type Shift} from '@shared/schema';
+import {type Shift} from '@shared/schema';
 import {errMsg} from '@/lib/format';
 
 export function ScheduleRequests({admin=false,shifts=[]}:{admin?:boolean;shifts?:Shift[]}) {
+ const shiftConfig=useShiftTypes(admin,shifts),slotLabel=shiftConfig.label,SHIFT_SLOTS=shiftConfig.types.filter(t=>t.enabled).map(t=>t.id);
  const todayTarget=useTodayTarget('schedule');
  const {user}=useAuth();const {data:me}=useStaff();
  const allowed=!admin||(user as any)?.adminRole==='owner';
@@ -27,7 +29,7 @@ export function ScheduleRequests({admin=false,shifts=[]}:{admin?:boolean;shifts?
   {open&&!admin&&<form className="grid gap-3" onSubmit={e=>{e.preventDefault();act('POST',url,form);}}>
    <label>변경할 내 근무<select required value={form.shiftId||''} onChange={e=>{const s=shifts.find(s=>s.id===Number(e.target.value));if(s)setForm({...form,shiftId:s.id,workDate:s.workDate,position:s.position,startTime:s.startTime,endTime:s.endTime});}} className="border rounded p-2 w-full"><option value="">근무 선택</option>{shifts.filter(s=>s.staffId===me?.id).map(s=><option key={s.id} value={s.id}>{s.workDate} · {slotLabel(s.position as any)}</option>)}</select></label>
    <label>변경할 날짜<input aria-label="변경할 날짜" type="date" required value={form.workDate} onChange={e=>setForm({...form,workDate:e.target.value})} className="border p-2 block"/></label>
-   <label>변경할 조<select value={form.position} onChange={e=>setForm({...form,position:e.target.value})} className="border p-2 ml-2">{SHIFT_SLOTS.map(s=><option key={s} value={s}>{slotLabel(s)}{s==='Close2'?' (두 번째 자리)':''}</option>)}</select></label>
+   <label>변경할 조<select value={form.position} onChange={e=>setForm({...form,position:e.target.value})} className="border p-2 ml-2">{SHIFT_SLOTS.map(s=><option key={s} value={s}>{slotLabel(s)}</option>)}</select></label>
    <div className="flex gap-3"><label>시작<input type="time" required value={form.startTime} onChange={e=>setForm({...form,startTime:e.target.value})} className="border p-2 block"/></label><label>종료<input type="time" required value={form.endTime} onChange={e=>setForm({...form,endTime:e.target.value})} className="border p-2 block"/></label></div>
    <label>신청 사유<textarea required maxLength={1000} value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})} className="border rounded w-full p-2"/></label><button disabled={busy} className="bg-slate-800 text-white rounded p-2">승인 요청</button>
   </form>}

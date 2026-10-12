@@ -1,10 +1,12 @@
+import {visibleShiftTypes} from '@shared/shift-types';
+import {useShiftTypes} from '@/components/ShiftTypesEditor';
 import {ScheduleRequests,ScheduleLeaveNotice} from "@/components/ScheduleRequests";
 import StaffQueryError from "@/components/StaffQueryError";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StaffLayout, useStaff } from "@/components/StaffLayout";
 import { staffColor } from "@/lib/staffColors";
-import { SHIFT_SLOTS, type Shift } from "@shared/schema";
+import { type Shift } from "@shared/schema";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const DOW = ["월", "화", "수", "목", "금", "토", "일"];
@@ -14,12 +16,7 @@ const DOW = ["월", "화", "수", "목", "금", "토", "일"];
  * 클로즈는 두 명이므로 한 묶음 안에 두 줄로 둔다.
  * 파트는 '색'이 아니라 여백과 라벨로 나눈다. 색은 사람 몫이다.
  */
-const PART_GROUPS = [
-  { key: "Open", label: "OPEN", ko: "오픈", slots: ["Open"] },
-  { key: "Baker", label: "BAKER", ko: "베이커", slots: ["Baker"] },
-  { key: "Close", label: "CLOSE", ko: "마감", slots: ["Close", "Close2"] },
-  { key: "Part", label: "PART", ko: "파트", slots: ["Part"] },
-].filter((g) => g.slots.some((s) => (SHIFT_SLOTS as readonly string[]).includes(s)));
+
 
 const GRID: React.CSSProperties = {
   display: "grid",
@@ -69,6 +66,7 @@ type ShiftResponse = { shifts: Shift[]; staff: { id: number; name: string; posit
 import { StaffCalendarCard } from "@/components/StaffCalendar";
 
 export default function StaffSchedule() {
+  const shiftConfig=useShiftTypes(false);
   const { data: me } = useStaff();
   const today = new Date();
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
@@ -86,6 +84,8 @@ export default function StaffSchedule() {
   });
 
   const nameOf = new Map((data?.staff ?? []).map((s) => [s.id, s.name]));
+  const SHIFT_SLOTS=visibleShiftTypes(shiftConfig.types,data?.shifts??[]).map(t=>t.id);
+  const PART_GROUPS=visibleShiftTypes(shiftConfig.types,data?.shifts??[]).map(t=>({key:t.id,label:t.label,ko:t.label,slots:[t.id]}));
   const cellMap = useMemo(() => {
     const m = new Map<string, Shift>();
     for (const s of data?.shifts ?? []) m.set(`${s.workDate}|${s.position}`, s);

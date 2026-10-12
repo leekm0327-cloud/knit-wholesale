@@ -1,10 +1,11 @@
+import {assertShiftType} from './shift-types';
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => { const d = new Date(v+'T00:00:00Z'); return Number.isFinite(+d) && d.toISOString().slice(0,10) === v; }, '날짜를 확인해 주세요.');
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
-const proposal = z.object({shiftId:z.number().int().positive(),workDate:day,position:z.enum(['Open','Baker','Close','Close2','Part']),startTime:time,endTime:time,reason:z.string().trim().min(1).max(1000)}).refine(p=>p.startTime<p.endTime,'종료 시간은 시작 시간 이후여야 합니다.');
+const proposal = z.object({shiftId:z.number().int().positive(),workDate:day,position:z.string().min(1).max(50),startTime:time,endTime:time,reason:z.string().trim().min(1).max(1000)}).refine(p=>p.startTime<p.endTime,'종료 시간은 시작 시간 이후여야 합니다.');
 const today = () => new Date(Date.now()+9*3600000).toISOString().slice(0,10);
 export function initScheduleApproval(db:Database.Database) {
  db.exec(`CREATE TABLE IF NOT EXISTS schedule_change_requests(id INTEGER PRIMARY KEY AUTOINCREMENT,staff_id INTEGER NOT NULL,staff_name TEXT NOT NULL,shift_id INTEGER NOT NULL,before_json TEXT NOT NULL,after_json TEXT NOT NULL,reason TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',decided_by TEXT NOT NULL DEFAULT '',admin_memo TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,decided_at INTEGER);
@@ -19,7 +20,7 @@ export function decideSchedule(db:Database.Database,id:number,status:'approved'|
   const r:any=db.prepare('SELECT * FROM schedule_change_requests WHERE id=?').get(id);
   if(!r || r.status!=='pending') throw Error('대기 중인 신청이 아닙니다. 새로고침해 주세요.');
   if(status==='approved') {
-   const old=JSON.parse(r.before_json), p=JSON.parse(r.after_json);
+   const old=JSON.parse(r.before_json), p=JSON.parse(r.after_json);assertShiftType(db,p.position);
    const current:any=db.prepare('SELECT * FROM shifts WHERE id=?').get(r.shift_id);
    if(!current || JSON.stringify(current)!==JSON.stringify(old)) throw Error('신청 후 근무표가 변경됐습니다. 직원에게 다시 신청하도록 안내해 주세요.');
    if(current.work_date<today() || p.workDate<today()) throw Error('지난 근무는 변경 신청으로 수정할 수 없습니다.');
@@ -55,7 +56,7 @@ export function registerScheduleApproval(app:Express,db:Database.Database,staffA
  initScheduleApproval(db);
  app.get('/api/staff/schedule-requests',staffAuth,(req,res)=>res.json(db.prepare('SELECT * FROM schedule_change_requests WHERE staff_id=? ORDER BY id DESC LIMIT 100').all(req.session.staffId)));
  app.post('/api/staff/schedule-requests',staffAuth,async(req,res)=>{try{
-  const p=proposal.parse(req.body);
+  const p=proposal.parse(req.body);assertShiftType(db,p.position);
   const me:any=db.prepare('SELECT id,name FROM staff WHERE id=? AND active=1').get(req.session.staffId);
   const shift:any=db.prepare('SELECT * FROM shifts WHERE id=? AND staff_id=?').get(p.shiftId,me?.id||0);
   if(!shift) throw Error('본인에게 배정된 근무만 변경 신청할 수 있습니다.');

@@ -1,3 +1,4 @@
+import {assertShiftType,readShiftTypes} from './shift-types';
 import { noteDailySubmission } from "./staff-alerts";
 import {assertNoLeave} from "./schedule-approval";
 // 직원 내부 관리 시스템 — 저장소
@@ -802,6 +803,7 @@ export class StaffStorage {
   }
 
   async createShift(p: InsertShift): Promise<Shift> {
+    assertShiftType(sqlite, p.position ?? "");
     assertNoLeave(sqlite,p.staffId,p.workDate);
     return db
       .insert(shifts)
@@ -820,6 +822,7 @@ export class StaffStorage {
 
   /** 근무표 칸 지정 — (날짜, 슬롯) 하나에 직원 한 명. 기존 배정은 교체된다. */
   async assignShift(p: { staffId: number; workDate: string; slot: string }): Promise<Shift> {
+    assertShiftType(sqlite, p.slot);
     assertNoLeave(sqlite,p.staffId,p.workDate);
     db.delete(shifts)
       .where(and(eq(shifts.workDate, p.workDate), eq(shifts.position, p.slot)))
@@ -860,7 +863,8 @@ export class StaffStorage {
 
     const fromEnd = addDays(p.fromMonday, 6);
     const toEnd = addDays(p.toMonday, 6);
-    const source = await this.listShifts(p.fromMonday, fromEnd);
+    const activeSlots=new Set(readShiftTypes(sqlite).types.filter(t=>t.enabled).map(t=>t.id));
+    const source = (await this.listShifts(p.fromMonday, fromEnd)).filter(s=>activeSlots.has(s.position));
     const target = await this.listShifts(p.toMonday, toEnd);
 
     const taken = new Set(target.map((t) => `${t.workDate}|${t.position}`));
@@ -905,6 +909,7 @@ export class StaffStorage {
   }
 
   async updateShift(id: number, patch: Partial<Shift>): Promise<Shift | undefined> {
+    if(patch.position!==undefined)assertShiftType(sqlite,patch.position);
     const existing=db.select().from(shifts).where(eq(shifts.id,id)).get();
     if(existing) assertNoLeave(sqlite,patch.staffId ?? existing.staffId,patch.workDate ?? existing.workDate);
     return db.update(shifts).set(patch).where(eq(shifts.id, id)).returning().get();

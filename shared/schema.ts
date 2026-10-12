@@ -1690,12 +1690,12 @@ export const insertShiftSchema = z.object({
 export const assignShiftSchema = z.object({
   staffId: z.number().int().positive(),
   workDate: z.string().min(1, "날짜를 선택해 주세요."),
-  slot: z.enum(SHIFT_SLOTS),
+  slot: z.string().min(1).max(50),
 });
 
 export const clearShiftSchema = z.object({
   workDate: z.string().min(1, "날짜를 선택해 주세요."),
-  slot: z.enum(SHIFT_SLOTS),
+  slot: z.string().min(1).max(50),
 });
 
 export const insertAnnouncementSchema = z.object({
