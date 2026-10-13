@@ -7,8 +7,8 @@ declare module 'express-session' {
  interface SessionData {cafe24OAuth?:{state:string;expires:number;userId:number;mallId:string};}
 }
 export function registerCafe24Routes(app:Express,db:Database.Database,admin:RequestHandler,owner:RequestHandler,options?:{config:Cafe24Config|null;fetcher?:typeof fetch;now?:()=>number}){
- let config:Cafe24Config|null=null,invalid=false;
- try{config=options?options.config:cafe24Config();}catch{invalid=true;}
+ let config:Cafe24Config|null=null,invalid='';
+ try{config=options?options.config:cafe24Config();}catch(e){invalid=e instanceof Cafe24Error?e.message:'카페24 서버 연결 설정을 확인해 주세요.';}
  const now=options?.now||Date.now;
  const client=createCafe24Client(db,config,options?.fetcher,now);
  const prefix='/api/admin/cafe24';
@@ -21,7 +21,7 @@ export function registerCafe24Routes(app:Express,db:Database.Database,admin:Requ
   }
  };
  const saveSession=(req:Request)=>new Promise<void>((resolve,reject)=>req.session.save(e=>e?reject(e):resolve()));
- app.get(prefix+'/status',admin,safe((_req,res)=>res.json(invalid?{state:'error',mallId:'',shopNo:1,message:'카페24 서버 연결 설정을 확인해 주세요.'}:client.status())));
+ app.get(prefix+'/status',admin,safe((_req,res)=>res.json(invalid?{state:'error',mallId:'',shopNo:1,message:invalid}:client.status())));
  app.post(prefix+'/connect',owner,safe(async(req,res)=>{
   if(!config)throw new Cafe24Error('not_configured','카페24 앱 등록과 서버 연결 설정을 먼저 완료해 주세요.',503);
   // A credential-bearing connection can only be started from our own admin UI.

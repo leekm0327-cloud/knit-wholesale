@@ -17,9 +17,11 @@ export function cafe24Config(env:NodeJS.ProcessEnv=process.env):Cafe24Config|nul
  let uri:URL;
  try{uri=new URL(env.CAFE24_REDIRECT_URI!);}catch{throw new Cafe24Error('configuration','카페24 연결 설정을 확인해 주세요.',503);}
  const local=env.NODE_ENV!=='production'&&['localhost','127.0.0.1'].includes(uri.hostname);
- if(!/^[a-z0-9][a-z0-9-]{0,49}$/.test(mallId)||!Number.isSafeInteger(shopNo)||shopNo<1||encryptionKey.length!==32||encryptionKey.toString('base64')!==key||
-    (uri.protocol!=='https:'&&!(local&&uri.protocol==='http:'))||uri.username||uri.password||uri.search||uri.hash||uri.pathname!=='/api/admin/cafe24/callback')
-  throw new Cafe24Error('configuration','카페24 연결 설정을 확인해 주세요.',503);
+ if(!/^[a-z0-9][a-z0-9-]{0,49}$/.test(mallId))throw new Cafe24Error('configuration','CAFE24_MALL_ID에 쇼핑몰 아이디만 입력해 주세요.',503);
+ if(!Number.isSafeInteger(shopNo)||shopNo<1)throw new Cafe24Error('configuration','CAFE24_SHOP_NO에 1 이상의 쇼핑몰 번호를 입력해 주세요.',503);
+ if(encryptionKey.length!==32||encryptionKey.toString('base64')!==key)throw new Cafe24Error('configuration','CAFE24_TOKEN_KEY 형식이 맞지 않습니다. 무작위 32바이트를 base64로 변환한 값만 입력해 주세요.',503);
+ if((uri.protocol!=='https:'&&!(local&&uri.protocol==='http:'))||uri.username||uri.password||uri.search||uri.hash||uri.pathname!=='/api/admin/cafe24/callback')
+  throw new Cafe24Error('configuration','CAFE24_REDIRECT_URI의 HTTPS 주소와 /api/admin/cafe24/callback 경로를 확인해 주세요.',503);
  return {mallId,shopNo,clientId:env.CAFE24_CLIENT_ID!.trim(),clientSecret:env.CAFE24_CLIENT_SECRET!,redirectUri:uri.href,encryptionKey,version:'2026-06-01'};
 }
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'?String(v):'';
