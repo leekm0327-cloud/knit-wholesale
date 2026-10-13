@@ -29,6 +29,7 @@ export const adminModules = [
   }
 ];
 export const adminNavigation = [
+ {path:"/admin/cafe24-orders",label:"자사몰 주문",owner:false,group:"sales"},
  {path:"/admin/operations-calendar",label:"운영 캘린더",owner:false,group:"store"},
  {path:"/admin/manuals",label:"레시피·매뉴얼",owner:false,group:"store"},
  {path:"/admin/store-performance",label:"매장 성과 요약",owner:true,group:"store"},

@@ -1,3 +1,4 @@
+import AdminCafe24Orders from "@/pages/admin/AdminCafe24Orders";
 import AdminSettlementReview from "@/pages/admin/AdminSettlementReview";
 import {AppUpdateNotice} from '@/components/AppUpdateNotice';
 import TaxInvoices from '@/pages/admin/TaxInvoices';
@@ -207,6 +208,7 @@ function AppRouter() {
       <Route path="/admin/tax-invoices" component={TaxInvoices} />
       <Route path="/admin/workspace/:group" component={AdminWorkspace} />
       <Route path="/admin/order-summary" component={Dashboard} />
+      <Route path="/admin/cafe24-orders" component={AdminCafe24Orders} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/orders/new" component={AdminOrderNew} />
       <Route path="/admin/products" component={AdminProducts} />
