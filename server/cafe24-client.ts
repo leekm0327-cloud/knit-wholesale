@@ -103,7 +103,8 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
   let r=await send();if(r.status===401){token=await accessToken(true,token.access_token);r=await send();}
   if(!r.ok){
    const errors:Record<number,[string,string,number]>={401:['reauthorize','카페24 연결을 다시 승인해 주세요.',409],403:['permission','카페24 주문 조회 권한을 확인해 주세요.',403],404:['not_found','카페24에서 주문을 찾지 못했습니다.',404],429:['rate_limit','조회 요청이 많습니다. 잠시 후 다시 조회해 주세요.',429]};
-   const e=errors[r.status]||['upstream',`카페24 조회에 실패했습니다 (HTTP ${r.status}). 잠시 후 다시 조회해 주세요.`,502];throw new Cafe24Error(e[0] as string,e[1] as string,e[2] as number);
+   let reason=''; if(r.status===400){try{const b=await r.json();if(typeof b?.error?.message==='string'){reason=b.error.message;for(const secret of [token.access_token,token.refresh_token,c.clientSecret])if(secret)reason=reason.split(secret).join('[redacted]');reason=reason.replace(/[\r\n]/g,' ').slice(0,240);}}catch{}}
+   const e=errors[r.status]||['upstream',`카페24 조회에 실패했습니다 (HTTP ${r.status}). ${reason||'잠시 후 다시 조회해 주세요.'}`,502];throw new Cafe24Error(e[0] as string,e[1] as string,e[2] as number);
   }
   try{return await r.json();}catch{throw new Cafe24Error('invalid_response','카페24 응답을 읽지 못했습니다.');}
  }
