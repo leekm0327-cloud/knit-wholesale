@@ -60,7 +60,7 @@ try{
  res=await fetch(base+'/api/admin/cafe24/connect',{method:'POST',headers:{Origin:'https://wrong.example'}});assert.equal(res.status,403);
  res=await fetch(base+'/api/admin/cafe24/connect',{method:'POST',headers:{Origin:'http://127.0.0.1:5192'}});assert.equal(res.status,200);const cookie=res.headers.get('set-cookie')!.split(';')[0];const state=new URL((await res.json()).url).searchParams.get('state');
  res=await fetch(base+'/api/admin/cafe24/callback?code=x&state=bad',{headers:{cookie},redirect:'manual'});assert.equal(res.status,400);
- res=await fetch(base+`/api/admin/cafe24/callback?code=x&state=${state}`,{headers:{cookie},redirect:'manual'});assert.equal(res.status,302);assert.equal(res.headers.get('location'),'/#/admin/cafe24-orders?connection=success');
+ res=await fetch(base+`/api/admin/cafe24/callback?code=x&state=${state}`,{headers:{cookie},redirect:'manual'});assert.equal(res.status,302);assert.equal(res.headers.get('location'),'/#/admin/cafe24-orders');
  res=await fetch(base+`/api/admin/cafe24/callback?code=x&state=${state}`,{headers:{cookie},redirect:'manual'});assert.equal(res.status,400,'state replay rejected');
  res=await fetch(base+'/api/admin/cafe24/orders?start=2026-10-01&end=2026-10-13');assert.equal(res.status,200);assert.equal(res.headers.get('cache-control'),'no-store');
  res=await fetch(base+'/api/admin/cafe24/orders?start=invalid&end=2026-10-13');assert.equal(res.status,400);
