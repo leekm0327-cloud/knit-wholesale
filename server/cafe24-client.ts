@@ -22,7 +22,7 @@ export function cafe24Config(env:NodeJS.ProcessEnv=process.env):Cafe24Config|nul
  if(encryptionKey.length!==32||encryptionKey.toString('base64')!==key)throw new Cafe24Error('configuration','CAFE24_TOKEN_KEY 형식이 맞지 않습니다. 무작위 32바이트를 base64로 변환한 값만 입력해 주세요.',503);
  if((uri.protocol!=='https:'&&!(local&&uri.protocol==='http:'))||uri.username||uri.password||uri.search||uri.hash||uri.pathname!=='/api/admin/cafe24/callback')
   throw new Cafe24Error('configuration','CAFE24_REDIRECT_URI의 HTTPS 주소와 /api/admin/cafe24/callback 경로를 확인해 주세요.',503);
- return {mallId,shopNo,clientId:env.CAFE24_CLIENT_ID!.trim(),clientSecret:env.CAFE24_CLIENT_SECRET!,redirectUri:uri.href,encryptionKey,version:'2026-06-01'};
+ return {mallId,shopNo,clientId:env.CAFE24_CLIENT_ID!.trim(),clientSecret:env.CAFE24_CLIENT_SECRET!,redirectUri:uri.href,encryptionKey,version:'2026-09-01'};
 }
 const text=(v:unknown)=>typeof v==='string'?v:typeof v==='number'?String(v):'';
 const record=z.record(z.unknown());

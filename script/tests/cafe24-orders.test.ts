@@ -5,7 +5,7 @@ import session from 'express-session';
 import {createCafe24Client,cafe24Config,Cafe24Error,cafe24Query,type Cafe24Config} from '../../server/cafe24-client';
 import {registerCafe24Routes} from '../../server/cafe24-routes';
 const current=Date.parse('2026-10-13T03:00:00Z');let clock=current;
-const config:Cafe24Config={mallId:'testmall',shopNo:1,clientId:'test-client',clientSecret:'fake-secret',redirectUri:'http://127.0.0.1:5192/api/admin/cafe24/callback',encryptionKey:Buffer.alloc(32,7),version:'2026-06-01'};
+const config:Cafe24Config={mallId:'testmall',shopNo:1,clientId:'test-client',clientSecret:'fake-secret',redirectUri:'http://127.0.0.1:5192/api/admin/cafe24/callback',encryptionKey:Buffer.alloc(32,7),version:'2026-09-01'};
 const token={mall_id:'testmall',client_id:'test-client',access_token:'fake-access',refresh_token:'fake-refresh',expires_at:new Date(current+2*3600000).toISOString(),refresh_token_expires_at:new Date(current+14*86400000).toISOString(),scopes:['mall.read_order']};
 const order={order_id:'20261013-0000010',order_date:'2026-10-13T10:20:00+09:00',currency:'KRW',payment_amount:'27000.00',paid:'T',canceled:'F',buyer:{name:'테스트 구매자'},items:[{order_item_code:'item-1',product_name:'테스트 원두',option_value:'150g / 홀빈',quantity:2,order_status:'N30',shipping_code:'S1'}]};
 let requests:{url:string;method:string;body:string;auth:string}[]=[],refreshes=0,orderMode='ok',tokenMode='ok',many=false;
