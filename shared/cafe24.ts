@@ -1,7 +1,7 @@
 /** Read-only Cafe24 DTOs. No wholesale order IDs or financial ledger writes. */
 export type Cafe24Connection = {
   state: 'not_configured' | 'not_connected' | 'connected' | 'reauthorize' | 'error';
-  mallId: string; shopNo: number; message: string;
+  canWrite?:boolean; mallId: string; shopNo: number; message: string;
 };
 export type Cafe24Item = {code:string; name:string; option:string; quantity:number|null; status:string; statusText:string; shippingCode:string};
 export type Cafe24Order = {
@@ -17,3 +17,5 @@ export const cafe24StatusNames: Record<string,string> = {
  C00:'취소 신청',C10:'취소 접수',C34:'취소 처리 중',C40:'취소 완료',C47:'입금 전 취소',C48:'입금 전 자동 취소',C49:'입금 전 관리자 취소',
  R00:'반품 신청',R10:'반품 접수',R30:'반품 처리 중',R40:'반품 완료',E00:'교환 신청',E10:'교환 접수',E20:'교환 준비',E30:'교환 처리 중',E40:'교환 완료',
 };
+
+export const cafe24Carriers:Record<string,string>={"0006":"CJ대한통운","0019":"롯데택배","0018":"한진택배","0004":"로젠택배","0012":"우체국택배","0043":"대신택배","0016":"일양로지스","0062":"GS택배"};

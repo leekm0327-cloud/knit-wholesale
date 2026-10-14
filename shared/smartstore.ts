@@ -3,3 +3,7 @@ export type SmartstoreConnection={state:'not_configured'|'ready'|'connected'|'er
 export type SmartstoreOrder={id:string;orderId:string;orderedAt:string;paidAt:string;buyerName:string;name:string;option:string;quantity:number|null;remainingQuantity:number|null;amount:number|null;remainingAmount:number|null;status:string;placeStatus:string;shippingDueDate:string;claimStatus:string};
 export type SmartstoreDetail={order:SmartstoreOrder;recipient:{name:string;phones:string[];zipcode:string;address:string;message:string};delivery:{carrier:string;trackingNo:string;status:string;sentAt:string;deliveredAt:string;wrongTracking:boolean};hasClaims:boolean;fetchedAt:string};
 export type SmartstoreOrderPage={orders:SmartstoreOrder[];date:string;page:number;pageSize:number;hasMore:boolean;fetchedAt:string};
+
+export const smartstoreCarriers:Record<string,string>={CJGLS:'CJ대한통운',HYUNDAI:'롯데택배',HANJIN:'한진택배',KGB:'로젠택배',EPOST:'우체국택배',KDEXP:'경동택배',DAESIN:'대신택배',ILYANG:'일양로지스',CVSNET:'GS택배',CUPARCEL:'CU택배'};
+export type OrderActionResult={id:string;outcome:'success'|'failed'|'unknown';message:string};
+export type SmartstoreRangePage={orders:SmartstoreOrder[];next:{date:string;page:number}|null;fetchedAt:string};

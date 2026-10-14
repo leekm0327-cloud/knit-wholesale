@@ -1,4 +1,5 @@
 export const adminModules = [
+  {id:"online",label:"온라인 주문"},
   {
     "id": "today",
     "label": "오늘"
@@ -29,8 +30,8 @@ export const adminModules = [
   }
 ];
 export const adminNavigation = [
- {path:"/admin/smartstore-orders",label:"스마트스토어 주문",owner:false,group:"sales"},
- {path:"/admin/cafe24-orders",label:"자사몰 주문",owner:false,group:"sales"},
+ {path:"/admin/smartstore-orders",label:"스마트스토어 주문",owner:false,group:"online"},
+ {path:"/admin/cafe24-orders",label:"자사몰 주문",owner:false,group:"online"},
  {path:"/admin/operations-calendar",label:"운영 캘린더",owner:false,group:"store"},
  {path:"/admin/manuals",label:"레시피·매뉴얼",owner:false,group:"store"},
  {path:"/admin/store-performance",label:"매장 성과 요약",owner:true,group:"store"},
@@ -310,4 +311,4 @@ export const adminNavigation = [
 export function activeAdminItem(location: string) {
   return [...adminNavigation].sort((a,b)=>b.path.length-a.path.length).find(i=>location===i.path || location.startsWith(i.path+'/'));
 }
-export const moduleHref = (id: string) => id === 'today' ? '/admin' : '/admin/workspace/'+id;
+export const moduleHref = (id: string) => id === 'today' ? '/admin' : id === 'online' ? '/admin/smartstore-orders' : '/admin/workspace/'+id;

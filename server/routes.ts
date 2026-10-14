@@ -279,7 +279,7 @@ export async function registerRoutes(
   }
 
   registerCafe24Routes(app, sqlite, requireAdmin, requireOwner);
-  registerSmartstoreRoutes(app, requireAdmin);
+  registerSmartstoreRoutes(app, requireAdmin, {db:sqlite});
   registerBankReview(app, sqlite, requireOwner);
   registerPurchaseLinks(app, sqlite, requireAdmin);
   registerSettlements(app, sqlite, requireOwner);

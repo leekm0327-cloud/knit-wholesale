@@ -12,7 +12,7 @@ import { adminModules, adminNavigation, activeAdminItem, moduleHref } from "@/li
 import type { Order } from "@shared/schema";
 import { LayoutDashboard, ShoppingCart, Package, Store, Users, Wallet, Settings, Search, Menu, LogOut, Loader2, ExternalLink } from "lucide-react";
 import "./admin-erp.css";
-const icons = [LayoutDashboard, ShoppingCart, Package, Store, Users, Wallet, Settings];
+const icons = [ShoppingCart, LayoutDashboard, ShoppingCart, Package, Store, Users, Wallet, Settings];
 export function AdminLayout({ children }: { children: React.ReactNode }) {
  const { user, isLoading, authUnknown, logout } = useAuth();
  const [location, navigate] = useLocation();

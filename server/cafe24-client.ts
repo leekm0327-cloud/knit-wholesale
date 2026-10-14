@@ -1,3 +1,4 @@
+import {cafe24Carriers} from '../shared/cafe24';
 import type Database from 'better-sqlite3';
 import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {z} from 'zod';
@@ -74,7 +75,7 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
   if(!config)return {...base,state:'not_configured',message:'카페24 앱 등록과 서버 연결 설정이 필요합니다.'};
   try{const t=loadToken();if(!t)return {...base,state:'not_connected',message:'카페24에서 주문 조회 연결을 승인해 주세요.'};
    if(Date.parse(t.refresh_token_expires_at)<=now())return {...base,state:'reauthorize',message:'카페24 연결이 만료됐습니다. 다시 연결해 주세요.'};
-   return {...base,state:'connected',message:'카페24 주문과 배송정보를 조회할 수 있습니다.'};
+   return {...base,state:'connected',canWrite:t.scopes.includes('mall.write_order'),message:'카페24 주문과 배송정보를 조회할 수 있습니다.'};
   }catch{return {...base,state:'error',message:'저장된 연결 설정을 확인해 주세요.'};}
  }
  async function request(url:string,options:RequestInit):Promise<Response>{
@@ -108,15 +109,38 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
   }
   try{return await r.json();}catch{throw new Cafe24Error('invalid_response','카페24 응답을 읽지 못했습니다.');}
  }
- return {
+ const client = {
   status,
-  authorizeUrl(state:string){const c=conf(),url=new URL('/api/v2/oauth/authorize',origin());url.search=new URLSearchParams({response_type:'code',client_id:c.clientId,redirect_uri:c.redirectUri,scope:'mall.read_order',state}).toString();return url.href;},
+  authorizeUrl(state:string,write=false){const c=conf(),url=new URL('/api/v2/oauth/authorize',origin());url.search=new URLSearchParams({response_type:'code',client_id:c.clientId,redirect_uri:c.redirectUri,scope:write?'mall.read_order,mall.write_order':'mall.read_order',state}).toString();return url.href;},
   async exchange(code:string){await tokenRequest(new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:conf().redirectUri}));},
   async list(input:unknown):Promise<Cafe24OrderPage>{
    const q=cafe24Query.parse(input);const pageSize=50;
    const result=await get('orders',{start_date:q.start+'T00:00:00+09:00',end_date:q.end+'T23:59:59+09:00',date_type:'order_date',limit:String(pageSize),offset:String((q.page-1)*pageSize),embed:'items,buyer',...(q.orderId?{order_id:q.orderId}:{}),...(q.status?{order_status:q.status}:{})});
    const orders=readRows(result?.orders).map(normalizeOrder);
    return {orders,page:q.page,pageSize,hasMore:orders.length===pageSize,fetchedAt:new Date(now()).toISOString()};
+  },
+  async action(idInput:unknown,input:unknown){
+   const id=cafe24OrderId.parse(idInput);
+   const q=z.object({action:z.enum(['confirm','dispatch']),carrier:z.string().optional(),trackingNo:z.string().trim().regex(/^[A-Za-z0-9-]{5,40}$/).optional(),itemCodes:z.array(cafe24OrderId).min(1).max(100)}).parse(input);
+   const token=await accessToken();if(!token.scopes.includes('mall.write_order'))throw new Cafe24Error('permission','카페24 주문 수정 권한을 추가 승인해 주세요.',403);
+   const current=await client.detail(id),order=current.order;
+   if(order.paid!=='T'||order.cancelled==='T')throw new Cafe24Error('state','결제 완료된 정상 주문만 처리할 수 있습니다.',409);
+   const allowed=q.action==='confirm'?['N10']:['N20','N21'];
+   if(new Set(q.itemCodes).size!==q.itemCodes.length||q.itemCodes.some(code=>!order.items.some(i=>i.code===code&&allowed.includes(i.status))))throw new Cafe24Error('state','상품의 최신 처리 상태가 변경됐습니다. 다시 조회해 주세요.',409);
+   if(q.action==='dispatch'){
+    if(!q.carrier||!Object.hasOwn(cafe24Carriers,q.carrier)||!q.trackingNo)throw new Cafe24Error('input','택배사와 송장을 확인해 주세요.',400);
+    const codes=new Set(order.items.filter(i=>q.itemCodes.includes(i.code)).map(i=>i.shippingCode).filter(Boolean));
+    if(codes.size>1||current.receivers.length>1)throw new Cafe24Error('split','여러 배송지 주문은 카페24에서 배송지별로 발송해 주세요.',409);
+    if(current.shipments.length>0)throw new Cafe24Error('state','이미 배송 정보가 있는 상품입니다. 카페24에서 송장 정보를 확인해 주세요.',409);
+   }
+   const c=conf(),path='orders/'+encodeURIComponent(id)+(q.action==='dispatch'?'/shipments':'');
+   const payload=q.action==='confirm'?{process_status:'prepare',order_item_code:q.itemCodes}:{tracking_no:q.trackingNo,shipping_company_code:q.carrier,status:'shipping',order_item_code:q.itemCodes};
+   // Never repeat a write after a timeout or refresh response; the result may already have committed.
+   const r=await request(origin()+'/api/v2/admin/'+path,{method:q.action==='confirm'?'PUT':'POST',headers:{Authorization:'Bearer '+token.access_token,'Content-Type':'application/json','X-Cafe24-Api-Version':c.version},body:JSON.stringify({shop_no:c.shopNo,request:payload})});
+   if(!r.ok)throw new Cafe24Error('write',`카페24 처리 응답을 확인해 주세요. (HTTP ${r.status})`,r.status>=500?502:r.status);
+   const raw=await r.json().catch(()=>null);
+   const ok=q.action==='confirm'?raw?.order?.process_status==='prepare'&&Array.isArray(raw.order.order_item_code)&&q.itemCodes.every(code=>raw.order.order_item_code.includes(code)):Array.isArray(raw?.shipments)&&q.itemCodes.every(code=>raw.shipments.some((s:any)=>s.order_id===id&&s.tracking_no===q.trackingNo&&s.status==='shipping'&&s.order_item_code?.includes(code)));
+   return {id,outcome:ok?'success' as const:'unknown' as const,message:ok?(q.action==='confirm'?'배송 준비 처리 완료':'발송 처리 완료'):'결과가 불확실합니다. 카페24에서 최신 상태를 확인해 주세요.'};
   },
   async detail(idInput:unknown):Promise<Cafe24OrderDetail>{
    const id=cafe24OrderId.parse(idInput),path='orders/'+encodeURIComponent(id);
@@ -127,4 +151,5 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
    return {order:normalizeOrder(parsed.data),receivers:readRows(receiverResult?.receivers).map(r=>({shippingCode:text(r.shipping_code),name:text(r.name),phone:text(r.phone),cellphone:text(r.cellphone)||text(r.virtual_phone_no),zipcode:text(r.zipcode),address:text(r.address_full)||[text(r.address1),text(r.address2)].filter(Boolean).join(' '),message:text(r.shipping_message)})),shipments:readRows(shipmentResult?.shipments).map(s=>({code:text(s.shipping_code),trackingNo:text(s.tracking_no),carrierCode:text(s.shipping_company_code),status:text(s.status),itemCodes:Array.isArray(s.items)?s.items.map(i=>typeof i==='string'?i:text(i?.order_item_code)):[]})),fetchedAt:new Date(now()).toISOString()};
   }
  };
+ return client;
 }
