@@ -1,3 +1,4 @@
+import AdminSmartstoreOrders from "@/pages/admin/AdminSmartstoreOrders";
 import AdminCafe24Orders from "@/pages/admin/AdminCafe24Orders";
 import AdminSettlementReview from "@/pages/admin/AdminSettlementReview";
 import {AppUpdateNotice} from '@/components/AppUpdateNotice';
@@ -209,6 +210,7 @@ function AppRouter() {
       <Route path="/admin/workspace/:group" component={AdminWorkspace} />
       <Route path="/admin/order-summary" component={Dashboard} />
       <Route path="/admin/cafe24-orders" component={AdminCafe24Orders} />
+      <Route path="/admin/smartstore-orders" component={AdminSmartstoreOrders} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/orders/new" component={AdminOrderNew} />
       <Route path="/admin/products" component={AdminProducts} />

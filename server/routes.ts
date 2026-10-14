@@ -1,3 +1,4 @@
+import { registerSmartstoreRoutes } from "./smartstore-routes";
 import { registerCafe24Routes } from "./cafe24-routes";
 import { purchaseDuplicateCheck } from './purchase-duplicates';
 import { registerSettlements } from './settlement-review';
@@ -278,6 +279,7 @@ export async function registerRoutes(
   }
 
   registerCafe24Routes(app, sqlite, requireAdmin, requireOwner);
+  registerSmartstoreRoutes(app, requireAdmin);
   registerBankReview(app, sqlite, requireOwner);
   registerPurchaseLinks(app, sqlite, requireAdmin);
   registerSettlements(app, sqlite, requireOwner);
