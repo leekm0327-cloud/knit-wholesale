@@ -30,7 +30,7 @@ export default function AdminSmartstoreOrders(){
    const r=await fetch(API_BASE+'/api/admin/smartstore/range?'+params,{credentials:'include',cache:'no-store',signal});const b=await r.json();if(!r.ok)throw Error(b.message||'기간 조회 실패');const part=b as SmartstoreRangePage;
    part.orders.forEach(o=>orders.set(o.id,o));fetchedAt=part.fetchedAt;cursor=part.next;
    setProgress(`${cursor?.date||filter.start}까지 확인 · ${orders.size}건 불러옴`);
-   if(!cursor)return {orders:[...orders.values()].sort((a,b)=>b.paidAt.localeCompare(a.paidAt)||b.id.localeCompare(a.id)),fetchedAt};
+   if(!cursor)return {orders:Array.from(orders.values()).sort((a,b)=>b.paidAt.localeCompare(a.paidAt)||b.id.localeCompare(a.id)),fetchedAt};
   }
   throw Error('주문이 많아 조회 한도에 도달했습니다. 기간을 줄여서 다시 조회해 주세요.');
  },enabled:isAdmin&&canQuery,retry:false,staleTime:0,gcTime:0});

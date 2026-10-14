@@ -30,7 +30,7 @@ export default function AdminCafe24Orders(){
    const params=new URLSearchParams({start:filter.start,end:filter.end,page:String(page),...(filter.orderId?{orderId:filter.orderId}:{}),...(filter.status?{status:filter.status}:{})});
    const r=await fetch(API_BASE+'/api/admin/cafe24/orders?'+params,{credentials:'include',cache:'no-store',signal});const b=await r.json();if(!r.ok)throw Error(b.message||'기간 조회 실패');const part=b as Cafe24OrderPage;
    part.orders.forEach(o=>orders.set(o.id,o));fetchedAt=part.fetchedAt;setProgress(`${orders.size}건 불러옴`);
-   if(!part.hasMore)return {orders:[...orders.values()].sort((a,b)=>b.orderedAt.localeCompare(a.orderedAt)),page:1,pageSize:50,hasMore:false,fetchedAt};
+   if(!part.hasMore)return {orders:Array.from(orders.values()).sort((a,b)=>b.orderedAt.localeCompare(a.orderedAt)),page:1,pageSize:50,hasMore:false,fetchedAt};
   }
   throw Error('주문이 많아 조회 한도에 도달했습니다. 기간을 줄여 주세요.');
  },enabled:isAdmin&&connection.data?.state==='connected',staleTime:0,gcTime:0,retry:false});
