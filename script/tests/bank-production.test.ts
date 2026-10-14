@@ -43,5 +43,17 @@ try{
  assert.equal((await call(`/bank-live/2/posting/${p.data.id}/cancel`,{reason:'fixture'})).status,200);
  assert.equal(db.prepare('SELECT count(*) AS n FROM expenses').get().n,0);assert.equal(db.prepare('SELECT count(*) AS n FROM payments').get().n,0);
  assert.equal(db.prepare('SELECT count(*) AS n FROM bank_live_audit').get().n,4);
+ // Factory settlements must never create a second expense, even through an old client.
+ db.exec("CREATE TABLE supplier_payments(id INTEGER PRIMARY KEY,amount INTEGER); INSERT INTO supplier_payments VALUES(1,28602530)");
+ for(const [i,remark] of ['장형순(클라리멘토(', '클 라 리 멘 토', '주식회사 클라리멘토'].entries()){
+  const id=100+i;
+  db.prepare("INSERT INTO bank_review(id,environment,account,ref,at,deposit,withdraw,remark,currency,state) VALUES(?,'production','12345',?,'20261007154200',0,28602530,?,'KRW','pending')").run(id,'supplier-'+id,remark);
+  const blocked=await call(`/bank-live/${id}/posting`,{...expense,confirmProduction:true});
+  assert.equal(blocked.status,409);assert.match(blocked.data.message,/공장 지급/);
+ }
+ assert.equal(db.prepare('SELECT count(*) AS n FROM expenses').get().n,0);
+ assert.equal(db.prepare('SELECT amount FROM supplier_payments').get().amount,28602530);
+ db.exec("UPDATE bank_review SET remark='이필영(매일유업',withdraw=1461100 WHERE id=100");
+ assert.equal((await call('/bank-live/100/posting',{...expense,confirmProduction:true})).status,200);
  console.log('PASS production confirmation, encrypted configuration, environment isolation, actual ledger writes, duplicate guards, edit protection, atomic reversals and audit');
 }finally{server.close();db.close();}

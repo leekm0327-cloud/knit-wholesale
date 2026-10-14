@@ -1,8 +1,10 @@
+import { isSupplierSettlement } from '@shared/bank-supplier-settlement';
+import { Link } from 'wouter';
 import { useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import type { BankCustomerSuggestion } from '@shared/bank-customer-suggestion';
 
-type Row = { id: number; deposit: number; withdraw: number; state: string; targetId: number | null; memo: string; posted: number; customerSuggestion?: BankCustomerSuggestion | null };
+type Row = { id: number; deposit: number; withdraw: number; remark?: string; state: string; targetId: number | null; memo: string; posted: number; customerSuggestion?: BankCustomerSuggestion | null };
 type Props = {
   row: Row; live: boolean;
   customers: { id: number; name: string }[];
@@ -20,7 +22,8 @@ export default function BankQuickActions({ row, live, customers, categories, onC
   const locked = useRef(false), base = live ? '/api/admin/bank-live' : '/api/admin/bank-review';
   const expense = row.withdraw > 0;
   const singleDirection = (row.deposit > 0) !== (row.withdraw > 0);
-  const allowed = !row.posted && ['pending', 'customer'].includes(row.state) && singleDirection;
+  const supplierSettlement = isSupplierSettlement(row);
+  const allowed = !supplierSettlement && !row.posted && ['pending', 'customer'].includes(row.state) && singleDirection;
   const suggestion = allowed && !expense && row.state === 'pending' ? row.customerSuggestion : null;
   const recommended = suggestion?.kind === 'customer' && customers.some(c => c.id === suggestion.customerId) ? suggestion : null;
   const choice = manualChoice ?? (row.state === 'customer' ? String(row.targetId || '') : recommended ? String(recommended.customerId) : '');
@@ -45,6 +48,7 @@ export default function BankQuickActions({ row, live, customers, categories, onC
     memo: row.memo, confirmProduction: live,
   }));
   return <div className="bank-quick-actions">
+    {supplierSettlement && !row.posted && <p className="bank-customer-hint">공장 지급 · 비용 반영 제외 <Link href="/admin/supplier-payments">공장 지급 확인</Link></p>}
     {allowed && <div className="bank-quick-line">
       <select aria-label={expense ? '바로 반영할 비용 항목' : '바로 반영할 거래처'} disabled={busy} value={choice} onChange={e => setChoice(e.target.value)}>
         <option value="">{expense ? '비용 항목 선택' : '거래처 선택'}</option>
