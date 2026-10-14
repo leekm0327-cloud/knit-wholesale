@@ -1,3 +1,5 @@
+import {z} from 'zod';
+import {alertDay} from '../shared/staff-alerts';
 import {createHash} from 'node:crypto';
 import type {Express,RequestHandler} from 'express';
 import {contractSchema,dayDecisionSchema,weekDecisionSchema,monthDecisionSchema,monthSchema,minutesOf,type PayrollContract,type PayrollDay,type PayrollWeek,type PayrollReport} from '../shared/payroll';
@@ -8,6 +10,7 @@ const dates=(a:string,b:string)=>{const r:string[]=[];for(let d=a;d<=b;d=dayPlus
 const hm=(ts:number|null)=>ts?new Date(ts+9*3600000).toISOString().slice(11,16):'';
 const lastDay=(m:string)=>dayPlus(new Date(Date.UTC(Number(m.slice(0,4)),Number(m.slice(5)),1)).toISOString().slice(0,10),-1);
 export function initPayroll(db:any){db.exec(`
+ CREATE TABLE IF NOT EXISTS staff_work_notes(staff_id INTEGER NOT NULL,work_date TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,actor INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(staff_id,work_date));
  CREATE TABLE IF NOT EXISTS payroll_contracts(id INTEGER PRIMARY KEY,staff_id INTEGER NOT NULL,from_date TEXT NOT NULL,to_date TEXT,payload TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS payroll_contract_staff ON payroll_contracts(staff_id,from_date);
  CREATE TABLE IF NOT EXISTS payroll_decisions(staff_id INTEGER NOT NULL,kind TEXT NOT NULL,date_key TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(staff_id,kind,date_key));
@@ -25,14 +28,17 @@ export function payrollReport(db:any,staffId:number,month:string,now=Date.now())
  const shifts:any[]=db.prepare('SELECT * FROM shifts WHERE staff_id=? AND work_date BETWEEN ? AND ? ORDER BY work_date,id').all(staffId,start,last);
  const leaves:any[]=db.prepare("SELECT * FROM leave_requests WHERE staff_id=? AND status='approved' AND start_date<=? AND end_date>=? ORDER BY id").all(staffId,last,start);
  const requests:any[]=db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='staff_attendance_requests'").get()?db.prepare("SELECT * FROM staff_attendance_requests WHERE staff_id=? AND work_date BETWEEN ? AND ? AND status='pending' ORDER BY id").all(staffId,start,last):[];
+ const notes=db.prepare('SELECT * FROM staff_work_notes WHERE staff_id=? AND work_date BETWEEN ? AND ?').all(staffId,start,last);
  const decisionRows=db.prepare('SELECT * FROM payroll_decisions WHERE staff_id=? ORDER BY kind,date_key').all(staffId);
  const saved=(kind:string,d:string)=>{const r=decisionRows.find((r:any)=>r.kind===kind&&r.date_key===d);return r?JSON.parse(r.payload):null;};
  const allDays:PayrollDay[]=dates(start,last).map(date=>{
   const c=at(date),sd=c?.days.find(d=>d.weekday===dow(date)),a=punches.filter(p=>p.work_date===date),p=a[0],ss=shifts.filter(s=>s.work_date===date),ll=leaves.filter(l=>l.start_date<=date&&l.end_date>=date);
   const scheduledMinutes=sd?minutesOf(sd.end)-minutesOf(sd.start)-sd.breakMinutes:0;
   const holiday=holidayConfig.holidays.includes(date);
-  const fingerprint=hash({c,date,a,ss,ll,holiday,requests:requests.filter(r=>r.work_date===date)}),stored=saved('day',date),decision=stored?.fingerprint===fingerprint?stored:null;
+  const workNote=notes.find((n:any)=>n.work_date===date);
+  const fingerprint=hash({c,date,a,ss,ll,holiday,...(workNote?{workNote}:{}),requests:requests.filter(r=>r.work_date===date)}),stored=saved('day',date),decision=stored?.fingerprint===fingerprint?stored:null;
   const issues:string[]=[];
+  if(workNote?.body)issues.push('근무 메모 확인');
   if(stored&&!decision)issues.push('원본 또는 계약 변경 · 다시 확인');
   if(a.length>1)issues.push('근태 중복');
   if(!c&&(a.length||ss.length))issues.push('계약 미등록');
@@ -49,7 +55,7 @@ export function payrollReport(db:any,staffId:number,month:string,now=Date.now())
   if(ss.some(s=>!sd||s.start_time!==sd.start||s.end_time!==sd.end))issues.push('근무표와 계약시간 차이');
   const pending=!!issues.length&&!decision;
   const paidMinutes=decision?.paidMinutes??scheduledMinutes,rate=c?.hourlyWage??0;
-  return {date,contract:c,scheduledMinutes,paidMinutes,hourlyWage:rate,amount:paidMinutes*rate/60,supplement:(decision?.supplement??0)+(c?.workplaceSize==='5plus'?Math.ceil(Math.max(0,paidMinutes-scheduledMinutes)*rate/120):0),clockIn:hm(p?.clock_in_at),clockOut:hm(p?.clock_out_at),actualMinutes:p?.clock_in_at&&p?.clock_out_at?Math.max(0,Math.floor((p.clock_out_at-p.clock_in_at)/60000)-(p.break_minutes||0)):null,attendance:decision?.attendance??(p?.clock_in_at?'present':'unknown'),issues,pending,fingerprint,decision};
+  return {date,note:workNote?.body||'',contract:c,scheduledMinutes,paidMinutes,hourlyWage:rate,amount:paidMinutes*rate/60,supplement:(decision?.supplement??0)+(c?.workplaceSize==='5plus'?Math.ceil(Math.max(0,paidMinutes-scheduledMinutes)*rate/120):0),clockIn:hm(p?.clock_in_at),clockOut:hm(p?.clock_out_at),actualMinutes:p?.clock_in_at&&p?.clock_out_at?Math.max(0,Math.floor((p.clock_out_at-p.clock_in_at)/60000)-(p.break_minutes||0)):null,attendance:decision?.attendance??(p?.clock_in_at?'present':'unknown'),issues,pending,fingerprint,decision};
  });
  const weeks:PayrollWeek[]=[];
  for(const date of dates(first,last)){
@@ -95,6 +101,20 @@ export function registerPayroll(app:Express,db:any,owner:RequestHandler,clock=()
  const wrap=(fn:any):RequestHandler=>(req,res)=>{try{fn(req,res);}catch(e:any){res.status(e.status||400).json({message:e.issues?.[0]?.message||e.message});}};
  const id=(r:any)=>{const n=Number(r.params.id);if(!Number.isSafeInteger(n)||n<=0||!db.prepare('SELECT id FROM staff WHERE id=?').get(n))throw Error('직원을 확인해 주세요.');return n;};
  const audit=(staffId:number,kind:string,key:string,before:any,after:any,reason:string,actor:number)=>db.prepare('INSERT INTO payroll_history(staff_id,kind,date_key,before_json,after_json,reason,actor,at) VALUES(?,?,?,?,?,?,?,?)').run(staffId,kind,key,before?JSON.stringify(before):null,JSON.stringify(after),reason,actor,clock());
+ app.get('/api/admin/payroll/work-notes',owner,wrap((req:any,res:any)=>{
+  const from=alertDay.parse(req.query.from),to=alertDay.parse(req.query.to);
+  if(to<from||Date.parse(to)-Date.parse(from)>370*86400000)throw Error('조회 기간을 확인해 주세요.');
+  res.json(db.prepare('SELECT staff_id AS staffId,work_date AS date,body AS text,version FROM staff_work_notes WHERE work_date BETWEEN ? AND ? ORDER BY work_date,staff_id').all(from,to));
+ }));
+ app.post('/api/admin/payroll/:id/work-note',owner,wrap((req:any,res:any)=>{
+  const staffId=id(req),b=z.object({date:alertDay,text:z.string().trim().max(2000),version:z.number().int().nonnegative()}).strict().parse(req.body);
+  db.transaction(()=>{
+   const old=db.prepare('SELECT * FROM staff_work_notes WHERE staff_id=? AND work_date=?').get(staffId,b.date);
+   if((old?.version||0)!==b.version)throw Error('메모가 변경됐습니다. 닫았다 다시 열어 주세요.');
+   db.prepare('INSERT INTO staff_work_notes VALUES(?,?,?,?,?,?) ON CONFLICT(staff_id,work_date) DO UPDATE SET body=excluded.body,version=excluded.version,actor=excluded.actor,updated_at=excluded.updated_at').run(staffId,b.date,b.text,b.version+1,req.session.userId,clock());
+   audit(staffId,'work-note',b.date,old,b,'근무 메모 저장',req.session.userId);
+  })();res.json({ok:true});
+ }));
  const persist=(staffId:number,kind:string,key:string,data:any,actor:number)=>{
   const prev=db.prepare('SELECT payload FROM payroll_decisions WHERE staff_id=? AND kind=? AND date_key=?').get(staffId,kind,key);
   db.prepare('INSERT OR REPLACE INTO payroll_decisions VALUES(?,?,?,?)').run(staffId,kind,key,JSON.stringify(data));audit(staffId,kind,key,prev?JSON.parse(prev.payload):null,data,data.reason,actor);

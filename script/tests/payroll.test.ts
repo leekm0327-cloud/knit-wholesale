@@ -47,5 +47,18 @@ try{
  const october=read('2026-10');assert(october.days.find(x=>x.date==='2026-10-09')!.pending,'public holiday reviewed');
  assert(db.prepare('SELECT count(*) AS n FROM payroll_history').get().n>8);assert.equal(db.prepare("SELECT clock_out_at FROM attendance WHERE work_date='2026-09-01'").get().clock_out_at,kstStamp('2026-09-01','14:45'),'payroll edits preserve attendance');
  assert.equal((await request('/1?month=2026-13')).status,400);assert.equal((await request('/999?month=2026-09')).status,400);
+ const note={date:'2026-10-03',text:'12:00~17:00 추가 근무, 휴게 30분 확인',version:0};
+ assert.equal((await request('/1/work-note',note,'manager')).status,403);
+ assert.equal((await request('/1/work-note',note)).status,200);
+ let nd=read('2026-10').days.find(x=>x.date===note.date)!;assert.equal(nd.note,note.text);assert(nd.pending);assert.equal(nd.paidMinutes,0,'memo must not automatically change pay');
+ assert.equal((await request('/1/day',{date:nd.date,paidMinutes:270,attendance:'present',supplement:0,reason:'메모 확인, 휴게 제외',fingerprint:nd.fingerprint})).status,200);
+ nd=read('2026-10').days.find(x=>x.date===note.date)!;assert(!nd.pending);assert.equal(nd.paidMinutes,270);
+ assert.equal((await request('/1/work-note',note)).status,400,'stale memo write rejected');
+ assert.equal((await request('/1/work-note',{...note,text:'근무 내용 수정',version:1})).status,200);
+ assert(read('2026-10').days.find(x=>x.date===note.date)!.pending,'changed memo needs owner review again');
+ assert.equal((await request('/work-notes?from=2026-10-01&to=2026-10-31',undefined,'staff')).status,403);
+ assert.equal((await request('/work-notes?from=2026-10-01&to=2026-10-31')).data[0].text,'근무 내용 수정');
+ assert.equal((await request('/1/work-note',{...note,date:'2026-02-30'})).status,400);
+ console.log('PASS work notes: owner access, persistence, no automatic pay, owner adjustment, stale review and edit protection');
  console.log('PASS payroll: contract base, owner review, weekly eligibility, month boundaries, audit, stale sources, authorization and no attendance mutation');
 }finally{server.close();db.close();}

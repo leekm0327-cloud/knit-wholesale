@@ -1,3 +1,5 @@
+import WorkNotes,{useWorkNotes} from '@/components/WorkNotes';
+import {useAuth} from '@/lib/auth';
 import ShiftTypesEditor,{useShiftTypes} from '@/components/ShiftTypesEditor';
 import ShiftHoursEditor from "@/components/ShiftHoursEditor";
 import {ScheduleRequests,ScheduleLeaveNotice} from "@/components/ScheduleRequests";
@@ -55,6 +57,8 @@ type Res = { shifts: Shift[]; staff: PublicStaff[]; from: string; to: string };
 
 export default function AdminStaffSchedule() {
   const { toast } = useToast();
+  const {user}=useAuth();
+  const [noteTarget,setNoteTarget]=useState<{staffId:number;date:string}|null>(null);
   const today = new Date();
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
   const [editing, setEditing] = useState<{ date: string; slot: string } | null>(null);
@@ -66,6 +70,7 @@ export default function AdminStaffSchedule() {
   const from = ymd(weeks[0][0]);
   const to = ymd(weeks[weeks.length - 1][6]);
   const todayStr = ymd(today);
+  const notes=useWorkNotes(from,to);
 
   const key = `/api/admin/staff/shifts?from=${from}&to=${to}`;
   const { data, isLoading } = useQuery<Res>({ queryKey: [key] });
@@ -143,7 +148,7 @@ export default function AdminStaffSchedule() {
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="eyebrow">Schedule</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">근무 스케줄</h1>
-        <ShiftTypesEditor/><ShiftHoursEditor shifts={data?.shifts??[]} staff={data?.staff??[]} />
+        <WorkNotes staff={data?.staff??[]} notes={notes.data??[]} target={noteTarget} select={setNoteTarget} isError={notes.isError}/><ShiftTypesEditor/><ShiftHoursEditor shifts={data?.shifts??[]} staff={data?.staff??[]} />
         <ScheduleRequests admin /><ScheduleLeaveNotice admin from={from} to={to} staff={data?.staff ?? []}/>
         <AdminFold id="AdminStaffSchedule.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
           칸을 눌러 직원을 넣으세요. 오른쪽에 주별 근무일이 집계되고, 주 {WEEKLY_TARGET_DAYS}일이 안 되면 표시됩니다.
@@ -344,6 +349,7 @@ export default function AdminStaffSchedule() {
                                           {cell ? nameOf.get(cell.staffId) ?? "-" : ""}
                                         </button>
                                       )}
+                                      {cell&&user?.adminRole==='owner'&&<button aria-label={`${ds} ${nameOf.get(cell.staffId)} 근무 메모`} className="block w-full py-1 text-[10px] text-muted-foreground hover:bg-amber-50" onClick={()=>setNoteTarget({staffId:cell.staffId,date:ds})}>{notes.data?.some(n=>n.staffId===cell.staffId&&n.date===ds&&n.text)?'메모 있음':'+ 메모'}</button>}
                                     </td>
                                   );
                                 })}
