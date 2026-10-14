@@ -23,9 +23,11 @@ export function normalizeSmartstoreOrder(raw:unknown):SmartstoreOrder{
  if(!smartstoreId.safeParse(p.productOrderId).success)throw new SmartstoreError('invalid_response','네이버 상품주문번호를 확인하지 못했습니다.');
  return {id:txt(p.productOrderId),orderId:txt(o.orderId),orderedAt:txt(o.orderDate),paidAt:txt(o.paymentDate),buyerName:txt(o.ordererName),name:txt(p.productName),option:txt(p.productOption),quantity:num(p.initialQuantity)??num(p.quantity),remainingQuantity:num(p.remainQuantity),amount:num(p.initialPaymentAmount)??num(p.totalPaymentAmount),remainingAmount:num(p.remainPaymentAmount),status:txt(p.productOrderStatus),placeStatus:txt(p.placeOrderStatus),shippingDueDate:txt(p.shippingDueDate),claimStatus:txt(p.claimStatus)};
 }
-export function createSmartstoreClient(config:SmartstoreConfig|null,fetcher:typeof fetch=fetch,now=()=>Date.now()){
+export function createSmartstoreClient(config:SmartstoreConfig|null,fetcher:typeof fetch=fetch,now=()=>Date.now(),requestIntervalMs=1100){
  const origin='https://api.commerce.naver.com/external';
  let cached:{value:string;expires:number}|null=null,pending:Promise<string>|null=null,checkedAt='',lastError='';
+ let nextRequestAt=0;
+ async function requestSlot(){const wait=Math.max(0,nextRequestAt-Date.now());nextRequestAt=Date.now()+wait+requestIntervalMs;if(wait)await new Promise(resolve=>setTimeout(resolve,wait));}
  function conf(){if(!config)throw new SmartstoreError('not_configured','네이버 앱 등록과 서버 설정이 필요합니다.',503);return config;}
  async function request(path:string,init:RequestInit){try{return await fetcher(origin+path,{...init,redirect:'error',signal:AbortSignal.timeout(15000)});}catch{throw new SmartstoreError('network','네이버에 연결하지 못했습니다. 잠시 후 다시 조회해 주세요.',503);}}
  async function apiError(r:Response):Promise<never>{
@@ -49,9 +51,17 @@ export function createSmartstoreClient(config:SmartstoreConfig|null,fetcher:type
   return pending;
  }
  async function read(path:string,body?:unknown,write=false):Promise<any>{
-  let access=await token();const send=()=>request(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+access,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  let access=await token();const send=async()=>{await requestSlot();return request(path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+access,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});};
   let r=await send();
   if(!write&&r.status===401){const b=await r.clone().json().catch(()=>null);if(b?.code==='GW.AUTHN'){access=await token(true,access);r=await send();}}
+  // Only read requests may retry a temporary rate limit. Never replay fulfillment writes.
+  for(let retry=0;!write&&r.status===429&&retry<2;retry++){
+   const after=r.headers.get('Retry-After');const seconds=after?Number(after):NaN;
+   const delay=Number.isFinite(seconds)?seconds*1000:after?Date.parse(after)-Date.now():1500*(retry+1);
+   if(delay>10000)break;
+   nextRequestAt=Math.max(nextRequestAt,Date.now()+Math.max(1500,Number.isFinite(delay)?delay:1500));
+   r=await send();
+  }
   if(!r.ok)await apiError(r);const raw=await r.json().catch(()=>null);
   if(!raw||typeof raw!=='object')throw new SmartstoreError('invalid_response','네이버 응답을 읽지 못했습니다.');return raw;
  }

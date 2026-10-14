@@ -51,3 +51,15 @@ assert.equal((await cafe.action('order-1',{action:'confirm',itemCodes:['item-1']
 await assert.rejects(()=>cafe.action('order-1',{action:'dispatch',carrier:'0006',trackingNo:'1234567890',itemCodes:['item-1']}),/최신/);
 state='N20';assert.equal((await cafe.action('order-1',{action:'dispatch',carrier:'0006',trackingNo:'1234567890',itemCodes:['item-1']})).outcome,'success');assert.equal(cafeWrites,2);
 cdb.close();console.log('Cafe24 write scope, current item state, exact preparation and shipment payloads passed');
+let limitedReads=0,limitedWrites=0;
+const limited=createSmartstoreClient(cfg,async(input)=>{
+ const u=new URL(String(input));
+ if(u.pathname.endsWith('/token'))return Response.json({access_token:'fake',expires_in:10000});
+ if(u.pathname.endsWith('/query'))return Response.json({data:[fixture()]});
+ if(u.pathname.endsWith('/confirm')){limitedWrites++;return Response.json({code:'GW.RATE_LIMIT'},{status:429});}
+ limitedReads++;
+ return limitedReads===1?Response.json({code:'GW.RATE_LIMIT'},{status:429,headers:{'Retry-After':'0'}}):Response.json({data:{contents:[],pagination:{hasNext:false}}});
+},Date.now,0);
+await limited.list({date:'2026-10-14'});assert.equal(limitedReads,2,'read-only 429 may recover once');
+await assert.rejects(()=>limited.action(id,{action:'confirm'}),(e:any)=>e.status===429);assert.equal(limitedWrites,1,'429 must never replay a fulfillment mutation');
+console.log('Rate-limit recovery for reads and no mutation retry passed');
