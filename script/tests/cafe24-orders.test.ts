@@ -65,5 +65,8 @@ try{
  res=await fetch(base+'/api/admin/cafe24/orders?start=2026-10-01&end=2026-10-13');assert.equal(res.status,200);assert.equal(res.headers.get('cache-control'),'no-store');
  res=await fetch(base+'/api/admin/cafe24/orders?start=invalid&end=2026-10-13');assert.equal(res.status,400);
  res=await fetch(base+'/api/admin/cafe24/orders/'+order.order_id);assert.equal(res.status,200);assert.equal((await res.json()).receivers.length,2);
+ res=await fetch(base+'/api/admin/cafe24/connect',{method:'POST',headers:{Origin:'http://127.0.0.1:5192','Content-Type':'application/json'},body:JSON.stringify({write:true})});
+ const deniedCookie=res.headers.get('set-cookie')!.split(';')[0],authorize=new URL((await res.json()).url);assert.equal(authorize.searchParams.get('scope'),'mall.read_order mall.write_order');
+ res=await fetch(base+'/api/admin/cafe24/callback?error=invalid_scope&state='+authorize.searchParams.get('state'),{headers:{cookie:deniedCookie},redirect:'manual'});assert.equal(res.headers.get('location'),'/?cafe24_connection_error=invalid_scope#/admin/cafe24-orders');
  console.log('Cafe24: encrypted persistence, scopes, pagination, KST dates, split shipments, input validation, rate limits, refresh concurrency/rotation, 401 retry, owner-only OAuth, CSRF/state replay, read-only access passed.');
 }finally{server.close();db.close();}

@@ -22,7 +22,7 @@ export default function AdminCafe24Orders(){
  const [start,setStart]=useState(()=>kstDate(-29)),[end,setEnd]=useState(()=>kstDate()),[orderId,setOrderId]=useState(''),[status,setStatus]=useState('');
  const [filter,setFilter]=useState(()=>({start:kstDate(-29),end:kstDate(),orderId:'',status:'',page:1}));
  const [text,setText]=useState(''),[queue,setQueue]=useState('all'),[progress,setProgress]=useState(''),[chosen,setChosen]=useState<string[]>([]);
- const [selected,setSelected]=useState(''),[formError,setFormError]=useState(''),[connecting,setConnecting]=useState(false),[connectError,setConnectError]=useState(()=>{const error=new URLSearchParams(window.location.hash.split('?')[1]||'').get('connection_error');return error==='invalid_scope'?'카페24가 추가 권한을 아직 허용하지 않았습니다. 개발자센터의 주문 읽기+쓰기 설정을 확인한 뒤 다시 연결해 주세요.':error?'카페24 추가 권한 연결이 완료되지 않았습니다. 기존 조회 연결은 유지됩니다.':'';});
+ const [selected,setSelected]=useState(''),[formError,setFormError]=useState(''),[connecting,setConnecting]=useState(false),[connectError,setConnectError]=useState(()=>{const error=new URLSearchParams(window.location.search).get('cafe24_connection_error');return error==='invalid_scope'?'카페24가 추가 권한을 아직 허용하지 않았습니다. 개발자센터의 주문 읽기+쓰기 설정을 확인한 뒤 다시 연결해 주세요.':error?'카페24 추가 권한 연결이 완료되지 않았습니다. 기존 조회 연결은 유지됩니다.':'';});
  const connection=useQuery<Cafe24Connection>({queryKey:['/api/admin/cafe24/status'],queryFn:()=>getJson('/api/admin/cafe24/status'),enabled:isAdmin,staleTime:0,retry:false});
  const list=useQuery<Cafe24OrderPage>({queryKey:['cafe24-orders',filter.start,filter.end,filter.orderId,filter.status],queryFn:async({signal})=>{
   const orders=new Map<string,Cafe24Order>();let fetchedAt='';

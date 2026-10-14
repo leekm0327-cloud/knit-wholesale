@@ -38,7 +38,7 @@ export function registerCafe24Routes(app:Express,db:Database.Database,admin:Requ
   if(!/^[a-f0-9]{64}$/.test(state)||!saved||saved.expires<now()||saved.userId!==req.session.userId||saved.mallId!==config?.mallId||state.length!==saved.state.length||!timingSafeEqual(Buffer.from(state),Buffer.from(saved.state)))
    throw new Cafe24Error('oauth_state','연결 확인 시간이 지났거나 요청이 일치하지 않습니다. 관리자에서 다시 연결해 주세요.',400);
   delete req.session.cafe24OAuth;await saveSession(req);
-  if(req.query.error){res.redirect('/#/admin/cafe24-orders?connection_error='+(['invalid_scope','access_denied'].includes(String(req.query.error))?String(req.query.error):'failed'));return;}
+  if(req.query.error){res.redirect('/?cafe24_connection_error='+(['invalid_scope','access_denied'].includes(String(req.query.error))?String(req.query.error):'failed')+'#/admin/cafe24-orders');return;}
   const code=z.string().min(1).max(2048).parse(req.query.code);
   await client.exchange(code);
   res.redirect('/#/admin/cafe24-orders');
