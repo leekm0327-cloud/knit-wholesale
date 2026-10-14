@@ -111,7 +111,7 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
  }
  const client = {
   status,
-  authorizeUrl(state:string,write=false){const c=conf(),url=new URL('/api/v2/oauth/authorize',origin());url.search=new URLSearchParams({response_type:'code',client_id:c.clientId,redirect_uri:c.redirectUri,scope:write?'mall.read_order,mall.write_order':'mall.read_order',state}).toString();return url.href;},
+  authorizeUrl(state:string,write=false){const c=conf(),url=new URL('/api/v2/oauth/authorize',origin());url.search=new URLSearchParams({response_type:'code',client_id:c.clientId,redirect_uri:c.redirectUri,scope:write?'mall.read_order mall.write_order':'mall.read_order',state}).toString();return url.href;},
   async exchange(code:string){await tokenRequest(new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:conf().redirectUri}));},
   async list(input:unknown):Promise<Cafe24OrderPage>{
    const q=cafe24Query.parse(input);const pageSize=50;
