@@ -1,7 +1,7 @@
 /** Read-only Cafe24 DTOs. No wholesale order IDs or financial ledger writes. */
 export type Cafe24Connection = {
   state: 'not_configured' | 'not_connected' | 'connected' | 'reauthorize' | 'error';
-  canWrite?:boolean; mallId: string; shopNo: number; message: string;
+  canReadReviews?:boolean; canWrite?:boolean; mallId: string; shopNo: number; message: string;
 };
 export type Cafe24Item = {code:string; name:string; option:string; quantity:number|null; status:string; statusText:string; shippingCode:string};
 export type Cafe24Order = {

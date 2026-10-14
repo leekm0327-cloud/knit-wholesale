@@ -1,3 +1,4 @@
+import {createReviewAlerts} from './review-alerts';
 import {createOrderActionStore,OrderActionError} from './online-order-actions';
 import type {Express,RequestHandler,Request,Response} from 'express';
 import type Database from 'better-sqlite3';
@@ -5,7 +6,7 @@ import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import {cafe24Config,Cafe24Error,createCafe24Client,type Cafe24Config} from './cafe24-client';
 declare module 'express-session' {
- interface SessionData {cafe24OAuth?:{state:string;expires:number;userId:number;mallId:string};}
+ interface SessionData {cafe24OAuth?:{state:string;expires:number;userId:number;mallId:string;reviews?:boolean};}
 }
 export function registerCafe24Routes(app:Express,db:Database.Database,admin:RequestHandler,owner:RequestHandler,options?:{config:Cafe24Config|null;fetcher?:typeof fetch;now?:()=>number}){
  let config:Cafe24Config|null=null,invalid='';
@@ -14,6 +15,7 @@ export function registerCafe24Routes(app:Express,db:Database.Database,admin:Requ
  const actions=createOrderActionStore(db);
  const client=createCafe24Client(db,config,options?.fetcher,now);
  const prefix='/api/admin/cafe24';
+ const reviews=createReviewAlerts(db,`${config?.mallId||'unconfigured'}:${config?.shopNo||1}:4`,()=>client.reviewSignals(),now);
  const safe=(fn:(req:Request,res:Response)=>Promise<unknown>|unknown):RequestHandler=>async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');
   try{await fn(req,res);}catch(e){
@@ -29,8 +31,8 @@ export function registerCafe24Routes(app:Express,db:Database.Database,admin:Requ
   // A credential-bearing connection can only be started from our own admin UI.
   if(req.get('Origin')!==new URL(config.redirectUri).origin)throw new Cafe24Error('origin','관리자 화면에서 연결을 시작해 주세요.',403);
   const state=randomBytes(32).toString('hex');
-  req.session.cafe24OAuth={state,expires:now()+10*60000,userId:req.session.userId!,mallId:config.mallId};
-  await saveSession(req);res.json({url:client.authorizeUrl(state,req.body?.write===true)});
+  req.session.cafe24OAuth={state,expires:now()+10*60000,userId:req.session.userId!,mallId:config.mallId,reviews:req.body?.reviews===true};
+  await saveSession(req);res.json({url:client.authorizeUrl(state,req.body?.write===true,req.body?.reviews===true)});
  }));
  app.get(prefix+'/callback',owner,safe(async(req,res)=>{
   const state=typeof req.query.state==='string'?req.query.state:'';
@@ -38,10 +40,21 @@ export function registerCafe24Routes(app:Express,db:Database.Database,admin:Requ
   if(!/^[a-f0-9]{64}$/.test(state)||!saved||saved.expires<now()||saved.userId!==req.session.userId||saved.mallId!==config?.mallId||state.length!==saved.state.length||!timingSafeEqual(Buffer.from(state),Buffer.from(saved.state)))
    throw new Cafe24Error('oauth_state','연결 확인 시간이 지났거나 요청이 일치하지 않습니다. 관리자에서 다시 연결해 주세요.',400);
   delete req.session.cafe24OAuth;await saveSession(req);
-  if(req.query.error){res.redirect('/?cafe24_connection_error='+(['invalid_scope','access_denied'].includes(String(req.query.error))?String(req.query.error):'failed')+'#/admin/cafe24-orders');return;}
+  if(req.query.error){res.redirect('/?cafe24_connection_error='+(['invalid_scope','access_denied'].includes(String(req.query.error))?String(req.query.error):'failed')+(saved.reviews?'#/admin/review-alerts':'#/admin/cafe24-orders'));return;}
   const code=z.string().min(1).max(2048).parse(req.query.code);
   await client.exchange(code);
-  res.redirect('/#/admin/cafe24-orders');
+  res.redirect(saved.reviews?'/#/admin/review-alerts':'/#/admin/cafe24-orders');
+ }));
+ app.get(prefix+'/reviews/summary',admin,safe(async(_req,res)=>{
+  const connection=client.status();
+  if(connection.state!=='connected'||!connection.canReadReviews){res.json({state:connection.state==='connected'?'permission_required':'unavailable',unread:0,through:0,checkedAt:null,initializedAt:null,latestAt:null,message:connection.state==='connected'?'카페24 게시판 읽기 권한 연결이 필요합니다.':connection.message});return;}
+  res.json(await reviews.refresh());
+ }));
+ app.post(prefix+'/reviews/acknowledge',admin,safe((req,res)=>{
+  if(!config||req.get('Origin')!==new URL(config.redirectUri).origin)throw new Cafe24Error('origin','관리자 화면에서 확인해 주세요.',403);
+  const through=z.number().int().nonnegative().parse(req.body?.through);
+  if(through>reviews.status().through)throw new Cafe24Error('invalid_input','새 리뷰를 다시 조회해 주세요.',400);
+  res.json(reviews.acknowledge(through));
  }));
  app.get(prefix+'/orders',admin,safe(async(req,res)=>res.json(await client.list(req.query))));
  app.get(prefix+'/orders/:id/history',admin,safe((r,s)=>s.json(actions.history('cafe24',String(r.params.id)))));

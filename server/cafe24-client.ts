@@ -75,7 +75,7 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
   if(!config)return {...base,state:'not_configured',message:'카페24 앱 등록과 서버 연결 설정이 필요합니다.'};
   try{const t=loadToken();if(!t)return {...base,state:'not_connected',message:'카페24에서 주문 조회 연결을 승인해 주세요.'};
    if(Date.parse(t.refresh_token_expires_at)<=now())return {...base,state:'reauthorize',message:'카페24 연결이 만료됐습니다. 다시 연결해 주세요.'};
-   return {...base,state:'connected',canWrite:t.scopes.includes('mall.write_order'),message:'카페24 주문과 배송정보를 조회할 수 있습니다.'};
+   return {...base,state:'connected',canWrite:t.scopes.includes('mall.write_order'),canReadReviews:t.scopes.includes('mall.read_community'),message:'카페24 주문과 배송정보를 조회할 수 있습니다.'};
   }catch{return {...base,state:'error',message:'저장된 연결 설정을 확인해 주세요.'};}
  }
  async function request(url:string,options:RequestInit):Promise<Response>{
@@ -111,7 +111,30 @@ export function createCafe24Client(db:Database.Database,config:Cafe24Config|null
  }
  const client = {
   status,
-  authorizeUrl(state:string,write=false){const c=conf(),url=new URL('/api/v2/oauth/authorize',origin());url.search=new URLSearchParams({response_type:'code',client_id:c.clientId,redirect_uri:c.redirectUri,scope:write?'mall.read_order mall.write_order':'mall.read_order',state}).toString();return url.href;},
+  authorizeUrl(state:string,write=false,reviews=false){
+   const c=conf(),url=new URL('/api/v2/oauth/authorize',origin());
+   const prior=loadToken()?.scopes||[];
+   const scopes=['mall.read_order'];
+   if(write||prior.includes('mall.write_order'))scopes.push('mall.write_order');
+   if(reviews||prior.includes('mall.read_community'))scopes.push('mall.read_community');
+   url.search=new URLSearchParams({response_type:'code',client_id:c.clientId,redirect_uri:c.redirectUri,scope:scopes.join(' '),state}).toString();return url.href;
+  },
+  async reviewSignals(){
+   if(!status().canReadReviews)throw new Cafe24Error('review_permission','카페24 게시판 읽기 권한을 연결해 주세요.',403);
+   const result=new Map<number,{id:number;createdAt:string}>();
+   for(let offset=0;offset<10000;offset+=100){
+    const raw=await get('boards/4/articles',{limit:'100',offset:String(offset)});
+    const articles=readRows(raw?.articles);
+    for(const a of articles){
+     if(a.notice==='T'||a.deleted==='T'||Number(a.reply_depth||0)>0)continue;
+     const id=Number(a.article_no),date=text(a.created_date);
+     if(!Number.isSafeInteger(id)||id<1||!Number.isFinite(Date.parse(date)))throw new Cafe24Error('invalid_response','리뷰 정보를 확인하지 못했습니다. 새 리뷰 수를 갱신하지 않았어요.');
+     result.set(id,{id,createdAt:new Date(date).toISOString()});
+    }
+    if(articles.length<100)return Array.from(result.values());
+   }
+   throw new Cafe24Error('review_limit','리뷰가 많아 전체 조회를 완료하지 못했습니다. 카페24에서 확인해 주세요.',503);
+  },
   async exchange(code:string){await tokenRequest(new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:conf().redirectUri}));},
   async list(input:unknown):Promise<Cafe24OrderPage>{
    const q=cafe24Query.parse(input);const pageSize=50;

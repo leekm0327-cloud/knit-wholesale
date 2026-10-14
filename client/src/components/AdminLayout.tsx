@@ -1,3 +1,4 @@
+import {useReviewAlert} from '@/hooks/use-review-alert';
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Wordmark } from "./Logo";
@@ -19,6 +20,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
  const [mobileOpen, setMobileOpen] = useState(false);
  const [searchOpen,setSearchOpen] = useState(false);
  const [search,setSearch] = useState('');
+ const reviewAlert=useReviewAlert();
+ const newReviews=!reviewAlert.isError&&reviewAlert.data?.state==='ready'?reviewAlert.data.unread:0;
  const isOwner = (user as any)?.adminRole === 'owner';
  const items = adminNavigation.filter(i=>!i.owner || isOwner);
  const active = activeAdminItem(location);
@@ -89,14 +92,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   }
 
 
- const navigation = <nav aria-label="업무 메뉴" className="erp-nav">{adminModules.map((g,index)=>{const Icon=icons[index];const badge=g.id==='sales'?pendingCount+chatUnreadCount:g.id==='people'?leavePendingCount:0;return <Link key={g.id} href={moduleHref(g.id)} aria-current={g.id===groupId?'page':undefined} className={g.id===groupId?'active':''}><Icon size={16}/><span>{g.label}</span>{badge>0&&<b>{badge}</b>}</Link>;})}</nav>;
+ const navigation = <nav aria-label="업무 메뉴" className="erp-nav">{adminModules.map((g,index)=>{const Icon=icons[index];const badge=g.id==='online'?newReviews:g.id==='sales'?pendingCount+chatUnreadCount:g.id==='people'?leavePendingCount:0;return <Link key={g.id} href={moduleHref(g.id)} aria-current={g.id===groupId?'page':undefined} className={g.id===groupId?'active':''}><Icon size={16}/><span>{g.label}</span>{badge>0&&<b>{badge}</b>}</Link>;})}</nav>;
  const footer = <div className="erp-rail-footer"><a href="/#/catalog" target="_blank" rel="noopener noreferrer">주문 사이트 <ExternalLink size={13}/></a><small>{user.managerName} · {isOwner?'Owner':'Manager'}</small><button onClick={async()=>{await logout();navigate('/admin/login');}}><LogOut size={14}/>로그아웃</button></div>;
  const brand = <div className="erp-brand"><Wordmark size={28}/><span>KNIT COFFEE · WORKSPACE</span><div className="erp-workspace">니트커피<small>운영 관리</small></div></div>;
  return <div className="erp-admin erp-shell">
   <aside className="erp-rail print:hidden">{brand}{navigation}{footer}</aside>
   <Sheet open={mobileOpen} onOpenChange={setMobileOpen}><SheetContent side="left" className="erp-admin erp-mobile-menu"><SheetTitle className="sr-only">관리자 메뉴</SheetTitle>{brand}{navigation}{footer}</SheetContent></Sheet>
-  <div className="erp-body"><header className="erp-topbar print:hidden"><button className="erp-mobile-toggle" aria-label="메뉴 열기" onClick={()=>setMobileOpen(true)}><Menu size={20}/></button><div className="erp-breadcrumb"><Link href="/admin">Workspace</Link><span>/</span><Link href={moduleHref(groupId||'today')}>{group?.label||'관리자'}</Link>{active&&<><span>/</span><strong>{active.label}</strong></>}</div><button className="erp-search-trigger" onClick={()=>{setSearch('');setSearchOpen(true);}} aria-label="메뉴 검색"><Search size={15}/><span>메뉴 검색</span><kbd>⌘ K</kbd></button><NotificationBell/></header>
-  {groupId&&groupId!=='today'&&<nav className="erp-subnav print:hidden" aria-label="세부 메뉴">{items.filter(i=>i.group===groupId).map(i=><Link key={i.path} href={i.path} aria-current={active?.path===i.path?'page':undefined}>{i.label}</Link>)}</nav>}
+  <div className="erp-body"><header className="erp-topbar print:hidden"><button className="erp-mobile-toggle" aria-label="메뉴 열기" onClick={()=>setMobileOpen(true)}><Menu size={20}/></button><div className="erp-breadcrumb"><Link href="/admin">Workspace</Link><span>/</span><Link href={moduleHref(groupId||'today')}>{group?.label||'관리자'}</Link>{active&&<><span>/</span><strong>{active.label}</strong></>}</div><button className="erp-search-trigger" onClick={()=>{setSearch('');setSearchOpen(true);}} aria-label="메뉴 검색"><Search size={15}/><span>메뉴 검색</span><kbd>⌘ K</kbd></button><Link href="/admin/review-alerts" className="text-xs" aria-label={newReviews?`새 리뷰 ${newReviews}건`:reviewAlert.isError?'리뷰 확인 오류':'새 리뷰 확인'}>{newReviews?`새 리뷰 ${newReviews}건`:reviewAlert.isError?'리뷰 확인 필요':'리뷰'}</Link><NotificationBell/></header>
+  {groupId&&groupId!=='today'&&<nav className="erp-subnav print:hidden" aria-label="세부 메뉴">{items.filter(i=>i.group===groupId).map(i=><Link key={i.path} href={i.path} aria-current={active?.path===i.path?'page':undefined}>{i.label}{i.path==='/admin/review-alerts'&&newReviews>0&&<b className="ml-2">{newReviews}</b>}</Link>)}</nav>}
   <main className="min-w-0">{children}</main></div>
   <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent className="erp-admin erp-search-dialog" aria-describedby={undefined}><DialogTitle>메뉴 검색</DialogTitle><input autoFocus aria-label="메뉴 이름" placeholder="주문, 재고, 직원, 정산…" value={search} onChange={e=>setSearch(e.target.value)}/><div className="erp-search-results">{items.filter(i=>i.label.replaceAll(' ','').includes(search.replaceAll(' ',''))).map(i=><Link key={i.path} href={i.path} onClick={()=>setSearchOpen(false)}>{i.label}<small>{adminModules.find(g=>g.id===i.group)?.label}</small></Link>)}{!items.some(i=>i.label.replaceAll(' ','').includes(search.replaceAll(' ','')))&&<p>일치하는 메뉴가 없습니다.</p>}</div></DialogContent></Dialog>
  </div>;

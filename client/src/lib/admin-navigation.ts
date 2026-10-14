@@ -1,5 +1,5 @@
 export const adminModules = [
-  {id:"online",label:"온라인 주문"},
+  {id:"online",label:"온라인몰 관리"},
   {
     "id": "today",
     "label": "오늘"
@@ -30,6 +30,7 @@ export const adminModules = [
   }
 ];
 export const adminNavigation = [
+ {path:"/admin/review-alerts",label:"새 리뷰",owner:false,group:"online"},
  {path:"/admin/smartstore-orders",label:"스마트스토어 주문",owner:false,group:"online"},
  {path:"/admin/cafe24-orders",label:"자사몰 주문",owner:false,group:"online"},
  {path:"/admin/operations-calendar",label:"운영 캘린더",owner:false,group:"store"},
