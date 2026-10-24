@@ -1,4 +1,7 @@
-import { useState } from "react";
+import "./order-history.css";
+import { LoadError } from "@/components/LoadError";
+import { fmtDate, won } from "@/lib/format";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
@@ -38,14 +41,15 @@ export default function OrderDetail() {
   const { toast } = useToast();
   const id = params?.id;
 
-  const { data: order, isLoading } = useQuery<Order>({
+  const { data: order, isLoading, isError, refetch } = useQuery<Order>({
     queryKey: ["/api/orders", id],
     enabled: !!id,
   });
 
   // #2 이전 주문 다시 담기 — 현재 상품 정보(가격/품절) 기준으로 담기 위해 상품 목록 조회
-  const { data: products } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const { data: products, isLoading: productsLoading, isFetching: productsFetching, isError: productsError, refetch: retryProducts } = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const { add } = useCart();
+  const reordering = useRef(false);
 
   const [editing, setEditing] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -53,13 +57,16 @@ export default function OrderDetail() {
 
   // #2 이전 주문 품목을 장바구니에 다시 담기 (카탈로그의 '지난 주문 그대로 담기'와 같은 규칙)
   function reorder() {
-    if (!order) return;
+    if (!order || isError || productsFetching || productsError || !products || reordering.current) return;
+    reordering.current = true;
     const r = reorderItems(order, products, add);
     if (!r) {
+      reordering.current = false;
       toast({ title: "불러오기 실패", description: "주문 품목을 읽을 수 없습니다.", variant: "destructive" });
       return;
     }
     if (r.added === 0) {
+      reordering.current = false;
       toast({ title: "담을 수 있는 품목이 없습니다", description: "주문 품목이 모두 품절이거나 판매 종료되었습니다.", variant: "destructive" });
       return;
     }
@@ -87,7 +94,7 @@ export default function OrderDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="order-history order-detail min-h-screen bg-background">
       <AppHeader />
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -98,14 +105,15 @@ export default function OrderDetail() {
           >
             <ArrowLeft className="h-4 w-4" /> 주문 내역
           </button>
-          {order && (
+          {order && !isError && (
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 onClick={reorder}
+                disabled={productsFetching || productsError || !products}
                 data-testid="button-reorder"
               >
-                <RotateCcw className="mr-1.5 h-4 w-4" /> 이 주문 다시 담기
+                <RotateCcw className="mr-1.5 h-4 w-4" /> {productsFetching ? "상품 정보 확인 중" : "이 주문 다시 담기"}
               </Button>
               <Button
                 variant="outline"
@@ -118,15 +126,16 @@ export default function OrderDetail() {
           )}
         </div>
 
-        {isLoading || !order ? (
+        {isError ? (<LoadError onRetry={() => refetch()} title="주문을 불러오지 못했습니다." />) : isLoading || !order ? (
           <Skeleton className="h-[500px] w-full rounded-none" />
         ) : (
           <>
-            <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 p-5">
+            {productsError && <div className="reorder-error" role="alert">상품 정보를 불러오지 못했습니다. 다시 담기는 잠시 사용할 수 없습니다.<button disabled={productsFetching} data-testid="button-retry-products" onClick={() => retryProducts()}>다시 시도</button></div>}
+            <Card className="order-summary mb-6 flex flex-wrap items-center justify-between gap-3 p-5">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-display text-base font-semibold tabular text-foreground">
-                    {order.orderNo}
+                    {fmtDate(order.createdAt)} · {order.orderNo}
                   </span>
                   {order.status === "cancelled" ? (
                     <Badge className="bg-gray-200 text-[11px] text-gray-500 hover:bg-gray-200">
@@ -174,7 +183,7 @@ export default function OrderDetail() {
               />
             ) : (
               <div className={order.status === "cancelled" ? "opacity-50 grayscale" : ""}>
-                <Invoice order={order} />
+                <section className="order-quick" aria-label="주문 상품"><h2>주문 상품 <span className="text-xs text-muted-foreground">· 금액은 공급가 기준</span></h2>{(JSON.parse(order.items) as OrderItem[]).map((it,i)=><div className="quick-item" key={i}><span>{it.name}</span><strong>{it.qty} EA</strong><span>{won(it.amount)}</span></div>)}<div className="quick-total"><span>주문 합계 <span className="text-xs text-muted-foreground">(부가세 포함)</span></span><strong>{won(order.totalAmount)}</strong></div><p>다시 담기는 현재 판매 상품과 적용 단가를 기준으로 합니다.</p></section><details className="invoice-fold"><summary>배송 정보 · 요청사항 · 거래명세서</summary><Invoice order={order} /></details>
               </div>
             )}
           </>

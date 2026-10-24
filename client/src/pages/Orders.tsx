@@ -1,3 +1,4 @@
+import "./order-history.css";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -71,7 +72,7 @@ export default function Orders() {
   const hasOrders = !!orders && orders.length > 0;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="order-history min-h-screen bg-background">
       <AppHeader />
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         <div className="mb-6">
@@ -168,10 +169,10 @@ export default function Orders() {
               return (
                 <Card
                   key={o.id}
-                  className={`flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between ${cancelled ? "opacity-50 grayscale" : ""}`}
+                  className={`order-entry flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between ${cancelled ? "opacity-50 grayscale" : ""}`}
                   data-testid={`row-order-${o.id}`}
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 order-entry-content"><div className="order-date">{fmtDate(o.createdAt)}</div>
                     <div className="flex items-center gap-2">
                       <span className="font-display text-sm font-semibold tabular text-foreground">
                         {o.orderNo}
@@ -184,9 +185,9 @@ export default function Orders() {
                         <Badge className="bg-foreground text-[11px] text-background hover:bg-foreground">접수됨</Badge>
                       )}
                     </div>
-                    <div className="mt-1 truncate text-sm text-muted-foreground">{summary}</div>
+                    <div className="order-lines">{items.map((it,i)=><div key={i}><span>{it.name}</span><strong>{it.qty} EA</strong></div>)}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {fmtDate(o.createdAt)} · 합계 <span className="font-medium text-foreground">{won(o.totalAmount)}</span>
+                      합계 <span className="font-medium text-foreground">{won(o.totalAmount)}</span>
                     </div>
                   </div>
                   <Button
@@ -196,7 +197,7 @@ export default function Orders() {
                     className="shrink-0"
                   >
                     <FileText className="mr-1.5 h-4 w-4" />
-                    상세 보기
+                    주문 보기
                   </Button>
                 </Card>
               );
