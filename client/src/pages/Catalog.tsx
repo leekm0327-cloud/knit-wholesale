@@ -1,3 +1,4 @@
+import "./catalog.css";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -142,7 +143,7 @@ export default function Catalog() {
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
       .map((c) => ({ key: c.key, label: c.label }));
   }, [categoryRows]);
-  // ③ 니트커피 소식 (발행분). 최신 4개만 상단 카드로 노출.
+  // ③ 니트커피 소식 (발행분). 최신 4개만 상품 목록 아래 카드로 노출.
   const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });
   const topNews = (newsList ?? []).slice(0, 4);
   const [qtyMap, setQtyMap] = useState<Record<number, number>>({});
@@ -269,41 +270,11 @@ export default function Catalog() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background catalog-compact">
       <AppHeader />
       <KakaoChannelButton />
 
-      <main className="mx-auto max-w-[1200px] px-5 pb-56 pt-8 sm:px-8 sm:pb-60 sm:pt-10">
-        {/* ③ NEWS — 소식이 하나도 없으면 섹션 자체를 숨김. 최상단 노출 (헤더 없이 카드만) */}
-        {topNews.length > 0 && (
-          <section className="mb-10" data-testid="section-catalog-news">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {topNews.map((n) => (
-                <Link
-                  key={n.id}
-                  href={`/news/${n.id}`}
-                  className="group relative block aspect-[2/1] overflow-hidden rounded-lg border border-border bg-muted"
-                  data-testid={`card-news-${n.id}`}
-                >
-                  {n.coverImage ? (
-                    <img src={n.coverImage} alt={n.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">니트커피</div>
-                  )}
-                  {/* 데스크톱: hover 시 / 모바일: 기본으로 사진이 어두워지며 제목 노출 */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-md:opacity-100" />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 opacity-0 transition-all duration-300 group-hover:opacity-100 max-md:opacity-100">
-                    <h3 className="line-clamp-2 text-sm font-semibold text-white drop-shadow-sm">{n.title}</h3>
-                    {n.publishedAt ? (
-                      <p className="mt-1 text-xs text-white/80">{fmtDate(n.publishedAt)}</p>
-                    ) : null}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
+      <main className="catalog-main mx-auto max-w-[1200px] px-5 pb-56 pt-8 sm:px-8 sm:pb-60 sm:pt-10">
         {/* 인트로 헤더 */}
         <div className="mb-6 border-b border-border pb-6">
           <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">For wholesale partners</p>
@@ -311,7 +282,7 @@ export default function Catalog() {
             원두 발주
           </h1>
           <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
-            수량을 입력하고 담아 주세요. 단가는 공급가액 기준이며, 부가세 10%가 별도로 가산됩니다.
+            단가: 공급가 기준 · 부가세 10% 별도
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <Link
@@ -467,6 +438,36 @@ export default function Catalog() {
           </div>
         )}
 
+        {/* ③ NEWS — 소식이 하나도 없으면 섹션 자체를 숨김. 상품 선택 뒤에 노출 (헤더 없이 카드만) */}
+        {topNews.length > 0 && (
+          <section className="mb-10" data-testid="section-catalog-news">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {topNews.map((n) => (
+                <Link
+                  key={n.id}
+                  href={`/news/${n.id}`}
+                  className="group relative block aspect-[2/1] overflow-hidden rounded-lg border border-border bg-muted"
+                  data-testid={`card-news-${n.id}`}
+                >
+                  {n.coverImage ? (
+                    <img src={n.coverImage} alt={n.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">니트커피</div>
+                  )}
+                  {/* 데스크톱: hover 시 / 모바일: 기본으로 사진이 어두워지며 제목 노출 */}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-md:opacity-100" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 opacity-0 transition-all duration-300 group-hover:opacity-100 max-md:opacity-100">
+                    <h3 className="line-clamp-2 text-sm font-semibold text-white drop-shadow-sm">{n.title}</h3>
+                    {n.publishedAt ? (
+                      <p className="mt-1 text-xs text-white/80">{fmtDate(n.publishedAt)}</p>
+                    ) : null}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* 에스프레소 추출 가이드 (공개 집계) */}
         <section id="espresso-section" className="mt-12 mb-24 scroll-mt-20" data-testid="section-espresso">
           <h2 className="mb-1 font-display text-lg font-semibold text-foreground">에스프레소 추출 가이드</h2>
@@ -476,7 +477,7 @@ export default function Catalog() {
       </main>
 
       {/* 하단 합계바 — 미니멀 (모바일은 하단 탭바 위로 재배치) */}
-      <div className="fixed bottom-11 left-0 right-0 z-40 border-t border-border bg-background/97 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:bottom-0">
+      <div className="catalog-summary fixed bottom-11 left-0 right-0 z-40 border-t border-border bg-background/97 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:bottom-0">
         <div className="mx-auto flex max-w-[1200px] flex-col gap-1 px-5 py-3 sm:px-8 sm:py-4">
           <div className="flex items-baseline justify-between text-xs text-muted-foreground">
             <span>공급가액</span>
@@ -502,9 +503,9 @@ export default function Catalog() {
               }`}
               data-testid="text-bean-progress"
             >
-              <span>원두 {beanProgress.total}개{beanProgress.inCart > 0 && ` (장바구니 ${beanProgress.inCart}개 포함)`}</span>
+              <span>원두 {beanProgress.total} EA{beanProgress.inCart > 0 && ` (장바구니 ${beanProgress.inCart} EA 포함)`}</span>
               <span className="font-medium">
-                {beanProgress.total >= 5 ? "최소 주문 수량 충족" : `5개(5kg)까지 ${5 - beanProgress.total}개 남음`}
+                {beanProgress.total >= 5 ? "최소 주문 수량 충족" : `5 EA(5kg)까지 ${5 - beanProgress.total} EA 남음`}
               </span>
             </div>
           )}
@@ -583,7 +584,7 @@ function ProductRow({
       data-testid={`row-product-${product.id}`}
     >
       {/* 상단: 상품명 / 가격 / 수량 (한 줄, 반응형 공통) */}
-      <div className="flex items-center gap-3">
+      <div className="product-line flex items-center gap-3">
         <StarButton productId={product.id} isFavorite={isFavorite} onToggle={onToggleFavorite} />
         <div className="min-w-0 flex-1">
           {soldOut && (
@@ -607,7 +608,7 @@ function ProductRow({
           )}
           {/* 상품별 최소 주문 수량 — 장바구니에서야 알게 되지 않도록 여기서 미리 표시 */}
           {(product as any).minOrderQty > 0 && (
-            <div className="text-[9px] text-muted-foreground">최소 {(product as any).minOrderQty}개</div>
+            <div className="text-[9px] text-muted-foreground">최소 {(product as any).minOrderQty} EA</div>
           )}
         </div>
         <div className="shrink-0">
@@ -707,7 +708,7 @@ function QtyControl({
   }
 
   return (
-    <div className="flex items-center border border-border">
+    <div className="qty-control flex items-center border border-border">
       <button
         type="button"
         disabled={soldOut}
@@ -743,6 +744,7 @@ function QtyControl({
         className={`${compact ? "w-9" : "w-11"} border-x border-border bg-transparent py-1.5 text-center font-ui text-sm tabular text-foreground outline-none focus:bg-muted/40 disabled:opacity-40`}
         data-testid={`input-qty-${productId}`}
       />
+      <span className="ea-unit">EA</span>
       <button
         type="button"
         disabled={soldOut}
