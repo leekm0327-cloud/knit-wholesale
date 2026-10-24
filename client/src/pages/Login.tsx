@@ -115,13 +115,23 @@ export default function Login() {
     // 버튼의 글자·아이콘 색(text-background)을 덮어써서 검은 배경에 검은 아이콘이 된다.
     <>
     <div className="knit-landing">
-      {/* ── 최상단: 로고 + 거래처 로그인 ── */}
-      <div className="wrap top">
+      <div className="wrap entry-header">
         <img className="logo" src="/knit-logo-stacked.png" alt="knit COFFEE" />
-
+        <span>원두 납품 · 카페 컨설팅</span>
+      </div>
+      <div className="wrap entry-grid">
+        <div className="entry-intro">
+          <p className="entry-eyebrow">새로운 거래를 시작하시나요?</p>
+          <h1>Coffee &amp; Consulting</h1>
+          <div className="cta-row">
+            <button className="btn ghost" onClick={() => scrollTo("our-coffee")}>원두 알아보기</button>
+            <Link href="/register" className="btn" onClick={markSampleIntent}>샘플 신청</Link>
+          </div>
+          <p className="entry-note">거래처 가입 후 샘플 신청</p>
+        </div>
         <div className="login">
-          <div className="t">거래처 로그인</div>
-          <div className="s">이미 거래 중이신 사장님</div>
+          <div className="t">기존 거래처</div>
+          <div className="s">로그인하고 바로 주문하세요</div>
           {loggedIn && (
             <p className="note" style={{ margin: "10px 0 0", textAlign: "left" }}>
               지금 <strong style={{ color: "var(--kl-fg)" }}>{(loggedIn as any).businessName || (loggedIn as any).email}</strong> 계정으로 로그인되어 있습니다.
@@ -174,22 +184,6 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="rule"></div>
-
-      {/* ── 히어로 ── */}
-      <div className="wrap hero">
-        <h1 className="hero-title">Coffee & Consulting</h1>
-        <p className="hero-sub narrow">더 좋은 카페가 될 수 있도록 같이 고민합니다.</p>
-        <div className="divider"></div>
-        <p className="lead narrow">니트커피는 원두를 납품하는 홀세일 파트너이자, 여러 매장의 시작과 성장을 함께 한 컨설팅 파트너입니다.</p>
-        <p className="lead narrow">여러 컨설팅 경험과 노하우를 통해 원두 뿐 아니라 매장에 필요한 부분을 함께 고민합니다.</p>
-        <div className="cta-row">
-          <Link href="/register" className="btn" onClick={markSampleIntent}>무료 원두 샘플 신청</Link>
-          <Link href="/inquiry" className="btn ghost" onClick={() => markInquiryType("")}>상담 문의</Link>
-        </div>
-        <p className="note" style={{ marginTop: "14px" }}>블렌드 2종, 각 500g · 비용도 배송비도 없습니다.</p>
-      </div>
-
       <section>
         <div className="wrap">
           <h2 className="hero-title sm">From setup to cup</h2>
@@ -226,7 +220,7 @@ export default function Login() {
       </section>
 
       {/* ── 원두 소개 (상품 관리 연동) ── */}
-      <section>
+      <section id="our-coffee">
         <div className="wrap">
           <h2 className="hero-title sm">Our coffee</h2>
           <p className="hero-sub narrow">원두 소개</p>
