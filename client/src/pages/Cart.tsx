@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AppHeader } from "@/components/AppHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { OrderConfirmation, type OrderQuote } from "@/components/OrderConfirmation";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -19,9 +19,13 @@ export default function Cart() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [note, setNote] = useState("");
-  const [desiredDate, setDesiredDate] = useState("");
+  const [quote, setQuote] = useState<OrderQuote | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const busy = useRef(false);
   const [quickRequest, setQuickRequest] = useState(false);
   const [loading, setLoading] = useState(false);
+  useEffect(() => { setQuote(null); }, [items, note, quickRequest]);
+
 
   const vat = Math.round(supplyAmount * 0.1);
   const total = supplyAmount + vat;
@@ -68,41 +72,30 @@ export default function Cart() {
   const minViolations = items
     .map((i) => ({ name: i.name, qty: i.qty, min: minMap.get((i as any).productId) ?? 0 }))
     .filter((v) => v.min > 0 && v.qty > 0 && v.qty < v.min);
-  const blocked = belowMin || minViolations.length > 0;
+
+  function payload(reviewItems = items) {
+    return { items: reviewItems.map(i => ({ ...i, amount: i.unitPrice * i.qty })), note, quickRequest };
+  }
+
+  async function reviewOrder(recheck = false) {
+    if (busy.current || !items.length) return;
+    busy.current = true; setLoading(true); setReviewError("");
+    try {
+      const res = await apiRequest("POST", "/api/orders/preview", payload(recheck && quote ? quote.items : items));
+      setQuote(await res.json());
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setQuote(null); setReviewError(errMsg(err));
+    } finally { busy.current = false; setLoading(false); }
+  }
 
   async function submitOrder() {
-    if (items.length === 0) return;
-    if (belowMin) {
-      toast({
-        title: "주문 불가",
-        description: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (minViolations.length > 0) {
-      const v = minViolations[0];
-      toast({
-        title: "주문 불가",
-        description: `'${v.name}'은(는) 최소 ${v.min}개부터 주문 가능합니다.`,
-        variant: "destructive",
-      });
-      return;
-    }
+    if (busy.current || !quote || quote.missingAddress || quote.priceChanges.length) return;
+    busy.current = true;
     setLoading(true);
     try {
       const res = await apiRequest("POST", "/api/orders", {
-        items: items.map((i) => ({
-          productId: i.productId,
-          name: i.name,
-          category: i.category,
-          unitPrice: i.unitPrice,
-          qty: i.qty,
-          amount: i.unitPrice * i.qty,
-        })),
-        desiredDate,
-        note,
-        quickRequest: quickRequest,
+        ...payload(quote.items), confirmationRevision: quote.revision,
       });
       const result = await res.json();
       clear();
@@ -118,9 +111,11 @@ export default function Cart() {
       }
       navigate(`/invoice/${result.id ?? result.orderId}`);
     } catch (err: any) {
-      toast({ title: "주문 실패", description: errMsg(err), variant: "destructive" });
+      setQuote(null);
+      setReviewError(errMsg(err));
+      toast({ title: "주문을 다시 확인해 주세요", description: errMsg(err), variant: "destructive" });
     } finally {
-      setLoading(false);
+      busy.current = false; setLoading(false);
     }
   }
 
@@ -136,7 +131,8 @@ export default function Cart() {
           <ArrowLeft className="h-4 w-4" /> 카탈로그
         </button>
         <p className="eyebrow mb-2">Your order</p>
-        <h1 className="font-display mb-8 text-3xl font-medium tracking-tight text-foreground">장바구니</h1>
+        <h1 className="font-display mb-8 text-3xl font-medium tracking-tight text-foreground">{quote ? "주문 최종 확인" : "장바구니"}</h1>
+        {reviewError && <p role="alert" className="mb-6 border border-destructive p-4 text-sm text-destructive break-keep">{reviewError}</p>}
 
         {items.length === 0 ? (
           <Card className="flex flex-col items-center gap-3 py-16 text-center">
@@ -146,6 +142,9 @@ export default function Cart() {
               상품 보러가기
             </Button>
           </Card>
+        ) : quote ? (
+          <OrderConfirmation quote={quote} loading={loading} onBack={() => setQuote(null)} onConfirm={submitOrder}
+            onRecheck={() => reviewOrder(true)} onAccount={() => navigate("/account")} />
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
             {/* 품목 리스트 */}
@@ -206,19 +205,6 @@ export default function Cart() {
               ))}
 
               <Card className="space-y-4 p-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="desiredDate" className="text-xs">희망 배송일 <span className="font-normal text-muted-foreground">(선택)</span></Label>
-                  <Input
-                    id="desiredDate"
-                    type="date"
-                    value={desiredDate}
-                    min={new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)}
-                    onChange={(e) => setDesiredDate(e.target.value)}
-                    className="w-44"
-                    data-testid="input-desired-date"
-                  />
-                  <p className="text-[11px] text-muted-foreground break-keep">비워두면 가장 빠른 출고일에 보내드립니다. 물량에 따라 희망일을 맞추지 못할 수 있습니다.</p>
-                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="note" className="text-xs">요청사항</Label>
                   <Textarea
@@ -302,12 +288,12 @@ export default function Cart() {
                 <Button
                   className="w-full"
                   size="lg"
-                  onClick={submitOrder}
-                  disabled={loading || blocked}
+                  onClick={() => reviewOrder()}
+                  disabled={loading}
                   data-testid="button-submit-order"
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  주문하기
+                  주문 최종 확인
                 </Button>
                 <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
                   주문 즉시 거래명세서(인보이스)가 생성되며<br />입금 계좌가 안내됩니다.

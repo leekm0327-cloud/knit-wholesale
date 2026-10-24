@@ -1,3 +1,4 @@
+import { confirmCustomerOrder, OrderConfirmationError } from "./order-confirmation";
 import { registerSmartstoreRoutes } from "./smartstore-routes";
 import { registerCafe24Routes } from "./cafe24-routes";
 import { purchaseDuplicateCheck } from './purchase-duplicates';
@@ -653,127 +654,28 @@ export async function registerRoutes(
   });
 
   // ===== Orders (거래처) =====
+  app.post("/api/orders/preview", requireAuth, (req, res, next) => {
+    try { res.json(confirmCustomerOrder(db, req.session.userId!, req.body).quote); }
+    catch (e) {
+      if (e instanceof OrderConfirmationError) return res.status(e.status).json({ message: e.message });
+      next(e);
+    }
+  });
+
   app.post("/api/orders", requireAuth, async (req, res) => {
-    const parsed = createOrderSchema.safeParse(req.body);
-    if (!parsed.success)
-      return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
-    const customer = await storage.getCustomer(req.session.userId!);
-    if (!customer) return res.status(401).json({ message: "사용자 없음" });
-
-    const overrides = await storage.listCustomerPrices(customer.id);
-    const overrideMap = new Map(overrides.map((o) => [o.productId, o.price]));
-    const rawItems = parsed.data.items;
-    const newItems: any[] = [];
-    // A-4: 원두 카테고리 수량 합 (최소 5kg 검증용) — 카테고리 관리의 '원두(isBean)' 기준
-    const beanKeys = new Set((await storage.listProductCategories()).filter((c) => c.isBean).map((c) => c.key));
-    if (beanKeys.size === 0) ["blend", "decaf", "single"].forEach((k) => beanKeys.add(k)); // 방어적 폴백
-    let beanQtyTotal = 0;
-    const isSampleOrder = !!(parsed.data as any).isSample;
-    for (const it of rawItems) {
-      const prod = await storage.getProduct(it.productId);
-      if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${it.productId}` });
-      const unitPrice = overrideMap.get(it.productId) ?? prod.price;
-      if (beanKeys.has(prod.category)) beanQtyTotal += it.qty;
-      // 상품별 최소 주문 수량 검증 (샘플 제외)
-      const minQ = (prod as any).minOrderQty ?? 0;
-      if (!isSampleOrder && minQ > 0 && it.qty > 0 && it.qty < minQ) {
-        return res.status(400).json({ message: `'${prod.name}'은(는) 최소 ${minQ}개부터 주문 가능합니다. (현재 ${it.qty}개)` });
-      }
-      newItems.push({ ...it, category: prod.category, productName: prod.name, unitPrice, amount: unitPrice * it.qty });
+    let saved;
+    try { saved = confirmCustomerOrder(db, req.session.userId!, req.body, genOrderNo()); }
+    catch (e) {
+      if (e instanceof OrderConfirmationError) return res.status(e.status).json({ message: e.message });
+      throw e;
     }
-
-    // ===== V7 #23B: 같은 날(KST) pending 주문 누적 =====
-    const nowUtcMs = Date.now();
-    const kstOffsetMs = 9 * 60 * 60 * 1000;
-    const nowKst = new Date(nowUtcMs + kstOffsetMs);
-    // 오늘 KST 00:00:00 의 UTC epoch ms
-    const kstTodayStart = new Date(
-      Date.UTC(nowKst.getUTCFullYear(), nowKst.getUTCMonth(), nowKst.getUTCDate())
-    ).getTime() - kstOffsetMs;
-    const kstTodayEnd = kstTodayStart + 24 * 60 * 60 * 1000;
-
-    // 오늘 생성된 해당 거래처의 pending 주문 찾기
-    //  - 샘플 주문(isSample)에는 합치지 않는다. 유료 품목이 샘플 주문에 흡수되면 샘플 배지가 달린 채 청구된다.
-    //  - 음수(차감) 라인이 있는 주문에도 합치지 않는다. 환불 라인이 새 품목에 섞여 사라질 수 있다.
-    const myOrders = await storage.listOrdersByCustomer(customer.id);
-    const hasNegativeLine = (o: any) => {
-      try { return (JSON.parse(o.items) as any[]).some((i) => Number(i?.qty) < 0); } catch { return false; }
-    };
-    const todayPending = myOrders.find(
-      (o) =>
-        o.status === "pending" &&
-        o.createdAt >= kstTodayStart &&
-        o.createdAt < kstTodayEnd &&
-        (o as any).isSample !== 1 &&
-        !hasNegativeLine(o)
-    );
-
-    // 기존 주문(합쳐질 주문)의 원두 수량
-    let existingItems: any[] = [];
+    const { customer: customerValue, newItems: newItemsValue, todayPending, mergedItems, order: orderValue, quote } = saved;
+    const customer = customerValue!, newItems = newItemsValue!, order = orderValue!;
+    // Notifications run only after the atomic validation/write has committed.
     if (todayPending) {
-      try { existingItems = JSON.parse(todayPending.items); } catch { existingItems = []; }
-    }
-    const existingBeanQty = existingItems.reduce(
-      (s: number, i: any) => s + (beanKeys.has(i?.category) ? Number(i?.qty) || 0 : 0),
-      0,
-    );
-
-    // A-4: 도매 원두 최소 5kg(수량 5개) 검증. 샘플 주문(isSample)이면 스킵.
-    //  같은 날 주문에 합쳐지는 경우 "기존 원두 + 이번 원두" 합계로 판정한다.
-    //  (아침에 10kg 주문한 거래처가 오후에 1kg 추가하는 흔한 경우를 막지 않기 위해)
-    const isSample = (parsed.data as any).isSample;
-    const beanQtyAfterMerge = existingBeanQty + beanQtyTotal;
-    if (!isSample && beanQtyTotal > 0 && beanQtyAfterMerge < 5) {
-      return res.status(400).json({ message: "원두는 최소 5kg(수량 5개)부터 주문 가능합니다." });
-    }
-
-    if (todayPending) {
-      // 기존 주문에 항목 머지
-      const mergedItems = [...existingItems];
-
-      for (const ni of newItems) {
-        const idx = mergedItems.findIndex((ei: any) => ei.productId === ni.productId);
-        if (idx >= 0) {
-          const newQty = mergedItems[idx].qty + ni.qty;
-          mergedItems[idx] = {
-            ...mergedItems[idx],
-            qty: newQty,
-            amount: mergedItems[idx].unitPrice * newQty,
-          };
-        } else {
-          mergedItems.push(ni);
-        }
-      }
-
-      // 합쳐질 주문에 관리자가 걸어둔 정액 할인이 있으면 그대로 이어간다
-      const mergedItemsTotal = mergedItems.reduce((s: number, i: any) => s + i.unitPrice * i.qty, 0);
-      const keptDiscount = Math.min(Math.max(0, (todayPending as any).discountAmount ?? 0), mergedItemsTotal);
-      const newSupplyAmount = mergedItemsTotal - keptDiscount;
-      const newVat = Math.round(newSupplyAmount * 0.1);
-      const newTotalAmount = newSupplyAmount + newVat;
-
-      // 요청사항·퀵 요청은 버리지 않고 기존 주문에 이어붙인다.
-      const prevNote = String((todayPending as any).note ?? "").trim();
-      const addedNote = String(parsed.data.note ?? "").trim();
-      const mergedNote =
-        prevNote && addedNote && prevNote !== addedNote
-          ? `${prevNote}\n[추가 주문] ${addedNote}`
-          : addedNote || prevNote;
-      const mergedQuick = ((todayPending as any).quickRequest === 1 || !!parsed.data.quickRequest) ? 1 : 0;
-      const prevDesired = String((todayPending as any).desiredDate ?? "").trim();
-      const mergedDesired = prevDesired || String(parsed.data.desiredDate ?? "").trim();
-
-      const updatedOrder = await storage.updateOrder(todayPending.id, {
-        items: JSON.stringify(mergedItems),
-        discountAmount: keptDiscount,
-        supplyAmount: newSupplyAmount,
-        vat: newVat,
-        totalAmount: newTotalAmount,
-        note: mergedNote,
-        quickRequest: mergedQuick,
-        desiredDate: mergedDesired,
-      } as any);
-
+      const updatedOrder = order;
+      const newSupplyAmount = quote.supplyAmount, newVat = quote.vat, newTotalAmount = quote.totalAmount;
+      const mergedDesired = order.desiredDate;
       // 관리자에게 주문 추가 알림 메일 (추가된 항목만 요약)
       sendOrderMergedEmail({
         orderNo: todayPending.orderNo,
@@ -805,7 +707,7 @@ export async function registerRoutes(
         orderNo: todayPending.orderNo,
         businessName: customer.businessName,
         taxEmail: customer.taxEmail || customer.email,
-        items: mergedItems.map((i: any) => ({ name: i.productName ?? i.name, qty: i.qty })),
+        items: mergedItems!.map((i: any) => ({ name: i.productName ?? i.name, qty: i.qty })),
         totalAmount: newTotalAmount,
         merged: true,
         desiredDate: mergedDesired,
@@ -821,35 +723,7 @@ export async function registerRoutes(
       return res.json({ ...(updatedOrder ?? todayPending), merged: true, orderId: todayPending.id });
     }
 
-    // 신규 주문 생성
-    const supplyAmount = newItems.reduce((s: number, i: any) => s + i.unitPrice * i.qty, 0);
-    const vat = Math.round(supplyAmount * 0.1);
-    const order = await storage.createOrder({
-      orderNo: genOrderNo(),
-      customerId: customer.id,
-      // 매장 내부 계정 여부를 주문에 고정 기록 — 이후 거래처를 지우거나 설정을 바꿔도 과거 손익이 흔들리지 않게
-      isStoreOrder: (customer as any).isStore ? 1 : 0,
-      customerSnapshot: JSON.stringify({
-        businessName: customer.businessName,
-        managerName: customer.managerName,
-        phone: customer.phone,
-        bizRegNo: customer.bizRegNo,
-        taxEmail: customer.taxEmail,
-        defaultAddress: customer.defaultAddress,
-        paymentMethod: customer.paymentMethod,
-      }),
-      items: JSON.stringify(newItems),
-      supplyAmount,
-      vat,
-      totalAmount: supplyAmount + vat,
-      desiredDate: parsed.data.desiredDate ?? "",
-      note: parsed.data.note ?? "",
-      status: "pending",
-      trackingNo: "",
-      adminMemo: "",
-      quickRequest: parsed.data.quickRequest ? 1 : 0,
-      createdAt: Date.now(),
-    });
+    const supplyAmount = quote.supplyAmount, vat = quote.vat;
 
     // 관리자 이메일 알림 — 응답을 막지 않고 비동기 발송
     sendNewOrderEmail({
@@ -861,8 +735,8 @@ export async function registerRoutes(
       vat,
       totalAmount: supplyAmount + vat,
       items: newItems,
-      desiredDate: parsed.data.desiredDate ?? "",
-      note: parsed.data.note ?? "",
+      desiredDate: order.desiredDate,
+      note: order.note,
       createdAt: order.createdAt,
     }).catch((e) => console.error("[email] 알림 메일 실패:", e));
 
@@ -888,7 +762,7 @@ export async function registerRoutes(
       items: newItems.map((i: any) => ({ name: i.productName ?? i.name, qty: i.qty })),
       totalAmount: supplyAmount + vat,
       merged: false,
-      desiredDate: parsed.data.desiredDate ?? "",
+      desiredDate: order.desiredDate,
     }, process.env.PUBLIC_URL || (req.headers.origin as string)).catch((e) => console.error("[email] 접수 확인 메일 실패:", e));
 
     storage.createNotification({
