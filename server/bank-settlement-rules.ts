@@ -1,3 +1,4 @@
+import { registerSettlementBulk } from './bank-settlement-bulk';
 import { createHash } from 'node:crypto';
 import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
@@ -102,6 +103,7 @@ export function registerSettlementRules(app: Express, db: Database.Database, own
     db.prepare('INSERT OR IGNORE INTO bank_settlement_suppressions(bank_id,actor,at,reason) VALUES(?,?,?,?)').run(id,user,now,reason);
     db.prepare('UPDATE bank_settlement_applications SET ended_at=?,ended_by=?,end_reason=? WHERE bank_id=? AND ended_at IS NULL').run(now,user,reason,id);
   }
+  registerSettlementBulk(app,db,owner,environment,prefix,{rows,rules,candidate,linked,remark:settlementRemark,validTime:validBankTime,positive:positiveDeposit,identity,snapshot,bankTime,audit});
   return {
     manualChange(id:number,user:number) {
       // Any manual correction is authoritative, including resetting a row to pending.
