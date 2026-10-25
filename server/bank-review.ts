@@ -1,3 +1,4 @@
+import { registerSettlementRules } from './bank-settlement-rules';
 import { registerBankOnline } from './bank-online';
 import { bankCustomerSuggestions } from './bank-customer-suggestions';
 import { registerTaxInvoices } from './tax-invoices';
@@ -53,6 +54,12 @@ export async function fetchBankRows(from:string,to:string,environment:BankEnviro
  }
  return rows;
 }
+// A repeated provider identity with different content is not safe to classify.
+function ambiguousBankRows(rows: ReturnType<typeof normalizeBankRow>[]) {
+ const first=new Map<string,string>(),ambiguous=new Set<string>();
+ for(const r of rows){const key=JSON.stringify([r.account,r.ref]),value=JSON.stringify([r.at,r.deposit,r.withdraw,r.remark,r.currency]);if(first.has(key)&&first.get(key)!==value)ambiguous.add(key);else first.set(key,value);}
+ return ambiguous;
+}
 export function registerBankReview(app:Express,db:Database.Database,owner:RequestHandler){
  db.exec(`CREATE TABLE IF NOT EXISTS bank_review(id INTEGER PRIMARY KEY,environment TEXT NOT NULL DEFAULT 'test',account TEXT NOT NULL,ref TEXT NOT NULL,at TEXT NOT NULL,deposit INTEGER NOT NULL,withdraw INTEGER NOT NULL,remark TEXT NOT NULL,currency TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',target_id INTEGER,memo TEXT NOT NULL DEFAULT '',updated_by INTEGER,updated_at INTEGER,UNIQUE(environment,account,ref));`);
  const connection=registerBankConnection(app,db,owner);
@@ -62,6 +69,7 @@ export function registerBankReview(app:Express,db:Database.Database,owner:Reques
  const postingTable=environment==='test'?'bank_test_postings':'bank_live_postings';
  registerBankPosting(app,db,owner,environment,prefix);
  registerBankOnline(app,db,owner,environment,prefix);
+ const settlement=registerSettlementRules(app,db,owner,environment,prefix);
  const configured=()=>{try{connection(environment);return true;}catch{return false;}};
  const safe=(fn:(req:any,res:any)=>any):RequestHandler=>(req,res)=>{Promise.resolve().then(()=>fn(req,res)).catch(e=>res.status(e instanceof z.ZodError?400:502).json({message:e instanceof z.ZodError?'입력값을 확인해 주세요.':e.message}));};
  app.get(prefix,owner,safe((_req,res)=>{
@@ -71,16 +79,16 @@ export function registerBankReview(app:Express,db:Database.Database,owner:Reques
  }));
  if(environment==='test')app.post(prefix+'/import',owner,safe((req,res)=>{
   const row=z.object({ref:z.string().min(1).max(100),account:z.string().regex(/^\d{5,30}$/),at:z.string().regex(/^\d{14}$/),deposit:z.number().int().nonnegative().safe(),withdraw:z.number().int().nonnegative().safe(),remark:z.string().max(1000),currency:z.literal('KRW')});
-  const payload=z.object({environment:z.literal('test'),rows:z.array(row).max(5000)}).parse(req.body);let added=0;
-  db.transaction(()=>{const insert=db.prepare('INSERT OR IGNORE INTO bank_review(account,ref,at,deposit,withdraw,remark,currency) VALUES(?,?,?,?,?,?,?)');for(const r of payload.rows)added+=insert.run(r.account,r.ref,r.at,r.deposit,r.withdraw,r.remark,r.currency).changes;})();
-  res.json({received:payload.rows.length,added});
+  const payload=z.object({environment:z.literal('test'),rows:z.array(row).max(5000)}).parse(req.body);let added=0;let classification={classified:0,manual:0};
+  db.transaction(()=>{const insert=db.prepare('INSERT OR IGNORE INTO bank_review(account,ref,at,deposit,withdraw,remark,currency) VALUES(?,?,?,?,?,?,?)');const ambiguous=ambiguousBankRows(payload.rows),ids:number[]=[],eligible:number[]=[];for(const r of payload.rows){const result=insert.run(r.account,r.ref,r.at,r.deposit,r.withdraw,r.remark,r.currency);if(result.changes){const id=Number(result.lastInsertRowid);ids.push(id);if(!ambiguous.has(JSON.stringify([r.account,r.ref])))eligible.push(id);}}added=ids.length;classification=settlement.applyNew(eligible,req.session.userId);classification.manual=added-classification.classified;})();
+  res.json({received:payload.rows.length,added,...classification});
  }));
  let syncing=false;
  app.post(prefix+'/sync',owner,safe(async(req,res)=>{
   const {from,to}=range.parse(req.body);if(syncing)return res.status(409).json({message:'이미 내역을 가져오는 중입니다.'});syncing=true;
-  try{const rows=await fetchBankRows(from,to,environment,connection(environment));let added=0;
-   db.transaction(()=>{const insert=db.prepare('INSERT OR IGNORE INTO bank_review(environment,account,ref,at,deposit,withdraw,remark,currency) VALUES(?,?,?,?,?,?,?,?)');for(const r of rows)added+=insert.run(environment,r.account,r.ref,r.at,r.deposit,r.withdraw,r.remark,r.currency).changes;})();
-   res.json({received:rows.length,added});
+  try{const rows=await fetchBankRows(from,to,environment,connection(environment));let added=0;let classification={classified:0,manual:0};
+   db.transaction(()=>{const insert=db.prepare('INSERT OR IGNORE INTO bank_review(environment,account,ref,at,deposit,withdraw,remark,currency) VALUES(?,?,?,?,?,?,?,?)');const ambiguous=ambiguousBankRows(rows),ids:number[]=[],eligible:number[]=[];for(const r of rows){const result=insert.run(environment,r.account,r.ref,r.at,r.deposit,r.withdraw,r.remark,r.currency);if(result.changes){const id=Number(result.lastInsertRowid);ids.push(id);if(!ambiguous.has(JSON.stringify([r.account,r.ref])))eligible.push(id);}}added=ids.length;classification=settlement.applyNew(eligible,req.session.userId);classification.manual=added-classification.classified;})();
+   res.json({received:rows.length,added,...classification});
   }finally{syncing=false;}
  }));
  app.get(prefix+'/:id/candidates',owner,safe((req,res)=>{
@@ -108,6 +116,7 @@ export function registerBankReview(app:Express,db:Database.Database,owner:Reques
    }else if(p.state==='customer'){
     if(!row.deposit||!p.targetId||!db.prepare('SELECT id FROM customers WHERE id=?').get(p.targetId))throw new Error('입금 거래처를 선택해 주세요.');
    }else if(p.targetId!==null)throw new Error('분류 항목에는 연결 기록을 지정할 수 없습니다.');
+   settlement.manualChange(id,req.session.userId);
    db.prepare('UPDATE bank_review SET state=?,target_id=?,memo=?,updated_by=?,updated_at=? WHERE id=?').run(p.state,p.targetId,p.memo,req.session.userId,Date.now(),id);
   })();res.json({ok:true});
  }));
