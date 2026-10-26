@@ -4,12 +4,18 @@ import type { Express, RequestHandler } from 'express';
 import type Database from 'better-sqlite3';
 const digest = (x: unknown) => createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(s => !isNaN(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s);
-const selection = z.object({ from: date, to: date, candidates: z.array(z.object({ bankId: z.number().int().positive(), token: z.string().length(64) })).min(1).max(100) }).refine(p => p.from <= p.to && new Set(p.candidates.map(c => c.bankId)).size === p.candidates.length, '기간 또는 선택을 확인해 주세요.');
+const selection = z.object({
+    from: date, to: date,
+    candidates: z.array(z.object({bankId:z.number().int().positive(),token:z.string().length(64)})).max(100).default([]),
+    activeRules: z.array(z.object({id:z.number().int().positive(),version:z.number().int().positive()})).max(100).default([]),
+}).refine(p => p.from <= p.to && p.candidates.length+p.activeRules.length>0 && p.candidates.length+p.activeRules.length<=100
+    && new Set(p.candidates.map(c=>c.bankId)).size===p.candidates.length && new Set(p.activeRules.map(r=>r.id)).size===p.activeRules.length,'기간 또는 선택을 확인해 주세요.');
 type Helpers = {
     rows: () => any[];
     rules: () => any[];
     candidate: (r: any, all: any[]) => string;
     linked: (id: number) => boolean;
+    conflict: (history: any[]) => boolean;
     remark: (s: string) => string;
     validTime: (s: string) => boolean;
     positive: (r: any) => boolean;
@@ -32,9 +38,18 @@ export function registerSettlementBulk(app: Express, db: Database.Database, owne
     const transaction = <T,>(fn: () => T): T => { const tx = db.transaction(fn); return typeof tx.immediate === 'function' ? tx.immediate() : tx(); };
     function inspect(p: z.infer<typeof selection>, now: number) {
         const all = h.rows(), current = h.rules(), keys = new Set<string>();
-        const chosen = p.candidates.slice().sort((a, b) => a.bankId - b.bankId).map(c => { const row = all.find(r => r.id === c.bankId); if (!row || h.candidate(row, all) !== c.token)
+        const chosen: {seed:any;token:string;existing?:any}[] = p.candidates.slice().sort((a, b) => a.bankId - b.bankId).map(c => { const row = all.find(r => r.id === c.bankId); if (!row || h.candidate(row, all) !== c.token)
             throw new Error('규칙 후보가 변경되었습니다. 목록을 새로 확인해 주세요.'); const key = JSON.stringify([row.account, h.remark(row.remark)]); if (keys.has(key) || current.some(r => r.account === row.account && r.remark === h.remark(row.remark)))
             throw new Error('중복 또는 이미 변경된 규칙입니다. 목록을 새로 확인해 주세요.'); keys.add(key); return { seed: row, token: c.token }; });
+        for(const selected of p.activeRules.slice().sort((a,b)=>a.id-b.id)) {
+            const rule=current.find(r=>r.id===selected.id);
+            if(!rule || !rule.enabled || rule.version!==selected.version) throw new Error('선택한 활성 규칙이 변경되거나 중지되었습니다. 다시 확인해 주세요.');
+            const key=JSON.stringify([rule.account,rule.remark]);
+            if(keys.has(key) || h.conflict(all.filter(r=>r.account===rule.account&&h.remark(r.remark)===rule.remark))) throw new Error('규칙 중복 또는 분류 충돌이 있어 수동 검토가 필요합니다.');
+            keys.add(key);
+            // Negative presentation key keeps existing rule IDs distinct from candidate bank IDs.
+            chosen.push({seed:{id:-rule.id,account:rule.account,remark:rule.remark},token:digest(rule),existing:rule});
+        }
         const start = p.from.replaceAll('-', '') + '000000', end = p.to.replaceAll('-', '') + '235959';
         const relevant = all.filter(r => r.at >= start && r.at <= end && chosen.some(c => h.remark(c.seed.remark) === h.remark(r.remark))).sort((a, b) => a.id - b.id);
         if (relevant.length > 5000)
@@ -85,6 +100,7 @@ export function registerSettlementBulk(app: Express, db: Database.Database, owne
                 throw new Error('검토 후 내역이 변경되었습니다. 적용하지 않았습니다. 다시 미리보기해 주세요.');
             const ruleIds = new Map<number, number>();
             for (const c of v.chosen) {
+                if(c.existing){ruleIds.set(c.seed.id,c.existing.id);continue;}
                 const result = db.prepare('INSERT INTO bank_settlement_rules(environment,account,remark,enabled,version,effective_at,created_by,updated_at) VALUES(?,?,?,1,1,?,?,?)').run(environment, c.seed.account, h.remark(c.seed.remark), h.bankTime(now + 1000), user, now);
                 const id = Number(result.lastInsertRowid);
                 ruleIds.set(c.seed.id, id);
@@ -97,12 +113,12 @@ export function registerSettlementBulk(app: Express, db: Database.Database, owne
                 if (changed.changes !== 1)
                     throw new Error('내역 변경으로 전체 적용을 취소했습니다.');
                 const after = db.prepare('SELECT * FROM bank_review WHERE id=?').get(r.id);
-                const a = db.prepare('INSERT INTO bank_settlement_applications(bank_id,rule_id,rule_version,fingerprint,before_json,after_json,actor,applied_at) VALUES(?,?,1,?,?,?,?,?)').run(r.id, ruleIds.get(item.seedId), h.identity(r), h.snapshot(r), h.snapshot(after), user, now);
+                const a = db.prepare('INSERT INTO bank_settlement_applications(bank_id,rule_id,rule_version,fingerprint,before_json,after_json,actor,applied_at) VALUES(?,?,?,?,?,?,?,?)').run(r.id, ruleIds.get(item.seedId), v.chosen.find(c=>c.seed.id===item.seedId)!.existing?.version ?? 1, h.identity(r), h.snapshot(r), h.snapshot(after), user, now);
                 const id = Number(a.lastInsertRowid);
                 ids.push(id);
                 db.prepare('INSERT INTO bank_settlement_batch_items VALUES(?,?)').run(p.requestKey, id);
             }
-            const result = { requestKey: p.requestKey, activated: ruleIds.size, classified: ids.length, applicationIds: ids, from: input.from, to: input.to, excluded: v.excluded };
+            const result = { requestKey: p.requestKey, activated: v.chosen.filter(c=>!c.existing).length, reused: v.chosen.filter(c=>c.existing).length, classified: ids.length, applicationIds: ids, from: input.from, to: input.to, excluded: v.excluded };
             db.prepare('INSERT INTO bank_settlement_batches VALUES(?,?,?,?,?,?)').run(p.requestKey, p.previewId, environment, user, JSON.stringify(result), now);
             return result;
         });

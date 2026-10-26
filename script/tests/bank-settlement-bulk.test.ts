@@ -161,6 +161,34 @@ try {
     assert.equal(db.prepare('SELECT count(*) n FROM payments').get().n, 0);
     assert.equal(db.prepare('SELECT amount FROM store_sales').get().amount, 900000);
     checks.push('POS, expenses and payments unchanged');
+    // Regression: no candidates remain, but an already-active rule must backfill pending rows.
+    const existingSeed=insert(row('active-seed',{remark:'가상 활성 회귀',at:'20260930090000'}),'settlement');
+    const existingCandidate=(await pick([existingSeed]))[0];
+    const activated=await json('/settlement-rules','POST',{...existingCandidate,confirmCardSettlement:true});
+    db.prepare('UPDATE bank_settlement_rules SET version=3 WHERE id=?').run(activated.id);
+    const activeBefore=JSON.stringify(db.prepare('SELECT * FROM bank_settlement_rules WHERE id=?').get(activated.id));
+    const auditBefore=db.prepare('SELECT count(*) n FROM bank_settlement_rule_audit').get().n;
+    const oldPending=insert(row('active-old',{remark:'가상 활성 회귀',at:'20261001000000'}));
+    const cancelledPending=insert(row('active-cancelled',{remark:'가상 활성 회귀',at:'20261002000000'}));
+    db.prepare('INSERT INTO bank_settlement_suppressions VALUES(?,1,1,?)').run(cancelledPending,'fixture undo');
+    const activePayload={from:'2026-10-01',to:'2026-10-23',candidates:[],activeRules:[{id:activated.id,version:3}]};
+    assert.equal((await pick([existingSeed])).length,0);
+    const activePreview=await json('/settlement-bulk/preview','POST',activePayload);assert.equal(activePreview.total,1);
+    assert.equal(state(oldPending),'pending'); // Cancelling a review has no classification side effect.
+    const activeKey=randomUUID();const activeResponses=await Promise.all([apply(activePreview,activeKey),apply(activePreview,activeKey)]);
+    assert(activeResponses.every(r=>r.status===200));const activeResult=await activeResponses[0].json();
+    assert.equal(activeResult.reused,1);assert.equal(activeResult.activated,0);assert.equal(state(oldPending),'settlement');assert.equal(state(cancelledPending),'pending');
+    assert.equal(db.prepare('SELECT rule_version FROM bank_settlement_applications WHERE bank_id=?').get(oldPending).rule_version,3);
+    assert.equal(JSON.stringify(db.prepare('SELECT * FROM bank_settlement_rules WHERE id=?').get(activated.id)),activeBefore);assert.equal(db.prepare('SELECT count(*) n FROM bank_settlement_rule_audit').get().n,auditBefore);
+    checks.push('active-only with zero candidates; original version/date/audit preserved; cancellation and same-key retry safe');
+    const mixedSeed=insert(row('mixed-seed',{remark:'가상 혼합 신규',at:'20260930090000'}),'settlement');
+    insert(row('mixed-new',{remark:'가상 혼합 신규',at:'20261023090000'}));const mixedOld=insert(row('mixed-old',{remark:'가상 활성 회귀',at:'20261023090000'}));
+    const mixedPayload={...activePayload,candidates:await pick([mixedSeed])};let mixedPreview=await json('/settlement-bulk/preview','POST',mixedPayload);assert.equal(mixedPreview.total,2);
+    db.exec("CREATE TRIGGER mixed_failure BEFORE INSERT ON bank_settlement_batch_items BEGIN SELECT RAISE(ABORT,'fixture mixed rollback'); END");assert.equal((await apply(mixedPreview)).status,409);db.exec('DROP TRIGGER mixed_failure');assert.equal(state(mixedOld),'pending');assert.equal((await pick([mixedSeed])).length,1);
+    const mixedResult=await (await apply(mixedPreview)).json();assert.equal(mixedResult.activated,1);assert.equal(mixedResult.reused,1);assert.equal(mixedResult.classified,2);checks.push('mixed candidate/active selection atomic rollback and retry');
+    const unchanged=await json('/settlement-bulk/preview','POST',activePayload);db.prepare('UPDATE bank_settlement_rules SET enabled=0,version=4 WHERE id=?').run(activated.id);assert.equal((await apply(unchanged)).status,409);assert.equal((await call('/settlement-bulk/preview','POST',{...activePayload,activeRules:[{id:activated.id,version:4}]})).status,409);
+    db.prepare('UPDATE bank_settlement_rules SET enabled=1,version=5 WHERE id=?').run(activated.id);const refreshed={...activePayload,activeRules:[{id:activated.id,version:5}]};const changedReview=await json('/settlement-bulk/preview','POST',refreshed);insert(row('active-changed',{remark:'가상 활성 회귀',at:'20261021000000'}));assert.equal((await apply(changedReview)).status,409);
+    const conflictReview=await json('/settlement-bulk/preview','POST',refreshed);insert(row('active-conflict',{remark:'가상 활성 회귀',at:'20261022000000'}),'other');assert.equal((await apply(conflictReview)).status,409);assert.equal((await call('/settlement-bulk/preview','POST',refreshed)).status,409);checks.push('paused rule excluded; rule version, transaction and conflict changes invalidate active preview');
     console.log(JSON.stringify({ passed: checks.length, checks }, null, 2));
 }
 finally {
