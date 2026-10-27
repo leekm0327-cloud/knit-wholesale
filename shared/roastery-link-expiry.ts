@@ -1,0 +1,2 @@
+export const MAX_ROASTERY_LINK_HOURS = 365 * 24;
+export const ROASTERY_LINK_HOURS = [1, 24, 72, 168, 30 * 24, 90 * 24, 180 * 24, MAX_ROASTERY_LINK_HOURS] as const;

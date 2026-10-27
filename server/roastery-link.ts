@@ -1,3 +1,4 @@
+import {MAX_ROASTERY_LINK_HOURS} from '../shared/roastery-link-expiry';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
@@ -6,7 +7,7 @@ import type Database from 'better-sqlite3';
 import {z} from 'zod';
 import {roasteryLinkPage} from './roastery-link-page';
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
-const hours=z.union([z.literal(1),z.literal(24),z.literal(72),z.literal(168)]);
+const hours=z.number().int().min(1).max(MAX_ROASTERY_LINK_HOURS);
 const issueSchema=z.object({roasteryId:z.number().int().positive(),hours,requestKey:z.string().uuid()}).strict();
 const inputSchema=z.object({carrier:z.enum(['CJ','HANJIN','LOTTE','POST','LOGEN']),tracking:z.string().trim().regex(/^\d{8,30}$/),revision:z.string().length(64),requestKey:z.string().uuid()}).strict();
 class LinkError extends Error{constructor(public status:number, message:string){super(message);}}
