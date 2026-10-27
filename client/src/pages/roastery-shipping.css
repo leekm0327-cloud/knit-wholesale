@@ -13,3 +13,12 @@
 
 .ship-inline p:empty,.ship-work>.ship-actions:empty{display:none}
 @media(max-width:800px){.ship-store{grid-column:1;display:block}.ship-details>summary{grid-row:1;margin-top:0;align-self:center}.ship-detail-body{grid-row:4}}
+
+/* Native details has an internal content wrapper in Chromium; display:contents did
+   not make its body a grid child. Use explicit sibling button + full-row panel. */
+.ship-detail-toggle{grid-column:4;grid-row:1;width:110px;white-space:nowrap;justify-self:end;font-size:13px!important}
+.ship-detail-body{grid-column:1/-1;grid-row:2;min-width:0;width:100%}
+.ship-detail-body .ship-order-grid{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}
+.ship-detail-body .ship-order-grid>div,.ship-item>span{min-width:0}
+.ship-address .ship-phone{white-space:nowrap;word-break:normal;overflow-wrap:normal}
+@media(max-width:800px){.ship-detail-toggle{grid-column:2;grid-row:1;width:100px}.ship-detail-body{grid-row:4}.ship-detail-body .ship-order-grid{grid-template-columns:minmax(0,1fr);gap:10px}.ship-detail-body .ship-address{border-left:0;border-top:1px solid #d5d9ce;padding:10px 0 0}}

@@ -1,3 +1,4 @@
+import {shippingOrderFingerprint,hasValidShippingTracking} from './roastery-tracking';
 import {installRoasteryWorkflow,recordDispatchNotice} from './roastery-workflow';
 import {registerRoasteryLinks} from './roastery-link';
 import {createHash, randomUUID} from 'node:crypto';
@@ -8,7 +9,7 @@ import {z} from 'zod';
 import {readWorkbook} from './settlement-files';
 
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
-export const shippingOrderFingerprint=(r:any)=>hash([r.items,r.customer_snapshot,r.order_status,r.legacy_tracking]);
+export {shippingOrderFingerprint} from './roastery-tracking';
 const text=z.string().trim().min(1).max(100);
 const rowSchema=z.object({orderNo:z.string().trim().max(100),orderId:z.number().int().positive().optional(),carrier:z.enum(['CJ','HANJIN','LOTTE','POST','LOGEN']),tracking:z.string().trim().regex(/^[0-9]{8,30}$/, '송장번호는 8~30자리 숫자로 입력해 주세요.')});
 const batchSchema=z.object({rows:z.array(rowSchema).min(1).max(500)});
@@ -37,10 +38,10 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   const scope:RequestHandler=(req:any,res,next)=>{const u=user(req);const m:any=u?.role==='roastery'?db.prepare('SELECT roastery_id FROM roastery_members WHERE user_id=? AND enabled=1').get(u.id):null;
     if(!m)return res.status(403).json({message:'담당 로스터리 접근 권한이 필요합니다.'});req.roasteryId=m.roastery_id;res.setHeader('Cache-Control','no-store');next();};
   const rows=(rid?:number):any[]=>db.prepare(`SELECT a.*,o.order_no,o.items,o.customer_snapshot,o.status AS order_status,o.created_at,o.tracking_no AS legacy_tracking,s.carrier,s.tracking,s.state,s.version AS shipment_version,s.reason,s.order_fingerprint FROM roastery_assignments a JOIN orders o ON o.id=a.order_id LEFT JOIN roastery_shipments s ON s.order_id=a.order_id ${rid===undefined?'':'WHERE a.roastery_id=?'} ORDER BY o.created_at DESC,o.id DESC`).all(...(rid===undefined?[]:[rid]));
-  function dto(r:any){const c=parse(r.customer_snapshot);return {id:r.order_id,orderNo:r.order_no,createdAt:r.created_at,roasteryId:r.roastery_id,version:r.version,ready:!!r.ready,cancelled:r.order_status==='cancelled',packing:r.packing,instruction:r.instruction,
+  function dto(r:any){const c=parse(r.customer_snapshot);return {id:r.order_id,orderNo:r.order_no,createdAt:r.created_at,roasteryId:r.roastery_id,version:r.version,ready:!!r.ready,confirmed:r.order_status==='done',hasValidTracking:hasValidShippingTracking(r),cancelled:r.order_status==='cancelled',packing:r.packing,instruction:r.instruction,
     recipient:{name:String(c.managerName||c.businessName||''),business:String(c.businessName||''),phone:String(c.phone||''),address:String(c.defaultAddress||'')},
     items:parse(r.items).map((i:any)=>({name:String(i.name),qty:Number(i.qty),weight: String(i.name).match(/\d+(?:\.\d+)?\s*(?:kg|g)\b/i)?.[0]||'중량 확인 필요'})),
-    shipment:r.state?{carrier:r.carrier,tracking:r.tracking,state:r.state,version:r.shipment_version,reason:r.reason,changed:r.order_fingerprint!==shippingOrderFingerprint(r)}:null,legacyTracking:!!r.legacy_tracking,legacyTrackingNo:String(r.legacy_tracking||'')};}
+    shipment:r.state?{carrier:r.carrier,tracking:r.tracking,state:r.state,version:r.shipment_version,reason:r.reason,changed:r.order_fingerprint!==shippingOrderFingerprint(r)}:null,legacyTracking:!!String(r.legacy_tracking??'').trim(),legacyTrackingNo:String(r.legacy_tracking||'')};}
   const audit=(id:number,actor:number,action:string,detail:unknown)=>db.prepare('INSERT INTO roastery_audit(order_id,actor,action,details,created_at) VALUES(?,?,?,?,?)').run(id,actor,action,JSON.stringify(detail),Date.now());
   app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(rows(req.roasteryId).map(dto))));
   app.patch('/api/roastery/orders/:id/preparation',scope,safe((req,res)=>{const p=z.object({ready:z.boolean(),version:z.number().int()}).parse(req.body);run(()=>{const r=rows(req.roasteryId).find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||r.version!==p.version||r.state==='dispatch_reported'||r.state==='dispatch_confirmed')throw Error();db.prepare('UPDATE roastery_assignments SET ready=?,version=version+1 WHERE order_id=?').run(+p.ready,r.order_id);audit(r.order_id,req.session.userId,'preparation',{ready:p.ready});});res.json({ok:true});}));
@@ -56,7 +57,7 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
       let error='';if(!r)error='담당 주문을 찾지 못했습니다. 주문을 직접 확인해 선택하세요.';
       else if(row.orderId&&exact.length&&exact[0].order_id!==row.orderId)error='주문번호와 선택 주문이 다릅니다.';
       else if(r.order_status==='cancelled')error='취소 주문 제외';
-      else if(r.legacy_tracking)error='기존 관리자 송장이 있습니다. 관리자 검토 필요';
+      else if(String(r.legacy_tracking??'').trim())error='기존 관리자 송장이 있습니다. 관리자 검토 필요';
       else if(!parse(r.customer_snapshot).defaultAddress?.trim()||!parse(r.customer_snapshot).phone?.trim())error='배송지 또는 수취인 연락처 확인 필요';
       const key=row.carrier+':'+row.tracking;
       if(r&&seenOrder.has(r.order_id))error='한 주문의 여러 송장은 개별 관리자 검토가 필요합니다.';
