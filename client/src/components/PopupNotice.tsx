@@ -41,7 +41,7 @@ export function PopupNoticeLayer() {
 
   const { data } = useQuery<PopupNotice[]>({
     queryKey: ["/api/popup-notices/active"],
-    enabled: !!user,
+    enabled: !!user && user.role !== "roastery",
     staleTime: 5 * 60 * 1000,
   });
 
@@ -52,7 +52,7 @@ export function PopupNoticeLayer() {
 
   // 관리 화면에서는 띄우지 않는다. 작업 중에 가리기만 하기 때문.
   // 대신 주문 사이트 쪽에서는 대표님도 거래처와 똑같이 보이게 해서 직접 확인할 수 있게 한다.
-  if (!user || location.startsWith("/admin")) return null;
+  if (!user || user.role === "roastery" || location.startsWith("/admin")) return null;
 
   const hidden = readHidden();
   const t = today();

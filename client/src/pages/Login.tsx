@@ -60,7 +60,7 @@ export default function Login() {
   });
   const isAdminSession = (loggedIn as any)?.role === "admin";
   useEffect(() => {
-    if (!addAccount && !authLoading && loggedIn && !isAdminSession) navigate("/catalog");
+    if (!addAccount && !authLoading && loggedIn && !isAdminSession) navigate(loggedIn.role === "roastery" ? "/roastery/shipping" : "/catalog");
   }, [addAccount, authLoading, loggedIn, isAdminSession, navigate]);
 
   const [businessName, setBusinessName] = useState("");
@@ -78,10 +78,10 @@ export default function Login() {
       const user = await res.json();
       queryClient.setQueryData(["/api/auth/me"], user);
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
-      if (user && user.role !== "admin") {
+      if (user && user.role !== "admin" && user.role !== "roastery") {
         saveAccount({ businessName, password, managerName: user.managerName });
       }
-      navigate("/catalog");
+      navigate(user?.role === "roastery" ? "/roastery/shipping" : "/catalog");
     } catch (err: any) {
       toast({ title: "로그인 실패", description: errMsg(err), variant: "destructive" });
     } finally {

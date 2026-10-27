@@ -1,3 +1,4 @@
+import {installRoasteryLinkBodyLimit} from './roastery-link';
 // dotenv는 개발 환경에서만 .env 파일을 로드. production sandbox에서는 환경변수가
 // 이미 주입되므로 dotenv가 깔려있지 않아도 안전하게 무시한다.
 try {
@@ -25,6 +26,7 @@ process.on("uncaughtException", (err) => {
 
 const app = express();
 const httpServer = createServer(app);
+installRoasteryLinkBodyLimit(app);
 
 declare module "http" {
   interface IncomingMessage {
@@ -58,7 +60,8 @@ export function log(message: string, source = "express") {
 
 app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
+  const privateLink = /^\/api\/(?:roastery-link|admin\/roastery-links)(?:\/|$)/.test(req.path);
+  const path = privateLink ? (req.path.startsWith("/api/admin/") ? "/api/admin/roastery-links" : "/api/roastery-link") : req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
@@ -73,7 +76,7 @@ app.use((req, res, next) => {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       // 응답 본문 전체를 로그에 남기면 거래처 연락처·사업자번호·채권잔액·재무 데이터가
       // 배포 로그에 그대로 쌓인다. 오류 응답의 메시지만 남기고 정상 응답 본문은 기록하지 않는다.
-      if (capturedJsonResponse && res.statusCode >= 400) {
+      if (!privateLink && capturedJsonResponse && res.statusCode >= 400) {
         const msg = (capturedJsonResponse as any)?.message;
         if (typeof msg === "string") logLine += ` :: ${msg.slice(0, 200)}`;
       }

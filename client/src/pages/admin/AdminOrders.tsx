@@ -135,6 +135,7 @@ export default function AdminOrders() {
             <div className="eyebrow">Orders</div>
             <h1 className="font-display mt-1 text-xl font-semibold text-foreground">주문 관리</h1>
           </div>
+          <Button variant="outline" onClick={() => navigate("/admin/roastery-shipping")}>로스터리 출고 검토</Button>
           <Button onClick={() => navigate("/admin/orders/new")} data-testid="button-admin-order-new">
             <Plus className="mr-1.5 h-4 w-4" />
             대리 주문 입력

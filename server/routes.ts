@@ -1,3 +1,5 @@
+import {registerCustomerOrderReads} from './customer-shipping';
+import {registerRoasteryShipping} from './roastery-shipping';
 import { confirmCustomerOrder, OrderConfirmationError } from "./order-confirmation";
 import { registerSmartstoreRoutes } from "./smartstore-routes";
 import { registerCafe24Routes } from "./cafe24-routes";
@@ -84,6 +86,7 @@ declare module "express-session" {
 }
 
 function toPublic(c: Customer): PublicCustomer {
+  if(c.role === "roastery") return {id:c.id,role:c.role,businessName:c.businessName} as PublicCustomer;
   const { password, ...rest } = c;
   return rest;
 }
@@ -279,6 +282,7 @@ export async function registerRoutes(
     next();
   }
 
+  registerRoasteryShipping(app, sqlite, requireAdmin, requireOwner);
   registerCafe24Routes(app, sqlite, requireAdmin, requireOwner);
   registerSmartstoreRoutes(app, requireAdmin, {db:sqlite});
   registerBankReview(app, sqlite, requireOwner);
@@ -960,19 +964,7 @@ export async function registerRoutes(
     res.json({ ...order, orderId: order.id });
   });
 
-  // 거래처 본인 주문 목록
-  app.get("/api/orders/mine", requireAuth, async (req, res) => {
-    res.json(await storage.listOrdersByCustomer(req.session.userId!));
-  });
-
-  // 단일 주문 조회 (본인 또는 관리자)
-  app.get("/api/orders/:id", requireAuth, async (req, res) => {
-    const order = await storage.getOrder(Number(req.params.id));
-    if (!order) return res.status(404).json({ message: "주문을 찾을 수 없습니다." });
-    if (req.session.role !== "admin" && order.customerId !== req.session.userId)
-      return res.status(403).json({ message: "권한이 없습니다." });
-    res.json(order);
-  });
+  registerCustomerOrderReads(app, sqlite, requireAuth, storage);
 
   // 거래처용 — 주문 수정 (#11)
   app.patch("/api/orders/:id", requireAuth, async (req, res) => {

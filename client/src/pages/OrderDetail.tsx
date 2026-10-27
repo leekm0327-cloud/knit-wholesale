@@ -1,3 +1,5 @@
+import {CustomerShipping} from '@/components/CustomerShipping';
+import type {CustomerShipping as Shipping} from '@shared/shipping';
 import "./order-history.css";
 import { LoadError } from "@/components/LoadError";
 import { fmtDate, won } from "@/lib/format";
@@ -41,9 +43,9 @@ export default function OrderDetail() {
   const { toast } = useToast();
   const id = params?.id;
 
-  const { data: order, isLoading, isError, refetch } = useQuery<Order>({
+  const { data: order, isLoading, isError, refetch } = useQuery<Order & {shipping?:Shipping|null}>({
     queryKey: ["/api/orders", id],
-    enabled: !!id,
+    enabled: !!id, refetchInterval: 15000, refetchOnWindowFocus: true, staleTime: 0,
   });
 
   // #2 이전 주문 다시 담기 — 현재 상품 정보(가격/품절) 기준으로 담기 위해 상품 목록 조회
@@ -174,6 +176,7 @@ export default function OrderDetail() {
               )}
             </Card>
 
+            <CustomerShipping shipping={order.shipping} />
             {editing ? (
               <OrderItemsEditor
                 order={order}

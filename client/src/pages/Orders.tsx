@@ -1,3 +1,5 @@
+import {CustomerShipping} from '@/components/CustomerShipping';
+import type {CustomerShipping as Shipping} from '@shared/shipping';
 import "./order-history.css";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -24,7 +26,7 @@ const DAY = 1000 * 60 * 60 * 24;
 
 export default function Orders() {
   const [, navigate] = useLocation();
-  const { data: orders, isLoading, isError, refetch } = useQuery<Order[]>({ queryKey: ["/api/orders/mine"] });
+  const { data: orders, isLoading, isError, refetch } = useQuery<(Order & {shipping?:Shipping|null})[]>({ refetchInterval: 15000, refetchOnWindowFocus: true, staleTime: 0, queryKey: ["/api/orders/mine"] });
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -185,7 +187,7 @@ export default function Orders() {
                         <Badge className="bg-foreground text-[11px] text-background hover:bg-foreground">접수됨</Badge>
                       )}
                     </div>
-                    <div className="order-lines">{items.map((it,i)=><div key={i}><span>{it.name}</span><strong>{it.qty} EA</strong></div>)}</div>
+                    <CustomerShipping shipping={o.shipping} /><div className="order-lines">{items.map((it,i)=><div key={i}><span>{it.name}</span><strong>{it.qty} EA</strong></div>)}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       합계 <span className="font-medium text-foreground">{won(o.totalAmount)}</span>
                     </div>

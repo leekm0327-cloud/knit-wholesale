@@ -1,3 +1,4 @@
+import RoasteryShipping from '@/pages/RoasteryShipping';
 import AdminReviewAlerts from "@/pages/admin/AdminReviewAlerts";
 import AdminSmartstoreOrders from "@/pages/admin/AdminSmartstoreOrders";
 import AdminCafe24Orders from "@/pages/admin/AdminCafe24Orders";
@@ -135,12 +136,15 @@ function AppRouter() {
     if (isLoading) return;
     const hash = window.location.hash.replace(/^#/, "");
     if (hash === "/" || hash === "") {
-      navigate(user ? "/catalog" : "/login");
+      navigate(user?.role === "roastery" ? "/roastery/shipping" : user ? "/catalog" : "/login");
     }
   }, [isLoading, user, navigate]);
 
+  if (user?.role === "roastery") return <RoasteryShipping />;
   return (
     <Switch>
+      <Route path="/roastery/shipping"><RoasteryShipping /></Route>
+      <Route path="/admin/roastery-shipping"><RoasteryShipping admin /></Route>
       <Route path="/" component={Login} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />

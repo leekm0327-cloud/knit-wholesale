@@ -103,7 +103,7 @@ function zipEntries(bytes:Buffer){
 }
 const arr=(v:any)=>v==null?[]:Array.isArray(v)?v:[v];
 const str=(v:any):string=>typeof v==='object'?String(v?.['#text']??''):String(v??'');
-export function readWorkbook(bytes:Buffer, names?:string[]){
+export function readWorkbook(bytes:Buffer, names?:string[], options?:{rejectFormulas?:boolean}){
  const entries=zipEntries(bytes),parser=new XMLParser({ignoreAttributes:false,removeNSPrefix:true,parseTagValue:false,parseAttributeValue:false});
  const xml=(key:string)=>{const text=entries.get(key)?.toString('utf8');if(!text)return {};if(/<!DOCTYPE|<!ENTITY/i.test(text))throw new Error('외부 참조가 있는 엑셀은 읽을 수 없습니다.');return parser.parse(text);};
  const wb=xml('xl/workbook.xml').workbook;if(!wb)throw new Error('엑셀 통합문서를 찾지 못했습니다.');
@@ -116,6 +116,7 @@ export function readWorkbook(bytes:Buffer, names?:string[]){
   const path=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');
   const rows:any[][]=[];
   for(const r of arr(xml(path).worksheet?.sheetData?.row)){
+   if(options?.rejectFormulas&&arr(r.c).some(c=>c.f!=null))throw new Error('수식이 포함된 엑셀은 값만 붙여넣은 파일로 다시 저장해 주세요.');
    const cells=arr(r.c).filter(c=>c.v!=null||c.is!=null);if(!cells.length)continue;
    const index=Number(r['@_r'])-1;if(!Number.isInteger(index)||index<0||index>30000)throw new Error('엑셀 행 수가 너무 많습니다.');const row:any[]=[];
    for(const c of cells){
