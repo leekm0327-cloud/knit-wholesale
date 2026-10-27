@@ -1,3 +1,4 @@
+import "./customer-prices.css";
 import { AdminFold } from "@/components/AdminFold";
 import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1016,9 +1017,10 @@ export function CustomerPricesSection({ customerId }: { customerId: number }) {
   });
 
   return (
-    <div className="rounded-md border">
+    <div className="customer-prices rounded-md border">
       <button
         type="button"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between px-3 py-2.5 text-left"
         data-testid="button-toggle-customer-prices"
@@ -1030,9 +1032,9 @@ export function CustomerPricesSection({ customerId }: { customerId: number }) {
       </button>
       {open && (
         <div className="border-t p-3">
-          <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-3 flex items-center justify-between gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div className="customer-price-toolbar sticky top-0 z-10 -mx-3 -mt-3 mb-3 flex items-center justify-between gap-2 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             <p className="text-[11px] text-muted-foreground">
-              빈칸은 기본가격이 적용됩니다. 공급가액(부가세 제외) 기준입니다.
+              이 거래처에만 적용됩니다. 빈칸으로 저장하면 기본가를 적용합니다. 모든 가격은 공급가액(부가세 제외)입니다.
             </p>
             <Button
               size="sm"
@@ -1041,7 +1043,7 @@ export function CustomerPricesSection({ customerId }: { customerId: number }) {
               data-testid="button-save-customer-prices"
               className="shrink-0"
             >
-              {saveMut.isPending ? "저장 중…" : "저장"}
+              {saveMut.isPending ? "저장 중…" : "이 거래처 가격 저장"}
             </Button>
           </div>
           {!products ? (
@@ -1049,23 +1051,34 @@ export function CustomerPricesSection({ customerId }: { customerId: number }) {
           ) : products.length === 0 ? (
             <div className="py-4 text-center text-xs text-muted-foreground">등록된 상품이 없습니다.</div>
           ) : (
-            <div className="space-y-2">
+            <div className="customer-price-list">
+              <div className="customer-price-head" aria-hidden="true">
+                <span>상품명 · 규격</span><span>기본 공급가</span><span>전용 공급가</span>
+              </div>
               {products.map((p) => (
-                <div key={p.id} className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-medium text-foreground">{p.name}</div>
-                    <div className="text-[10px] text-muted-foreground">기본가 {won(p.price)}</div>
+                <div key={p.id} className="customer-price-row">
+                  <div className="customer-price-name" id={`customer-price-name-${customerId}-${p.id}`}>{p.name}</div>
+                  <div className="customer-price-base">
+                    <span className="customer-price-mobile-label">기본 공급가</span>
+                    <span>{won(p.price)}</span>
                   </div>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="기본가 적용"
-                    value={edits[p.id] ?? ""}
-                    onChange={(e) => setEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                    className="h-8 w-28 text-xs tabular"
-                    data-testid={`input-customer-price-${p.id}`}
-                  />
-                  <span className="text-[10px] text-muted-foreground">원</span>
+                  <div className="customer-price-field">
+                    <label className="customer-price-mobile-label" htmlFor={`customer-price-${customerId}-${p.id}`}>전용 공급가</label>
+                    <div className="customer-price-entry">
+                      <Input
+                        id={`customer-price-${customerId}-${p.id}`}
+                        aria-label={`${p.name} 전용 공급가`}
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="기본가 적용"
+                        value={edits[p.id] ?? ""}
+                        onChange={(e) => setEdits((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        className="customer-price-input tabular"
+                        data-testid={`input-customer-price-${p.id}`}
+                      />
+                      <span>원</span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

@@ -1,0 +1,24 @@
+.customer-prices { container-type:inline-size; min-width:0; }
+.customer-prices .customer-price-head,.customer-prices .customer-price-row { display:grid; grid-template-columns:minmax(0,1fr) 92px 140px; gap:12px; align-items:center; }
+.customer-prices .customer-price-head { padding:6px 0 9px; font-size:11px; color:#707070; border-bottom:1px solid #ddd; }
+.customer-prices .customer-price-row { padding:10px 0; border-bottom:1px solid #ececec; }
+.customer-prices .customer-price-row:last-child { border-bottom:0; }
+.customer-prices .customer-price-name { min-width:0; font-size:13px; font-weight:500; line-height:1.5; overflow-wrap:anywhere; }
+.customer-prices .customer-price-base { font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.customer-prices .customer-price-field { min-width:0; }
+.customer-prices .customer-price-entry { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:center; font-size:12px; white-space:nowrap; }
+.customer-prices .customer-price-input[type=number] { width:100%; min-width:0; height:40px; padding:8px; font-size:13px; text-align:right; }
+.customer-prices .customer-price-mobile-label { display:none; }
+@container (max-width:420px) {
+  .customer-prices .customer-price-toolbar { flex-direction:column; align-items:stretch; }
+  .customer-prices .customer-price-head { display:none; }
+  .customer-prices .customer-price-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px 12px; padding:12px 0; }
+  .customer-prices .customer-price-name { grid-column:1/-1; }
+  .customer-prices .customer-price-mobile-label { display:block; font-size:11px; color:#707070; margin:0 0 5px; }
+  .customer-prices .customer-price-input[type=number] { height:44px; font-size:16px; }
+}
+@container (max-width:280px) {
+  .customer-prices .customer-price-row { grid-template-columns:minmax(0,1fr); }
+  .customer-prices .customer-price-base { display:flex; justify-content:space-between; gap:8px; }
+  .customer-prices .customer-price-base .customer-price-mobile-label { margin:0; }
+}
