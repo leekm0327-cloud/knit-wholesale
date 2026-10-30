@@ -1656,6 +1656,7 @@ export async function registerRoutes(
       supplierId: parsed.data.supplierId,
       purchaseDate: parsed.data.purchaseDate,
       memo: parsed.data.memo ?? "",
+      segment: req.body.segment === undefined ? existing.segment : parsed.data.segment,
       items,
       totalAmount,
       customerId: parsed.data.customerId ?? null,

@@ -78,6 +78,7 @@ export default function AdminPurchases() {
   const [purchaseDate, setPurchaseDate] = useState(todayStr());
   const [customerName, setCustomerName] = useState("");
   const [memo, setMemo] = useState("");
+  const [segment, setSegment] = useState<"wholesale" | "store">("wholesale");
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -161,13 +162,14 @@ export default function AdminPurchases() {
         await apiRequest("PATCH", `/api/admin/purchases/${wasEditing}`, {
           supplierId: Number(supplierId),
           purchaseDate,
+          segment,
           items,
           memo,
           ...customerPayload,
         });
         toast({ title: "발주가 수정되었습니다." });
       } else {
-        const payload = {supplierId: Number(supplierId), purchaseDate, items, memo, ...customerPayload};
+        const payload = {supplierId: Number(supplierId), purchaseDate, segment, items, memo, ...customerPayload};
         const send = (extra = {}) => fetch("/api/admin/purchases", {method:"POST", credentials:"include", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...payload,...extra})});
         let response = await send();
         let result = await response.json();
@@ -184,6 +186,7 @@ export default function AdminPurchases() {
       setLines([emptyLine()]);
       setMemo("");
       setCustomerName("");
+      setSegment("wholesale");
       if (wasEditing) {
         // 수정 완료 후 폼 초기화
         setEditingId(null);
@@ -219,6 +222,7 @@ export default function AdminPurchases() {
     setEditingNo(p.purchaseNo);
     setSupplierId(String(p.supplierId));
     setPurchaseDate(p.purchaseDate);
+    setSegment(p.segment === "store" ? "store" : "wholesale");
     setCustomerName((p as any).customerName ?? "");
     setMemo(p.memo ?? "");
     setLines(
@@ -239,6 +243,8 @@ export default function AdminPurchases() {
     setEditingNo("");
     setSupplierId("");
     setPurchaseDate(todayStr());
+    setSegment("wholesale");
+    setCustomerName("");
     setMemo("");
     setLines([emptyLine()]);
   }
@@ -281,6 +287,17 @@ export default function AdminPurchases() {
             <div className="space-y-1.5">
               <Label className="text-xs">발주일 *</Label>
               <Input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} data-testid="input-purchase-date" />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="purchase-segment" className="text-xs">매입 부문 *</Label>
+              <Select value={segment} onValueChange={(v) => setSegment(v as "wholesale" | "store")}>
+                <SelectTrigger id="purchase-segment" data-testid="select-purchase-segment"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wholesale">도매</SelectItem>
+                  <SelectItem value="store">매장</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">자체 매장에서 사용할 매입은 매장을 선택하세요. 선택한 부문의 원가로 반영됩니다.</p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">거래처 (선택)</Label>
@@ -401,6 +418,7 @@ export default function AdminPurchases() {
                     <th className="sticky-col px-4 py-2 text-left font-medium">발주번호</th>
                     <th className="px-4 py-2 text-left font-medium">발주일</th>
                     <th className="px-4 py-2 text-left font-medium">공급처</th>
+                    <th className="px-4 py-2 text-left font-medium">부문</th>
                     <th className="px-4 py-2 text-left font-medium">거래처(주문)</th>
                     <th className="px-4 py-2 text-left font-medium">품목</th>
                     <th className="px-4 py-2 text-right font-medium">합계 (부가세 포함)</th>
@@ -425,6 +443,7 @@ export default function AdminPurchases() {
                         <td className="sticky-col px-4 py-3 font-display tabular text-xs font-semibold text-foreground whitespace-nowrap">{p.purchaseNo}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{p.purchaseDate}</td>
                         <td className="px-4 py-3 text-foreground">{supplierName(p.supplierId)}</td>
+                        <td className="px-4 py-3 text-xs">{p.segment === "store" ? "매장" : "도매"}</td>
                         <td className="px-4 py-3 text-xs">
                           {(p as any).sourceCustomer ? (
                             <div>
