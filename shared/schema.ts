@@ -1653,12 +1653,10 @@ export const insertDessertItemSchema = z.object({
   unit: z.string().trim().max(10, "단위는 10자 이내로 입력해 주세요.").optional().default("개"),
 });
 
-export const updateDessertItemSchema = z.object({
-  name: z.string().trim().min(1).max(40).optional(),
-  unit: z.string().trim().optional(),
+export const updateDessertItemSchema = insertDessertItemSchema.partial().extend({
   sortOrder: z.number().int().optional(),
   active: z.number().int().min(0).max(1).optional(),
-});
+}).refine((value) => Object.keys(value).length > 0, "수정할 내용을 입력해 주세요.");
 
 export const DESSERT_ENTRY_KINDS = ["produce", "discard"] as const;
 export type DessertEntryKind = (typeof DESSERT_ENTRY_KINDS)[number];

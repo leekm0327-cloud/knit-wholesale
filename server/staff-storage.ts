@@ -708,8 +708,7 @@ export class StaffStorage {
           .set({
             qty: nextQty,
             discardQty: nextDiscard,
-            itemName: item.name,
-            unit: item.unit,
+            // 품목명을 바꾼 뒤 지난 일지를 수정해도 당시 이름·단위는 보존한다.
             staffId,
             staffName,
             ...sideFields,
@@ -777,7 +776,21 @@ export class StaffStorage {
   }
 
   async updateDessertItem(id: number, patch: Partial<DessertItem>): Promise<DessertItem | undefined> {
-    return db.update(dessertItems).set(patch).where(eq(dessertItems.id, id)).returning().get();
+    return sqlite.transaction(() => {
+      const current = db.select().from(dessertItems).where(eq(dessertItems.id, id)).get();
+      if (!current) return undefined;
+      const next = { ...current, ...patch };
+      const nameKey = (name: string) => name.normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+      if (next.active === 1 && db.select().from(dessertItems).all().some(
+        (row) => row.id !== id && row.active === 1 && nameKey(row.name) === nameKey(next.name),
+      )) {
+        throw Object.assign(new Error("같은 이름의 사용 중인 디저트가 있습니다. 품목명을 확인해 주세요."), { status: 409 });
+      }
+      return db.update(dessertItems).set({
+        ...patch,
+        ...(patch.unit !== undefined ? { unit: patch.unit || "개" } : {}),
+      }).where(eq(dessertItems.id, id)).returning().get();
+    })();
   }
 
   async deleteDessertItem(id: number): Promise<void> {

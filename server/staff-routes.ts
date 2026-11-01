@@ -287,8 +287,8 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
         const l = byItem.get(it.id);
         return {
           itemId: it.id,
-          name: it.name,
-          unit: it.unit,
+          name: l?.itemName ?? it.name,
+          unit: l?.unit ?? it.unit,
           qty: l?.qty ?? 0,
           discardQty: l?.discardQty ?? 0,
           producedByName: l?.producedByName ?? "",
@@ -1069,7 +1069,7 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     res.json(await staffStorage.createDessertItem(parsed.data));
   }));
 
-  app.patch("/api/admin/staff/dessert-items/:id", requireOwner, async (req, res) => {
+  app.patch("/api/admin/staff/dessert-items/:id", requireOwner, safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const parsed = updateDessertItemSchema.safeParse(req.body);
@@ -1077,7 +1077,7 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     const row = await staffStorage.updateDessertItem(id, parsed.data as any);
     if (!row) return res.status(404).json({ message: "품목을 찾을 수 없습니다." });
     res.json(row);
-  });
+  }));
 
   app.delete("/api/admin/staff/dessert-items/:id", requireOwner, async (req, res) => {
     const id = Number(req.params.id);

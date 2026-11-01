@@ -93,6 +93,7 @@ import AdminStaffAttendance from "@/pages/admin/AdminStaffAttendance";
 import AdminStaffSchedule from "@/pages/admin/AdminStaffSchedule";
 import AdminStaffNotices from "@/pages/admin/AdminStaffNotices";
 import AdminStaffLogs from "@/pages/admin/AdminStaffLogs";
+import AdminDessertItems from "@/pages/admin/AdminDessertItems";
 import StaffLogin from "@/pages/staff/StaffLogin";
 import StaffHome from "@/pages/staff/StaffHome";
 import StaffEspresso from "@/pages/staff/StaffEspresso";
@@ -268,6 +269,7 @@ function AppRouter() {
       <Route path="/admin/staff/schedule" component={AdminStaffSchedule} />
       <Route path="/admin/staff/notices" component={AdminStaffNotices} />
       <Route path="/admin/staff/logs" component={AdminStaffLogs} />
+      <Route path="/admin/dessert-items" component={AdminDessertItems} />
       <Route path="/admin/staff/leave" component={AdminStaffLeave} />
       <Route path="/admin/staff/handover" component={AdminStaffHandover} />
       <Route path="/admin/staff/supply" component={AdminStaffSupply} />

@@ -30,6 +30,7 @@ export const adminModules = [
   }
 ];
 export const adminNavigation = [
+ {path:"/admin/dessert-items",label:"디저트 목록",owner:false,group:"store"},
  {path:"/admin/review-alerts",label:"새 리뷰",owner:false,group:"online"},
  {path:"/admin/smartstore-orders",label:"스마트스토어 주문",owner:false,group:"online"},
  {path:"/admin/cafe24-orders",label:"자사몰 주문",owner:false,group:"online"},
