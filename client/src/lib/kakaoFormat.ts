@@ -62,5 +62,7 @@ export function orderToKakaoText(order: Order): string {
   }
 
   if (returns.length) lines.push(`- 반품·차감 확인 (발주 수량 제외): ${returns.map(it=>`${it.name} ${it.qty}`).join(", ")}`);
+  // 공백만 있는 메모는 생략하되, 실제 메모의 한글·줄바꿈은 그대로 복사한다.
+  if (order.note?.trim()) lines.push(`- 주문 메모: ${order.note}`);
   return lines.join("\n");
 }

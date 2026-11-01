@@ -996,7 +996,8 @@ export async function registerRoutes(
       supplyAmount: recomputed.supplyAmount,
       vat: recomputed.vat,
       totalAmount: recomputed.totalAmount,
-      desiredDate: parsed.data.desiredDate ?? "",
+      // 날짜 입력이 없는 고객 화면에서 과거 주문의 희망 납품일을 지우지 않는다.
+      ...(req.body.desiredDate === undefined ? {} : { desiredDate: parsed.data.desiredDate }),
       note: parsed.data.note ?? "",
       quickRequest: parsed.data.quickRequest ? 1 : 0,
     });

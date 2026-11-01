@@ -217,7 +217,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
         qty: i.qty,
         amount: i.unitPrice * i.qty,
       })),
-      desiredDate,
+      ...(isAdmin ? { desiredDate } : {}),
       note,
       quickRequest,
       // 할인은 관리자만 건드릴 수 있다. 거래처 수정 요청에는 아예 싣지 않는다.
@@ -392,8 +392,8 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
         )}
       </div>
 
-      {/* 희망 납품일 / 요청사항 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {/* 기존 희망 납품일은 관리자만 수정한다. 고객 수정 시에는 기존 값을 보존한다. */}
+      {isAdmin && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="edit-desired" className="text-xs">희망 납품일</Label>
           <Input
@@ -404,7 +404,7 @@ export function OrderItemsEditor({ order, mode, onDone, onCancel }: Props) {
             data-testid="input-edit-desired-date"
           />
         </div>
-      </div>
+      </div>}
       <div className="space-y-1.5">
         <Label htmlFor="edit-note" className="text-xs">요청사항</Label>
         <Textarea
