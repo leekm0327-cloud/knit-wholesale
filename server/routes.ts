@@ -148,6 +148,7 @@ async function recomputeOrderItems(
     }
     const prod = await storage.getProduct(it.productId);
     if (!prod) return { ok: false, message: `상품을 찾을 수 없습니다: ${it.productId}` };
+    if (prod.hidden === 1 && !skipMinQty) return { ok: false, message: `숨김 처리된 상품은 주문할 수 없습니다: ${prod.name}` };
     // 매장 내부 계정과 관리자 입력은 상품별 최소수량 검증을 생략
     if (!isStore && !skipMinQty) {
       const minQ = (prod as any).minOrderQty ?? 0;
@@ -552,7 +553,7 @@ export async function registerRoutes(
   // 소개에 필요한 항목만 골라서 내려준다. 상품 관리에서 고치면 이 값도 함께 바뀐다.
   app.get("/api/public/blends", async (_req, res) => {
     const list = (await storage.listProducts())
-      .filter((p) => p.category === "blend" && p.available === 1)
+      .filter((p) => p.category === "blend" && p.available === 1 && p.hidden !== 1)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     const out = list.map((p) => {
       let d: any = {};
@@ -578,7 +579,9 @@ export async function registerRoutes(
 
   // ===== Products =====
   app.get("/api/products", async (req, res) => {
-    const list = await storage.listProducts();
+    const allProducts = await storage.listProducts();
+    const includeHidden = req.session.role === "admin" && !!req.session.userId && req.query.includeHidden === "true";
+    const list = includeHidden ? allProducts : allProducts.filter(p => p.hidden !== 1);
     const userId = req.session.userId;
     const role = req.session.role;
     // 매입금(costPrice)은 관리자만 노출. 비로그인/거래처 응답에서는 제거한다.
@@ -644,6 +647,7 @@ export async function registerRoutes(
     if (!product) return res.status(404).json({ message: "상품을 찾을 수 없습니다." });
     const userId = req.session.userId;
     const role = req.session.role;
+    if (product.hidden === 1 && role !== "admin") return res.status(404).json({ message: "상품을 찾을 수 없습니다." });
     if (userId && role !== "admin") {
       const override = await storage.getCustomerPrice(userId, id);
       const effectivePrice = override ? override.price : product.price;
@@ -884,6 +888,7 @@ export async function registerRoutes(
     for (const pid of uniqueIds) {
       const prod = await storage.getProduct(pid);
       if (!prod) return res.status(400).json({ message: `상품을 찾을 수 없습니다: ${pid}` });
+      if (prod.hidden === 1) return res.status(400).json({ message: "숨김 처리된 상품은 샘플 신청할 수 없습니다." });
       if (!sampleKeys.has(prod.category))
         return res.status(400).json({ message: "샘플 신청이 가능한 카테고리의 상품이 아닙니다." });
       // 각 500g(수량 1) 고정, 무료(단가 0). 발송 규격을 주문/명세서에 명확히 표기.
@@ -2603,7 +2608,9 @@ export async function registerRoutes(
   });
 
   app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
-    const allowed = ["name", "category", "origin", "price", "costPrice", "available", "minOrderQty", "sortOrder", "ecountCode", "detailTemplate", "detailJson", "detailImages"];
+    if ("hidden" in req.body && req.body.hidden !== 0 && req.body.hidden !== 1)
+      return res.status(400).json({ message: "숨김 상태는 0 또는 1이어야 합니다." });
+    const allowed = ["name", "category", "origin", "price", "costPrice", "available", "hidden", "minOrderQty", "sortOrder", "ecountCode", "detailTemplate", "detailJson", "detailImages"];
     const patch: any = {};
     for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
     const updated = await storage.updateProduct(Number(req.params.id), patch);

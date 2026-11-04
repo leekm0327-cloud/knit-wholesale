@@ -24,7 +24,7 @@ export function reorderItems(
       continue;
     }
     const prod = productMap.get(it.productId);
-    if (!prod || prod.available === 0) {
+    if (!prod || prod.available === 0 || prod.hidden === 1) {
       skipped.push(it.name);
       continue;
     }

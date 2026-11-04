@@ -50,6 +50,7 @@ export const products = sqliteTable("products", {
   price: integer("price").notNull().default(0), // 단가 (원)
   costPrice: integer("cost_price").notNull().default(0), // 매입금 (클라리멘토 원가) — 관리자 전용, 발주 단가 기본값
   available: integer("available").notNull().default(1), // 1 판매중 / 0 품절
+  hidden: integer("hidden").notNull().default(0), // 1 숨김 / 0 표시. 과거 거래와 판매 상태는 보존
   // 상품별 최소 주문 수량 (0이면 제한 없음). 예: 드립백 6개 이상. 원두 5kg 규칙과 별개로 이 상품 라인에 적용.
   minOrderQty: integer("min_order_qty").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),

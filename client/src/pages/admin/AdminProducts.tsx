@@ -98,7 +98,7 @@ function parseStoredImages(p: Product): string[] {
 
 export default function AdminProducts() {
   const { toast } = useToast();
-  const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const { data: products, isLoading } = useQuery<Product[]>({ queryKey: ["/api/products?includeHidden=true"] });
   const { data: categoryRows } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
   const categoryOptions = (categoryRows ?? [])
     .slice()
@@ -108,6 +108,21 @@ export default function AdminProducts() {
   const [form, setForm] = useState<FormState>(empty);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+
+  const [showHidden, setShowHidden] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState<number | null>(null);
+  const visibleProducts = (products ?? []).filter(p => (p.hidden === 1) === showHidden);
+  const invalidateProducts = () => queryClient.invalidateQueries({ predicate: q => String(q.queryKey[0]).startsWith("/api/products") || q.queryKey[0] === "/api/admin/offer-list" });
+  async function toggleHidden(p: Product) {
+    setVisibilityBusy(p.id);
+    try {
+      await apiRequest("PATCH", `/api/admin/products/${p.id}`, { hidden: p.hidden === 1 ? 0 : 1 });
+      await invalidateProducts();
+      toast({ title: p.hidden === 1 ? "상품을 다시 표시합니다" : "상품을 숨겼습니다", description: "과거 주문·정산 기록과 판매 상태는 유지됩니다." });
+    } catch (error) {
+      toast({ title: "변경하지 못했습니다", description: errMsg(error), variant: "destructive" });
+    } finally { setVisibilityBusy(null); }
+  }
 
   const set = (k: keyof FormState, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -208,7 +223,7 @@ export default function AdminProducts() {
       } else {
         await apiRequest("POST", "/api/admin/products", payload);
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      invalidateProducts();
       setOpen(false);
       toast({ title: editing ? "상품 수정 완료" : "상품 추가 완료" });
     } catch (err: any) {
@@ -220,13 +235,13 @@ export default function AdminProducts() {
 
   async function toggleAvailable(p: Product) {
     await apiRequest("PATCH", `/api/admin/products/${p.id}`, { available: p.available === 1 ? 0 : 1 });
-    queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+    invalidateProducts();
   }
 
   async function doDelete() {
     if (!deleteTarget) return;
     await apiRequest("DELETE", `/api/admin/products/${deleteTarget.id}`);
-    queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+    invalidateProducts();
     setDeleteTarget(null);
     toast({ title: "상품 삭제됨" });
   }
@@ -248,6 +263,13 @@ export default function AdminProducts() {
           </div>
         </div>
 
+        <div className="mb-4 space-y-3">
+          <div className="flex gap-2" aria-label="상품 표시 상태">
+            <Button variant={!showHidden ? "default" : "outline"} aria-pressed={!showHidden} onClick={() => setShowHidden(false)}>표시 중 {(products ?? []).filter(p => p.hidden !== 1).length}</Button>
+            <Button variant={showHidden ? "default" : "outline"} aria-pressed={showHidden} onClick={() => setShowHidden(true)}>숨긴 상품 {(products ?? []).filter(p => p.hidden === 1).length}</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">숨긴 상품은 주문 목록과 오퍼리스트에서 제외됩니다. 과거 주문·정산 기록은 유지되며, 숨긴 상품에서 다시 표시할 수 있습니다.</p>
+        </div>
         {isLoading ? (
           <div className="space-y-2">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-none" />)}
@@ -255,7 +277,8 @@ export default function AdminProducts() {
         ) : (
           <Card className="overflow-hidden">
             <div className="divide-y">
-              {(products ?? []).map((p) => (
+              {!visibleProducts.length && <p className="p-6 text-center text-sm text-muted-foreground">{showHidden ? "숨긴 상품이 없습니다." : "표시 중인 상품이 없습니다."}</p>}
+              {visibleProducts.map((p) => (
                 <div key={p.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid={`row-product-${p.id}`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -282,6 +305,9 @@ export default function AdminProducts() {
                         data-testid={`switch-available-${p.id}`}
                       />
                     </div>
+                    <Button variant="outline" size="sm" disabled={visibilityBusy !== null} onClick={() => toggleHidden(p)} data-testid={`button-hide-${p.id}`}>
+                      {visibilityBusy === p.id ? "변경 중…" : p.hidden === 1 ? "다시 표시" : "숨기기"}
+                    </Button>
                     <Button variant="ghost" size="icon" onClick={() => openEdit(p)} aria-label="수정" data-testid={`button-edit-${p.id}`}>
                       <Pencil className="h-4 w-4" />
                     </Button>

@@ -30,6 +30,7 @@ export function buildOfferList(products: Product[], categories: ProductCategory[
   const byKey = new Map(groups.map(g => [g.key, g]));
   const excluded = { soldOut: 0, hidden: 0, unnamed: 0 };
   for (const p of products.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)) {
+    if (p.hidden === 1) { excluded.hidden++; continue; }
     if (p.available !== 1) { excluded.soldOut++; continue; }
     const group = byKey.get(p.category);
     if (!group) { excluded.hidden++; continue; }

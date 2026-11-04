@@ -716,6 +716,7 @@ for (const col of [
   "ecount_code TEXT NOT NULL DEFAULT ''",
   "price INTEGER NOT NULL DEFAULT 0",
   "cost_price INTEGER NOT NULL DEFAULT 0",
+  "hidden INTEGER NOT NULL DEFAULT 0",
   "min_order_qty INTEGER NOT NULL DEFAULT 0",
   "detail_template TEXT NOT NULL DEFAULT ''",
   "detail_json TEXT NOT NULL DEFAULT ''",

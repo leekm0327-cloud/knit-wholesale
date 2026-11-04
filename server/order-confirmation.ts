@@ -25,7 +25,7 @@ export function confirmCustomerOrder(db: BetterSQLite3Database, customerId: numb
       if (ids.has(it.productId)) throw new OrderConfirmationError(400, "같은 상품은 한 줄로 담아 주세요.");
       ids.add(it.productId);
       const p = tx.select().from(products).where(eq(products.id, it.productId)).get();
-      if (!p || p.available === 0) throw new OrderConfirmationError(409, `'${p?.name ?? it.name}'은(는) 품절 또는 판매 중지되었습니다. 장바구니에서 삭제해 주세요.`);
+      if (!p || p.available === 0 || p.hidden === 1) throw new OrderConfirmationError(409, `'${p?.name ?? it.name}'은(는) 품절 또는 판매 중지되었습니다. 장바구니에서 삭제해 주세요.`);
       if (p.minOrderQty > 0 && it.qty < p.minOrderQty) throw new OrderConfirmationError(400, `'${p.name}'은(는) 최소 ${p.minOrderQty}개부터 주문 가능합니다. (현재 ${it.qty}개)`);
       // Preserve this customer endpoint's existing override/default price policy.
       const unitPrice = overrides.get(p.id) ?? p.price;
