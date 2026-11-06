@@ -1,3 +1,4 @@
+import { productDetailKind } from "@shared/product-detail-kind";
 import "./catalog.css";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -575,8 +576,10 @@ function ProductRow({
   const unitPrice = (product as any).effectivePrice ?? product.price;
   const hasCustomPrice = Boolean((product as any).hasCustomPrice);
   const isFavorite = Boolean((product as any).isFavorite);
+  const { data: detailCategories } = useQuery<any[]>({ queryKey: ["/api/product-categories"] });
+  const isCoffee = productDetailKind(product.category, detailCategories?.find(c => c.key === product.category)).coffee;
   const info = getCoffeeInfo(product);
-  const hasInfo = info.components.length > 0 || info.rows.length > 0 || info.recipe !== null;
+  const hasInfo = isCoffee && (info.components.length > 0 || info.rows.length > 0 || info.recipe !== null);
 
   return (
     <li

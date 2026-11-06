@@ -1,3 +1,4 @@
+import { productDetailKind, storedDetailObject } from "@shared/product-detail-kind";
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -232,7 +233,10 @@ export default function AdminProducts() {
         sortOrder: Number(form.sortOrder) || 0,
         ecountCode: form.ecountCode.trim(),
         detailTemplate: tpl,
-        detailJson: JSON.stringify(detailObj),
+        detailJson: JSON.stringify({ ...storedDetailObject(editing?.detailJson), ...detailObj,
+          description: form.detail.description, recommendedUse: form.detail.recommendedUse,
+          specifications: form.detail.specifications, compatibility: form.detail.compatibility,
+        }),
         detailImages: JSON.stringify(form.detailImages),
       };
       if (editing) {
@@ -447,9 +451,10 @@ export default function AdminProducts() {
               <div className="space-y-1.5"><Label htmlFor="product-code">이카운트 품목코드</Label><Input id="product-code" value={form.ecountCode} onChange={e => set("ecountCode", e.target.value)} /></div>
             </div>
             <details className="rounded-md border p-4"><summary className="cursor-pointer text-sm font-semibold">상세 콘텐츠·이미지 편집</summary>
-            <p className="my-3 text-xs text-muted-foreground">원두 정보는 해당 상품에만 입력하세요. 장비·소모품은 상세 이미지로 규격과 호환 정보를 안내할 수 있습니다.</p>
+            <p className="my-3 text-xs text-muted-foreground">선택한 상품 분류에 맞는 정보를 입력하세요. 상세 정보와 이미지는 고객 상품 상세에 표시됩니다.</p>
             {/* 상세페이지 양식 + 이미지 */}
             <ProductDetailEditor
+              productInfoTitle={productDetailKind(form.category, categoryOptions.find(c => c.key === form.category)).coffee ? undefined : productDetailKind(form.category, categoryOptions.find(c => c.key === form.category)).title}
               template={form.detailTemplate}
               setTemplate={(t) => setForm((f) => ({ ...f, detailTemplate: t }))}
               detail={form.detail}

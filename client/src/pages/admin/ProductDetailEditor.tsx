@@ -1,3 +1,4 @@
+import { PRODUCT_SPEC_FIELDS } from "@shared/product-detail-kind";
 import { useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ImagePlus, X } from "lucide-react";
 
 export type DetailFields = {
+  specifications: string;
+  compatibility: string;
   tagline: string;
   blendRatio: string; // (레거시) 자유 입력 블렌드 구성 — 하위호환 표시용
   blendComponents: string; // 블렌드 구성 항목 JSON: [{ name, ratio }] (최대 5개)
@@ -46,6 +49,8 @@ export type DetailFields = {
 };
 
 export const emptyDetailFields: DetailFields = {
+  specifications: "",
+  compatibility: "",
   tagline: "",
   blendRatio: "",
   blendComponents: "",
@@ -84,6 +89,7 @@ export const emptyDetailFields: DetailFields = {
 export const RATING_OPTIONS = ["1", "2", "3", "4", "5"] as const;
 
 type Props = {
+  productInfoTitle?: string;
   template: "blend" | "single";
   setTemplate: (t: "blend" | "single") => void;
   detail: DetailFields;
@@ -151,7 +157,7 @@ function BlendComposition({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
-export function ProductDetailEditor({ template, setTemplate, detail, setDetail, images, setImages }: Props) {
+export function ProductDetailEditor({ template, setTemplate, detail, setDetail, images, setImages, productInfoTitle }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -192,7 +198,7 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
         <h3 className="font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground">
           상세페이지 양식
         </h3>
-        <div className="w-32">
+        {!productInfoTitle && <div className="w-32">
           <Select value={template} onValueChange={(v) => setTemplate(v as "blend" | "single")}>
             <SelectTrigger className="h-8 text-xs" data-testid="select-detail-template">
               <SelectValue />
@@ -202,7 +208,7 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
               <SelectItem value="single">싱글 오리진 양식</SelectItem>
             </SelectContent>
           </Select>
-        </div>
+        </div>}
       </div>
 
       <div className="space-y-1.5">
@@ -210,11 +216,18 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
         <Input
           value={detail.tagline}
           onChange={(e) => setDetail("tagline", e.target.value)}
-          placeholder="예: 매일 마셔도 질리지 않는 균형감"
+          placeholder={productInfoTitle ? "상품의 주요 특징을 입력하세요" : "예: 매일 마셔도 질리지 않는 균형감"}
           data-testid="input-detail-tagline"
         />
       </div>
 
+      {productInfoTitle ? <div className="space-y-3">
+        <h3 className="text-sm font-semibold">{productInfoTitle}</h3>
+        {PRODUCT_SPEC_FIELDS.map(([key, label]) => <div key={key} className="space-y-1.5">
+          <Label htmlFor={`detail-${key}`}>{label}</Label>
+          <Textarea id={`detail-${key}`} value={detail[key]} onChange={e => setDetail(key, e.target.value)} placeholder={`${label}를 입력하세요 (선택)`} />
+        </div>)}
+      </div> : <>
       {template === "blend" ? (
         <BlendComposition value={detail.blendComponents} onChange={(v) => setDetail("blendComponents", v)} />
       ) : (
@@ -402,6 +415,7 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
         )}
       </div>
 
+      </>}
       {/* 이미지 업로더 */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">

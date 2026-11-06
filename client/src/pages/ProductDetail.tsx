@@ -1,3 +1,5 @@
+import { productDetailKind, storedDetailObject, PRODUCT_SPEC_FIELDS } from "@shared/product-detail-kind";
+import type { ProductCategory } from "@shared/schema";
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -98,6 +100,9 @@ function ProductDetailView({ product }: { product: Product }) {
   const [qty, setQty] = useState(0);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
+  const { data: categories } = useQuery<ProductCategory[]>({ queryKey: ["/api/product-categories"] });
+  const category = categories?.find(c => c.key === product.category);
+  const kind = productDetailKind(product.category, category);
   const detail = parseDetail(product);
   const images = parseImages(product);
   const template = detail?.template ?? defaultTemplate(product.category);
@@ -128,7 +133,7 @@ function ProductDetailView({ product }: { product: Product }) {
       {/* 헤더 */}
       <header className="border-b border-border pb-6">
         <p className="eyebrow mb-2" data-testid="text-category">
-          {CATEGORY_LABEL[product.category] ?? product.category}
+          {category ? [category.groupLabel, category.label].filter(Boolean).join(" › ") : kind.label || CATEGORY_LABEL[product.category] || "상품"}
         </p>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl" data-testid="text-name">
           {product.name}
@@ -174,7 +179,7 @@ function ProductDetailView({ product }: { product: Product }) {
           )}
 
           {/* 상세 본문 */}
-          <DetailFields template={template} detail={detail} origin={product.origin} />
+          {kind.coffee ? <DetailFields template={template} detail={detail} origin={product.origin} /> : <ProductSpecifications product={product} title={kind.title} />}
         </div>
 
         {/* 우측: 주문 패널 (sticky) */}
@@ -258,12 +263,22 @@ function ProductDetailView({ product }: { product: Product }) {
   );
 }
 
+function ProductSpecifications({ product, title }: { product: Product; title: string }) {
+  const raw = storedDetailObject(product.detailJson);
+  const fields = PRODUCT_SPEC_FIELDS.map(([key, label]) => ({ label, value: typeof raw[key] === "string" ? raw[key] as string : "" })).filter(f => f.value.trim());
+  return <section data-testid="product-specifications">
+    <h2 className="mb-4 font-display text-lg font-semibold text-foreground">{title}</h2>
+    <dl>{product.origin?.trim() && <Field label="원산지·상품 설명" value={product.origin} />}{fields.map(f => <Field key={f.label} label={f.label} value={f.value} />)}</dl>
+    {!fields.length && !product.origin?.trim() && <p className="text-sm text-muted-foreground">상세 정보는 상품 이미지와 안내를 확인해 주세요.</p>}
+  </section>;
+}
+
 function Field({ label, value }: { label: string; value?: string }) {
   if (!value || !value.trim()) return null;
   return (
     <div className="grid grid-cols-[140px_1fr] items-baseline gap-4 border-b border-border py-3">
       <dt className="font-ui text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</dt>
-      <dd className="text-sm text-foreground" data-testid={`field-${label}`}>{value}</dd>
+      <dd className="min-w-0 whitespace-pre-line break-words text-sm text-foreground" data-testid={`field-${label}`}>{value}</dd>
     </div>
   );
 }
