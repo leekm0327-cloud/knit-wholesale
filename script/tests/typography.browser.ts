@@ -67,6 +67,12 @@ try {
   if(!baseline){
    const fontLoaded=await page.evaluate(async()=>{const fonts=await document.fonts.load('400 16px "Pretendard Variable"','에버퓨어 상품 정보');return fonts.some(f=>f.status==='loaded');});
    assert(fontLoaded,'actual Pretendard Korean font file loaded');
+   const scopedHeadings=await page.evaluate(()=>{
+    const box=document.createElement('div');box.innerHTML='<div class="qdoc"><h1>견적서</h1></div><div class="staff-ui"><h1 class="font-ui">직원 제목</h1></div>';document.body.append(box);
+    const fonts=Array.from(box.querySelectorAll('h1')).map(e=>getComputedStyle(e).fontFamily);box.remove();return fonts;
+   });
+   assert(scopedHeadings[0].includes('KnitQuoteBatang'),'quote document heading preserved');
+   assert(scopedHeadings[1].includes('Quicksand'),'staff UI heading preserved');
   }
   await context.close();
  }

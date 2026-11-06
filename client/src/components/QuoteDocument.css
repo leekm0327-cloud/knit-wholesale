@@ -1,6 +1,6 @@
 @font-face{font-family:KnitQuoteBatang;src:url('/fonts/gowun-batang/GowunBatang-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:KnitQuoteBatang;src:url('/fonts/gowun-batang/GowunBatang-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
-.qdoc{--q-paper:#fff;--q-ink:#282d26;--q-soft:#63685e;--q-accent:#58614d;--q-rule:#d6d9d0;--q-supply:#f5f6f2;font-family:KnitQuoteBatang,serif;color:var(--q-ink);width:100%;max-width:736px;margin:0 auto;font-size:13px;line-height:1.7;font-weight:400}
+.qdoc{--font-heading-sans:KnitQuoteBatang,serif;--q-paper:#fff;--q-ink:#282d26;--q-soft:#63685e;--q-accent:#58614d;--q-rule:#d6d9d0;--q-supply:#f5f6f2;font-family:KnitQuoteBatang,serif;color:var(--q-ink);width:100%;max-width:736px;margin:0 auto;font-size:13px;line-height:1.7;font-weight:400}
 .qdoc *{box-sizing:border-box}
 .qdoc p,.qdoc h1,.qdoc h2,.qdoc h3{margin:0}
 .qdoc .qpage{background:var(--q-paper);padding:38px 38px 32px;min-height:1040px;display:flex;flex-direction:column;border-top:2px solid var(--q-accent);box-shadow:0 6px 30px #0000000d;color:var(--q-ink)}

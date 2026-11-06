@@ -356,7 +356,6 @@
    ========================================================= */
 .staff-ui {
   --font-heading-sans: var(--font-content);
-  --font-heading-ui: var(--font-content);
   --s-bg: #f1f0ee;
   --s-surface: #ffffff;
   --s-ink: #1b1c19;
