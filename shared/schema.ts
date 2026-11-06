@@ -69,6 +69,7 @@ export const products = sqliteTable("products", {
 export const productCategories = sqliteTable("product_categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   key: text("key").notNull().unique(), // 상품에 저장되는 코드값 (영문 슬러그)
+  groupLabel: text("group_label").notNull().default(""), // 대분류; 빈 값이면 기존 단일 분류
   label: text("label").notNull(), // 화면 표시명 (예: "싱글 오리진 에스프레소")
   sortOrder: integer("sort_order").notNull().default(0), // 카탈로그 노출 순서 (작을수록 먼저)
   isBean: integer("is_bean").notNull().default(1), // 1이면 원두 — 5kg 최소주문 수량에 포함
@@ -722,6 +723,7 @@ export const insertProductCategorySchema = z.object({
     .string()
     .min(1, "코드값을 입력해 주세요.")
     .regex(/^[a-z0-9_]+$/, "코드값은 영문 소문자·숫자·밑줄(_)만 사용할 수 있습니다."),
+  groupLabel: z.string().trim().max(60).optional().default(""),
   label: z.string().min(1, "표시명을 입력해 주세요."),
   sortOrder: z.number().int().optional().default(0),
   isBean: z.boolean().optional().default(true),

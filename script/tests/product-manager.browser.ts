@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { readFileSync, mkdtempSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
+import { once } from 'node:events';
+import express from 'express';
+import ts from 'typescript';
+import { transformSync } from 'esbuild';
+import { insertProductCategorySchema, insertProductSchema } from '../../shared/schema';
+process.env.DATA_DIR = mkdtempSync(join(tmpdir(),'knit-products-ui-'));
+const { storage, sqlite, seedProductCategories, seedEquipmentCategories } = await import('../../server/storage');
+seedProductCategories(); seedEquipmentCategories();
+const bean = await storage.createProduct({name:'코튼 블렌드 1kg',category:'blend',origin:'브라질',price:32000,available:1});
+const filter = await storage.createProduct({name:'정수 필터 교체 카트리지',category:'water_filter',origin:'규격 A',price:75000,available:1,ecountCode:'WF-01'});
+await storage.createProduct({name:'포터필터 바스켓 18g',category:'machine_parts',price:45000,available:0});
+const hidden = await storage.createProduct({name:'숨긴 테스트 상품',category:'blend',price:10000,available:1});
+await storage.updateProduct(hidden.id,{hidden:1});
+let role = 'owner';
+const app = express(); app.use(express.json());
+app.use((req,_res,next) => { (req as any).session = {role:'admin',adminRole:role,userId:1}; next(); });
+const ast = ts.createSourceFile('routes.ts',readFileSync('server/routes.ts','utf8'),ts.ScriptTarget.Latest,true);
+const parts:string[]=[];
+function visit(n:ts.Node) {
+ if(ts.isFunctionDeclaration(n) && ['requireAdmin','requireAuth','requireOwner'].includes(n.name?.text??'')) parts.push(n.getText(ast));
+ if(ts.isCallExpression(n) && /^app\.(get|post|patch|delete)$/.test(n.expression.getText(ast)) && ts.isStringLiteral(n.arguments[0]) && ['/api/products','/api/admin/products','/api/admin/products/:id','/api/product-categories','/api/admin/product-categories','/api/admin/product-categories/:id'].includes(n.arguments[0].text)) parts.push(n.getText(ast)+';');
+ ts.forEachChild(n,visit);
+}
+visit(ast);
+new Function('app','storage','getActor','insertProductCategorySchema','insertProductSchema',transformSync(parts.join('\n'),{loader:'ts'}).code)(app,storage,async()=>({actorUserId:1,actorEmail:'fixture@example.invalid',actorRole:'admin'}),insertProductCategorySchema,insertProductSchema);
+app.get('/api/auth/me',(_req,res)=>res.json({id:1,role:'admin',adminRole:role,businessName:'테스트',managerName:'테스트 관리자',bizVerified:1}));
+app.get('/api/{*path}',(_req,res)=>res.json([]));
+app.use('/api',(_req,res)=>res.status(405).end());
+app.use(express.static(resolve('dist/public')));
+const server = app.listen(0,'127.0.0.1'); await once(server,'listening');
+const origin = `http://127.0.0.1:${(server.address() as any).port}`;
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
+const browser = await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+const out=resolve('artifacts/product-manager');mkdirSync(out,{recursive:true});
+try {
+ for(const [size,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const) {
+  const context = await browser.newContext({viewport:{width,height}});
+  await context.route('**/*',(route:any)=>route.request().url().startsWith(origin)?route.continue():route.abort());
+  const page=await context.newPage();const errors:string[]=[];page.on('pageerror',(e:Error)=>errors.push(e.message));
+  await page.goto(origin+'/#/admin/products');await page.getByTestId(`row-product-${bean.id}`).waitFor();
+  await page.screenshot({path:join(out,size+'-list.png'),fullPage:true});
+  await page.getByLabel('상품 검색',{exact:true}).fill('WF-01');await page.getByTestId(`row-product-${bean.id}`).waitFor({state:'hidden'});
+  assert.equal(await page.locator('[data-testid^="row-product-"]').count(),1);
+  await page.getByRole('button',{name:'초기화',exact:true}).click();
+  await page.getByLabel('대분류',{exact:true}).selectOption('장비·소모품');
+  assert.equal(await page.locator('[data-testid^="row-product-"]').count(),2);
+  await page.getByLabel('판매 상태',{exact:true}).selectOption('0');
+  assert.equal(await page.locator('[data-testid^="row-product-"]').count(),1);
+  await page.getByRole('button',{name:'초기화',exact:true}).click();
+  await page.getByTestId(`button-edit-${filter.id}`).click();
+  await page.getByTestId('input-product-price').fill('79000');
+  await page.waitForTimeout(300);
+  await page.screenshot({path:join(out,size+'-edit.png'),animations:'disabled'});
+  await page.getByTestId('button-save-product').click();await page.getByRole('dialog').waitFor({state:'hidden'});
+  assert.equal((await storage.getProduct(filter.id))!.price,79000);
+  await page.getByLabel('정렬',{exact:true}).selectOption('price');
+  assert.equal(await page.locator('[data-testid^="row-product-"]').first().getAttribute('data-testid'),`row-product-${bean.id}`);
+  await page.getByTestId(`switch-available-${filter.id}`).click();
+  await page.getByTestId(`row-product-${filter.id}`).getByText('품절',{exact:true}).waitFor();
+  assert.equal((await storage.getProduct(filter.id))!.available,0);
+  await page.getByTestId(`switch-available-${filter.id}`).click();
+  await page.getByTestId(`row-product-${filter.id}`).getByText('판매중',{exact:true}).waitFor();
+  await page.getByTestId(`button-hide-${filter.id}`).click();await page.getByTestId(`row-product-${filter.id}`).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:/숨긴 상품/}).click();await page.getByTestId(`row-product-${filter.id}`).waitFor();
+  await page.getByTestId(`button-hide-${filter.id}`).click();await page.getByTestId(`row-product-${filter.id}`).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:/표시 중/}).click();
+  await page.getByLabel('상품 검색',{exact:true}).fill('없는 검색 결과');await page.getByText('검색 조건에 맞는 상품이 없습니다. 검색어나 분류를 변경해 주세요.').waitFor();
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
+  await page.goto(origin+'/#/admin/product-categories');await page.getByText('장비·소모품 › 정수 필터',{exact:true}).waitFor();
+  await page.screenshot({path:join(out,size+'-categories.png'),fullPage:true});
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'category no overflow');
+  assert.deepEqual(errors,[]);await context.close();
+ }
+ // Real category route validates owner permissions and group input.
+ role='manager'; assert.equal((await fetch(origin+'/api/admin/product-categories',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:'denied',label:'denied'})})).status,403);
+ role='owner';const water=(await storage.listProductCategories()).find(c=>c.key==='water_filter')!;
+ assert.equal((await fetch(origin+`/api/admin/product-categories/${water.id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({groupLabel:123})})).status,400);
+ assert.equal((await fetch(origin+`/api/admin/product-categories/${water.id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({groupLabel:'장비·소모품',label:'정수 필터 수정'})})).status,200);
+ assert.equal((await storage.listProductCategories()).find(c=>c.id===water.id)!.label,'정수 필터 수정');
+ console.log('PASS desktop/mobile: search, group/status filters, edit/save, hide/restore, empty state, categories, no overflow/JS errors; owner permissions and validation');
+} finally {await browser.close();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));sqlite.close();}

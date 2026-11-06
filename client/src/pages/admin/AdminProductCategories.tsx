@@ -32,6 +32,8 @@ export default function AdminProductCategories() {
   });
 
   // 추가 폼
+  const [newGroup, setNewGroup] = useState("");
+  const [editGroup, setEditGroup] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newKey, setNewKey] = useState("");
   const [newIsBean, setNewIsBean] = useState(true);
@@ -68,6 +70,7 @@ export default function AdminProductCategories() {
     try {
       await apiRequest("POST", "/api/admin/product-categories", {
         key,
+        groupLabel: newGroup.trim(),
         label,
         isBean: newIsBean,
         sampleEligible: newSample,
@@ -101,7 +104,7 @@ export default function AdminProductCategories() {
       toast({ variant: "destructive", title: "표시명을 입력해 주세요." });
       return;
     }
-    await patchCategory(c, { label });
+    await patchCategory(c, { label, groupLabel: editGroup.trim() });
     setEditingId(null);
   }
 
@@ -153,6 +156,11 @@ export default function AdminProductCategories() {
         {/* 추가 폼 */}
         <Card className="mb-6 p-5">
           <h2 className="mb-4 text-sm font-semibold text-foreground">카테고리 추가</h2>
+          <div className="mb-3 space-y-1.5">
+            <Label htmlFor="new-category-group">대분류 (선택)</Label>
+            <Input id="new-category-group" value={newGroup} maxLength={60} onChange={e => setNewGroup(e.target.value)} placeholder="예: 장비·소모품" list="category-groups" />
+            <datalist id="category-groups">{Array.from(new Set((cats ?? []).map(c => c.groupLabel).filter(Boolean))).map(g => <option key={g} value={g} />)}</datalist>
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs">표시명 *</Label>
@@ -210,7 +218,7 @@ export default function AdminProductCategories() {
           ) : (
             <div className="divide-y">
               {sorted.map((c, idx) => (
-                <div key={c.id} className="flex items-center gap-3 p-4" data-testid={`row-category-${c.id}`}>
+                <div key={c.id} className="flex flex-wrap items-center gap-3 p-4" data-testid={`row-category-${c.id}`}>
                   {/* 순서 이동 */}
                   <div className="flex flex-col">
                     <button
@@ -236,7 +244,8 @@ export default function AdminProductCategories() {
                   {/* 표시명 (인라인 수정) */}
                   <div className="min-w-0 flex-1">
                     {editingId === c.id ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Input aria-label="대분류 수정" value={editGroup} maxLength={60} onChange={e => setEditGroup(e.target.value)} className="h-8 max-w-xs" placeholder="대분류 (선택)" list="category-groups" />
                         <Input
                           value={editLabel}
                           onChange={(e) => setEditLabel(e.target.value)}
@@ -254,10 +263,10 @@ export default function AdminProductCategories() {
                     ) : (
                       <div className="flex items-center gap-2">
                         <span className={`truncate text-sm font-semibold ${c.active === 0 ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                          {c.label}
+                          {c.groupLabel ? `${c.groupLabel} › ${c.label}` : c.label}
                         </span>
                         <button
-                          onClick={() => { setEditingId(c.id); setEditLabel(c.label); }}
+                          onClick={() => { setEditingId(c.id); setEditLabel(c.label); setEditGroup(c.groupLabel); }}
                           className="text-muted-foreground hover:text-foreground"
                           aria-label="이름 수정"
                           data-testid={`button-edit-label-${c.id}`}

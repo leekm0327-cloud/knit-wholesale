@@ -141,7 +141,7 @@ export default function Catalog() {
     return categoryRows
       .filter((c) => c.active !== 0)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
-      .map((c) => ({ key: c.key, label: c.label }));
+      .map((c) => ({ key: c.key, label: c.groupLabel ? `${c.groupLabel} · ${c.label}` : c.label }));
   }, [categoryRows]);
   // ③ 니트커피 소식 (발행분). 최신 4개만 상품 목록 아래 카드로 노출.
   const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });

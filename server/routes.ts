@@ -13,7 +13,7 @@ import session from "express-session";
 import SqliteStoreFactory from "better-sqlite3-session-store";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { storage, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, backfillPurchaseEcountSent, backfillOrderEcountSent, db, sqlite, DB_PATH } from "./storage";
+import { storage, seedEquipmentCategories, seed, seedFixedCostItems, seedPersonalCategories, seedProductCategories, seedEspressoSetup, backfillPurchaseEcountSent, backfillOrderEcountSent, db, sqlite, DB_PATH } from "./storage";
 import { registerBoardRoutes } from "./board-routes";
 import { registerStaffRoutes } from "./staff-routes";
 import { registerPopupNoticeRoutes } from "./popup-notice";
@@ -198,6 +198,7 @@ export async function registerRoutes(
   seedFixedCostItems();
   seedPersonalCategories();
   seedProductCategories();
+  seedEquipmentCategories();
   seedEspressoSetup();
 
   // 샌드박스 iframe 쿠키 동작을 위한 설정
@@ -2652,6 +2653,11 @@ export async function registerRoutes(
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const patch: Record<string, any> = {};
+    if (req.body.groupLabel !== undefined) {
+      if (typeof req.body.groupLabel !== "string" || req.body.groupLabel.trim().length > 60)
+        return res.status(400).json({ message: "대분류는 60자 이내로 입력해 주세요." });
+      patch.groupLabel = req.body.groupLabel.trim();
+    }
     if (typeof req.body.label === "string") patch.label = req.body.label.trim();
     if (typeof req.body.sortOrder === "number") patch.sortOrder = req.body.sortOrder;
     if (typeof req.body.isBean === "boolean") patch.isBean = req.body.isBean ? 1 : 0;

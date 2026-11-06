@@ -731,6 +731,11 @@ for (const col of [
   }
 }
 
+// Existing category IDs and product references remain unchanged.
+if (!(sqlite.prepare("PRAGMA table_info(product_categories)").all() as any[]).some(c => c.name === "group_label")) {
+  sqlite.exec("ALTER TABLE product_categories ADD COLUMN group_label TEXT NOT NULL DEFAULT ''");
+}
+
 // 공급처 이카운트 거래처코드 컬럼 (기존 DB 대비 멱등 ALTER)
 for (const col of ["ecount_code TEXT NOT NULL DEFAULT ''"]) {
   try {
@@ -1131,6 +1136,7 @@ export class DatabaseStorage implements IStorage {
       .insert(productCategories)
       .values({
         key: c.key,
+        groupLabel: c.groupLabel ?? "",
         label: c.label,
         sortOrder: c.sortOrder ?? 0,
         isBean: c.isBean === false ? 0 : 1,
@@ -3192,12 +3198,17 @@ export async function seed() {
   const existingAdmins = db.select().from(customers).where(eq(customers.role, "admin")).all();
   if (existingAdmins.length > 0) return;
 
+  // Only a new installation needs a bootstrap password. Existing accounts are untouched.
+  const initialPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  if (!initialPassword || initialPassword.length < 12) {
+    throw new Error("Set INITIAL_ADMIN_PASSWORD (at least 12 characters) to initialize a new administrator account");
+  }
   const hash = (pw: string) => bcrypt.hashSync(pw, 10);
 
   // --- 관리자 계정만 시드 (#8 회사 이메일) ---
   await storage.createCustomer({
     email: "knitcoffee00@gmail.com",
-    password: hash("knit2026"),
+    password: hash(initialPassword),
     role: "admin",
     adminRole: "owner",
     businessName: "니트커피",
@@ -3233,6 +3244,24 @@ export function seedFixedCostItems() {
     db.insert(fixedCostItems).values({ name, sortOrder: i, active: 1, createdAt: now }).run();
   });
   console.log("[seed] 고정비 항목 기본 10개 생성 완료");
+}
+
+// Add only the two approved equipment subcategories, once per database.
+export function seedEquipmentCategories() {
+  sqlite.exec("CREATE TABLE IF NOT EXISTS app_data_migrations (key TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)");
+  sqlite.transaction(() => {
+    const key = "equipment-categories-20261106";
+    if (sqlite.prepare("SELECT 1 FROM app_data_migrations WHERE key = ?").get(key)) return;
+    const existing = db.select().from(productCategories).all();
+    const next = existing.reduce((n, c) => Math.max(n, c.sortOrder), -1) + 1;
+    const requested = [{ key: "water_filter", label: "정수 필터" }, { key: "machine_parts", label: "머신 부품" }];
+    requested.forEach((category, index) => {
+      const collision = existing.find(c => c.key === category.key);
+      if (collision) throw new Error(`Equipment category key already exists: ${category.key}; review before migration`);
+      db.insert(productCategories).values({ ...category, groupLabel: "장비·소모품", isBean: 0, sampleEligible: 0, active: 1, sortOrder: next + index, createdAt: Date.now() }).run();
+    });
+    sqlite.prepare("INSERT INTO app_data_migrations (key, applied_at) VALUES (?, ?)").run(key, Date.now());
+  })();
 }
 
 // ===== 상품 카테고리 기본 시드 (비어있을 때만) =====
