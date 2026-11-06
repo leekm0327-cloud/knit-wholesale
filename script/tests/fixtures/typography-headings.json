@@ -1,0 +1,190 @@
+{
+  "desktop/admin/products": [
+    {
+      "text": "Products",
+      "font": "-apple-system, \"system-ui\", \"Apple SD Gothic Neo\", \"Segoe UI\", sans-serif"
+    },
+    {
+      "text": "상품 관리",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    }
+  ],
+  "desktop/products/2": [
+    {
+      "text": "장비·소모품 › 정수 필터",
+      "font": "Quicksand, \"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "정수 필터 정보",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    }
+  ],
+  "desktop/catalog": [
+    {
+      "text": "For wholesale partners",
+      "font": "Quicksand, \"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "원두 발주",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    },
+    {
+      "text": "블렌드",
+      "font": "\"Gowun Dodum\", \"맑은 고딕\", \"Malgun Gothic\", -apple-system, system-ui, sans-serif"
+    },
+    {
+      "text": "장비·소모품 · 정수 필터",
+      "font": "\"Gowun Dodum\", \"맑은 고딕\", \"Malgun Gothic\", -apple-system, system-ui, sans-serif"
+    },
+    {
+      "text": "에스프레소 추출 가이드",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    }
+  ],
+  "desktop/login": [
+    {
+      "text": "Coffee & Consulting",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "From setup to cup",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Partnership",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Our coffee",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Espresso Blend",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Cafe consulting",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Our partners",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Get in touch",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    }
+  ],
+  "desktop/register": [
+    {
+      "text": "거래처 가입",
+      "font": "\"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "기본 정보",
+      "font": "\"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "계정 정보",
+      "font": "\"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "배송 정보",
+      "font": "\"Gowun Dodum\", sans-serif"
+    }
+  ],
+  "mobile/admin/products": [
+    {
+      "text": "Products",
+      "font": "-apple-system, \"system-ui\", \"Apple SD Gothic Neo\", \"Segoe UI\", sans-serif"
+    },
+    {
+      "text": "상품 관리",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    }
+  ],
+  "mobile/products/2": [
+    {
+      "text": "장비·소모품 › 정수 필터",
+      "font": "Quicksand, \"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "정수 필터 정보",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    }
+  ],
+  "mobile/catalog": [
+    {
+      "text": "For wholesale partners",
+      "font": "Quicksand, \"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "원두 발주",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    },
+    {
+      "text": "블렌드",
+      "font": "\"Gowun Dodum\", \"맑은 고딕\", \"Malgun Gothic\", -apple-system, system-ui, sans-serif"
+    },
+    {
+      "text": "장비·소모품 · 정수 필터",
+      "font": "\"Gowun Dodum\", \"맑은 고딕\", \"Malgun Gothic\", -apple-system, system-ui, sans-serif"
+    },
+    {
+      "text": "에스프레소 추출 가이드",
+      "font": "\"Cormorant Garamond\", \"Gowun Dodum\", Georgia, serif"
+    }
+  ],
+  "mobile/login": [
+    {
+      "text": "Coffee & Consulting",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "From setup to cup",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Partnership",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Our coffee",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Espresso Blend",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Cafe consulting",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Our partners",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    },
+    {
+      "text": "Get in touch",
+      "font": "mendl-serif-dusk, \"Playfair Display\", \"Noto Serif KR\", Georgia, serif"
+    }
+  ],
+  "mobile/register": [
+    {
+      "text": "거래처 가입",
+      "font": "\"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "기본 정보",
+      "font": "\"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "계정 정보",
+      "font": "\"Gowun Dodum\", sans-serif"
+    },
+    {
+      "text": "배송 정보",
+      "font": "\"Gowun Dodum\", sans-serif"
+    }
+  ]
+}

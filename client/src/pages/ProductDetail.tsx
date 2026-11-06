@@ -135,7 +135,7 @@ function ProductDetailView({ product }: { product: Product }) {
         <p className="eyebrow mb-2" data-testid="text-category">
           {category ? [category.groupLabel, category.label].filter(Boolean).join(" › ") : kind.label || CATEGORY_LABEL[product.category] || "상품"}
         </p>
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl" data-testid="text-name">
+        <h1 className="font-product-name text-2xl font-semibold tracking-tight text-foreground sm:text-3xl" data-testid="text-name">
           {product.name}
         </h1>
         {detail && "tagline" in detail && detail.tagline && (
@@ -189,7 +189,7 @@ function ProductDetailView({ product }: { product: Product }) {
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {hasCustomPrice ? "거래처 전용가" : "공급가액"}
               </p>
-              <p className="mt-1 font-display text-2xl font-bold tabular text-foreground" data-testid="text-price">
+              <p className="mt-1 font-sans text-2xl font-bold tabular text-foreground" data-testid="text-price">
                 {won(unitPrice)}
               </p>
               {hasCustomPrice && (

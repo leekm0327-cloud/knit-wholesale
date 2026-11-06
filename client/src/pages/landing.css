@@ -9,8 +9,9 @@
     /* 제목용 — Adobe Fonts(index.html의 typekit 링크)에서 받아옵니다.
        로컬 설치 폰트 이름을 앞에 두면 개발자 PC에서만 다르게 보이므로 두지 않습니다. */
     --kl-serif:"mendl-serif-dusk",'Playfair Display','Noto Serif KR', Georgia, serif;
-    --kl-sans:'Gowun Dodum', "맑은 고딕", system-ui, sans-serif;
-    --kl-ui:'Quicksand', 'Gowun Dodum', sans-serif;
+    --kl-sans:var(--font-content);
+    --kl-heading-ui:'Quicksand', 'Gowun Dodum', sans-serif;
+    --kl-ui:var(--font-content);
     --kl-gutter:clamp(26px, 5.2vw, 44px);
   }
 
@@ -25,7 +26,7 @@
 
 .knit-landing .narrow{max-width:700px;margin-left:auto;margin-right:auto;}
 
-.knit-landing .eyebrow{font-family:var(--kl-ui);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+.knit-landing .eyebrow{font-family:var(--kl-heading-ui);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
            color:var(--kl-muted);font-weight:600;}
 
 .knit-landing h1, .knit-landing h2, .knit-landing h3{font-family:var(--kl-serif);letter-spacing:-.005em;font-weight:500;margin:0;}
@@ -141,7 +142,7 @@
 
 .knit-landing .blend + .blend{margin-top:40px;padding-top:40px;border-top:1px solid var(--kl-border);}
 
-.knit-landing .blend .bn{font-family:var(--kl-serif);font-size:21px;font-weight:500;letter-spacing:.01em;}
+.knit-landing .blend .bn{font-family:var(--font-content);font-size:21px;font-weight:500;letter-spacing:.01em;}
 
 .knit-landing .blend .bk{font-size:12px;color:var(--kl-muted);margin-top:1px;}
 
@@ -315,3 +316,5 @@
  .knit-landing .entry-intro h1 {margin-bottom:14px;}
  .knit-landing .entry-intro .cta-row {justify-content:center;margin-top:18px;}
 }
+
+.knit-landing .login .t,.knit-landing .item .k,.knit-landing .step .t{font-family:var(--kl-heading-ui)}

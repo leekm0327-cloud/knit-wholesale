@@ -55,9 +55,12 @@
   --chart-4: 0 0% 60%;
   --chart-5: 0 0% 33%;
 
-  --font-sans: 'Gowun Dodum', "맑은 고딕", "Malgun Gothic", -apple-system, system-ui, sans-serif;
+  --font-content: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Malgun Gothic", sans-serif;
+  --font-heading-sans: 'Gowun Dodum', "맑은 고딕", "Malgun Gothic", -apple-system, system-ui, sans-serif;
+  --font-heading-ui: 'Quicksand', 'Gowun Dodum', sans-serif;
+  --font-sans: var(--font-content);
   --font-serif: 'Cormorant Garamond', 'Gowun Dodum', Georgia, serif;
-  --font-ui: 'Quicksand', 'Gowun Dodum', sans-serif;
+  --font-ui: var(--font-content);
   --font-mono: 'Quicksand', ui-monospace, monospace;
 
   --radius: 0rem;                      /* 본 사이트는 사각 보더 라인 */
@@ -158,6 +161,11 @@
     line-height: 1.6;
   }
 
+  /* Keep inherited heading faces while body copy switches to Pretendard. */
+  h1, h2, h3, h4, h5, h6, [role="heading"] {
+    font-family: var(--font-heading-sans);
+  }
+
   /* 모바일 하단 탭바(약 44px) 높이만큼 본문 하단 여백 확보 (데스크톱은 탭바 없음) */
   @media (max-width: 639px) {
     body {
@@ -173,9 +181,18 @@
     font-feature-settings: "liga" 1, "calt" 1;
     letter-spacing: -0.01em;
   }
-  /* UI / 숫자 / 네비게이션 라벨 (Quicksand) */
+  /* 본문 UI / 숫자 / 네비게이션 라벨 */
   .font-ui {
     font-family: var(--font-ui);
+  }
+  :is(h1,h2,h3,h4,h5,h6,[role="heading"]).font-ui {
+    font-family: var(--font-heading-ui);
+  }
+  :is(h1,h2,h3,h4,h5,h6,[role="heading"]).font-sans {
+    font-family: var(--font-heading-sans);
+  }
+  .font-product-name, h1.font-product-name {
+    font-family: var(--font-content);
   }
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -183,7 +200,7 @@
   }
   /* 작은 회색 영문 sub-label */
   .eyebrow {
-    font-family: var(--font-ui);
+    font-family: var(--font-heading-ui);
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -338,6 +355,8 @@
    테두리 대신 배경색으로 구역을 나누고, 카드는 흰색으로 띄운다.
    ========================================================= */
 .staff-ui {
+  --font-heading-sans: var(--font-content);
+  --font-heading-ui: var(--font-content);
   --s-bg: #f1f0ee;
   --s-surface: #ffffff;
   --s-ink: #1b1c19;
