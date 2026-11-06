@@ -6,11 +6,10 @@
 .knit-landing{
     --kl-bg:#ffffff; --kl-fg:#222222; --kl-muted:#777777; --kl-border:#ebebeb; --kl-soft:#f7f7f7;
     --kl-teal:#0f766e;
-    /* 제목용 — Adobe Fonts(index.html의 typekit 링크)에서 받아옵니다.
-       로컬 설치 폰트 이름을 앞에 두면 개발자 PC에서만 다르게 보이므로 두지 않습니다. */
-    --kl-serif:"mendl-serif-dusk",'Playfair Display','Noto Serif KR', Georgia, serif;
+    /* 본문과 제목은 Pretendard. Ellery는 웹 프로젝트 연결 후 영문 큰 제목에만 적용. */
+    --kl-serif:var(--font-content);
     --kl-sans:var(--font-content);
-    --kl-heading-ui:'Quicksand', 'Gowun Dodum', sans-serif;
+    --kl-heading-ui:var(--font-content);
     --kl-ui:var(--font-content);
     --kl-gutter:clamp(26px, 5.2vw, 44px);
   }

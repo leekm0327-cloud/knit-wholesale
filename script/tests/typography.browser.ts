@@ -52,7 +52,7 @@ try {
    const headings=await page.locator('h1,h2,h3,h4,h5,h6,.eyebrow,.knit-landing .subhead').evaluateAll((els:any[])=>els.filter(e=>e.dataset.testid!=='text-name').map(e=>({text:e.textContent,font:getComputedStyle(e).fontFamily})));
    const key=size+route;recorded[key]=headings;
    if(!baseline){
-    assert.deepEqual(headings,previous[key],`heading fonts preserved: ${key}`);
+    assert(headings.every((h:any)=>h.font.includes("Pretendard")),`Pretendard heading fonts: ${key}`);
     const content=await page.locator(route==='/login'?'.knit-landing':route==='/register'?'.registration-page':route==='/admin/products'?'.erp-admin':'body').first().evaluate((e:any)=>getComputedStyle(e).fontFamily);
     assert(content.includes('Pretendard'),`content font ${key}`);
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`no overflow ${key}`);
@@ -72,10 +72,10 @@ try {
     const fonts=Array.from(box.querySelectorAll('h1')).map(e=>getComputedStyle(e).fontFamily);box.remove();return fonts;
    });
    assert(scopedHeadings[0].includes('KnitQuoteBatang'),'quote document heading preserved');
-   assert(scopedHeadings[1].includes('Quicksand'),'staff UI heading preserved');
+   assert(scopedHeadings[1].includes('Pretendard'),'staff UI heading uses Pretendard');
   }
   await context.close();
  }
  if(baseline){const {writeFileSync}=await import('node:fs');writeFileSync(baselinePath,JSON.stringify(recorded,null,2));}
- console.log(baseline?'Saved baseline heading fonts':'PASS headings unchanged, Pretendard body/product names and Korean glyphs loaded, desktop/mobile catalog/detail/admin/landing/registration, no horizontal overflow');
+ console.log(baseline?'Saved baseline heading fonts':'PASS Pretendard headings/body/product names and Korean glyphs loaded, desktop/mobile catalog/detail/admin/landing/registration, no horizontal overflow');
 } finally {await browser.close();server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));sqlite.close();}

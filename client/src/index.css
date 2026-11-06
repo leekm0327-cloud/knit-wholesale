@@ -56,10 +56,10 @@
   --chart-5: 0 0% 33%;
 
   --font-content: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Malgun Gothic", sans-serif;
-  --font-heading-sans: 'Gowun Dodum', "맑은 고딕", "Malgun Gothic", -apple-system, system-ui, sans-serif;
-  --font-heading-ui: 'Quicksand', 'Gowun Dodum', sans-serif;
+  --font-heading-sans: var(--font-content);
+  --font-heading-ui: var(--font-content);
   --font-sans: var(--font-content);
-  --font-serif: 'Cormorant Garamond', 'Gowun Dodum', Georgia, serif;
+  --font-serif: var(--font-content);
   --font-ui: var(--font-content);
   --font-mono: 'Quicksand', ui-monospace, monospace;
 
@@ -161,7 +161,7 @@
     line-height: 1.6;
   }
 
-  /* Keep inherited heading faces while body copy switches to Pretendard. */
+  /* Headings and body use Pretendard; licensed English display styling is separate. */
   h1, h2, h3, h4, h5, h6, [role="heading"] {
     font-family: var(--font-heading-sans);
   }
@@ -175,7 +175,7 @@
 }
 
 @layer utilities {
-  /* 영문 세리프 헤딩 (Cormorant Garamond) */
+  /* 제목 공통 서체 (Pretendard) */
   .font-display {
     font-family: var(--font-serif);
     font-feature-settings: "liga" 1, "calt" 1;
