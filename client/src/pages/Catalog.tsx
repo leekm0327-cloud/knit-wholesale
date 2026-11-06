@@ -29,9 +29,9 @@ type NewsSummary = {
 
 // 카테고리 순서 — 서버(/api/product-categories)가 원본. 로딩 전 폴백용 기본값.
 const DEFAULT_CATEGORY_ORDER = [
-  { key: "blend", label: "블렌드" },
-  { key: "decaf", label: "디카페인" },
-  { key: "single", label: "싱글 오리진" },
+  { key: "blend", label: "블렌드", groupLabel: "" },
+  { key: "decaf", label: "디카페인", groupLabel: "" },
+  { key: "single", label: "싱글 오리진", groupLabel: "" },
 ];
 
 // ===== detailJson에서 컬럼별 값 추출 =====
@@ -142,7 +142,7 @@ export default function Catalog() {
     return categoryRows
       .filter((c) => c.active !== 0)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
-      .map((c) => ({ key: c.key, label: c.groupLabel ? `${c.groupLabel} · ${c.label}` : c.label }));
+      .map((c) => ({ key: c.key, label: c.label, groupLabel: c.groupLabel || "" }));
   }, [categoryRows]);
   // ③ 니트커피 소식 (발행분). 최신 4개만 상품 목록 아래 카드로 노출.
   const { data: newsList } = useQuery<NewsSummary[]>({ queryKey: ["/api/news"] });
@@ -280,7 +280,7 @@ export default function Catalog() {
         <div className="mb-6 border-b border-border pb-6">
           <p className="eyebrow mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">For wholesale partners</p>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-            원두 발주
+            상품 발주
           </h1>
           <p className="mt-2 max-w-xl text-xs leading-relaxed text-muted-foreground">
             단가: 공급가 기준 · 부가세 10% 별도
@@ -360,7 +360,7 @@ export default function Catalog() {
                 data-testid={`anchor-${cat.key}`}
                 className="shrink-0 whitespace-nowrap rounded-full border border-input px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-[#6b6a45] hover:text-[#6b6a45]"
               >
-                {cat.label}
+                {cat.groupLabel ? `${cat.groupLabel} · ${cat.label}` : cat.label}
               </button>
             ))}
           </div>
@@ -379,7 +379,7 @@ export default function Catalog() {
             판매 중인 상품이 없습니다.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="catalog-product-grid grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* #1 즐겨찾기 섹션 — 최상단 전체 폭 카드 */}
             {favoriteItems.length > 0 && (
               <section
@@ -414,14 +414,13 @@ export default function Catalog() {
                 className="rounded-2xl border border-[#eeece4] bg-[#fbfbf9] p-4 sm:p-5"
                 data-testid={`section-${group.key}`}
               >
-                {/* 카테고리 헤더 — 올리브 액센트 바 */}
-                <h2
-                  className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
-                  data-testid={`section-title-${group.key}`}
-                >
-                  <span className="h-3.5 w-[3px] rounded-full bg-[#6b6a45]" />
-                  {group.label}
-                </h2>
+                <header className="catalog-category-header">
+                  <div>
+                    {group.groupLabel && <p className="catalog-category-parent">{group.groupLabel}</p>}
+                    <h2 data-testid={`section-title-${group.key}`}>{group.label}</h2>
+                  </div>
+                  <span className="catalog-category-count">{group.items.length}개 상품</span>
+                </header>
 
                 <ul className="divide-y divide-[#efede6]">
                   {group.items.map((p) => (
@@ -439,29 +438,36 @@ export default function Catalog() {
           </div>
         )}
 
-        {/* ③ NEWS — 소식이 하나도 없으면 섹션 자체를 숨김. 상품 선택 뒤에 노출 (헤더 없이 카드만) */}
+        {/* 상품 발주 영역과 분리된 소식. 발행된 소식이 없으면 숨김. */}
         {topNews.length > 0 && (
-          <section className="mb-10" data-testid="section-catalog-news">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <section className="catalog-news" aria-labelledby="catalog-news-title" data-testid="section-catalog-news">
+            <header className="catalog-news-header">
+              <div>
+                <p className="catalog-news-kicker">NEWS & STORIES</p>
+                <h2 id="catalog-news-title">니트커피 소식</h2>
+                <p className="catalog-news-description">니트커피의 새로운 소식과 커피 이야기를 만나보세요.</p>
+              </div>
+              <Link href="/news" className="catalog-news-all">소식 전체 보기 <span aria-hidden="true">→</span></Link>
+            </header>
+            <div className="catalog-news-grid">
               {topNews.map((n) => (
                 <Link
                   key={n.id}
                   href={`/news/${n.id}`}
-                  className="group relative block aspect-[2/1] overflow-hidden rounded-lg border border-border bg-muted"
+                  className="catalog-news-card group"
                   data-testid={`card-news-${n.id}`}
                 >
-                  {n.coverImage ? (
-                    <img src={n.coverImage} alt={n.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">니트커피</div>
-                  )}
-                  {/* 데스크톱: hover 시 / 모바일: 기본으로 사진이 어두워지며 제목 노출 */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-md:opacity-100" />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 opacity-0 transition-all duration-300 group-hover:opacity-100 max-md:opacity-100">
-                    <h3 className="line-clamp-2 text-sm font-semibold text-white drop-shadow-sm">{n.title}</h3>
-                    {n.publishedAt ? (
-                      <p className="mt-1 text-xs text-white/80">{fmtDate(n.publishedAt)}</p>
-                    ) : null}
+                  <div className="catalog-news-image">
+                    {n.coverImage ? (
+                      <img src={n.coverImage} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    ) : (
+                      <div className="catalog-news-placeholder" aria-hidden="true">KNIT COFFEE</div>
+                    )}
+                  </div>
+                  <div className="catalog-news-copy">
+                    <p className="catalog-news-meta">{n.pinned ? "주요 소식" : "소식"}{n.publishedAt ? ` · ${fmtDate(n.publishedAt).split(" ")[0]}` : ""}</p>
+                    <h3>{n.title}</h3>
+                    <span className="catalog-news-read">이야기 읽기 <span aria-hidden="true">↗</span></span>
                   </div>
                 </Link>
               ))}

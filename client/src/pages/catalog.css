@@ -90,3 +90,37 @@
 .catalog-compact .qty-control button{width:44px;height:44px;flex-shrink:0}
 .catalog-compact .qty-control input{width:24px;min-width:0}
 }
+
+/* Distinct ordering categories and an editorial area after the product list. */
+.catalog-compact .catalog-product-grid{align-items:start}
+.catalog-compact .catalog-product-grid>section[data-testid^=section-]:not([data-testid=section-espresso]):not([data-testid=section-catalog-news]){border:1px solid #dedbd2;background:#fff;padding:0 16px 4px;scroll-margin-top:110px}
+.catalog-compact .catalog-category-header{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#f3f2ec;border-bottom:1px solid #dedbd2;margin:0 -16px 4px;padding:15px 16px;border-top:2px solid #777759}
+.catalog-compact .catalog-category-header h2{font-size:16px;font-weight:600;line-height:1.4;margin:0}
+.catalog-compact .catalog-category-parent{font-size:11px;color:#65644e;margin-bottom:4px}
+.catalog-compact .catalog-category-count{font-size:11px;color:#666;white-space:nowrap}
+.catalog-compact .catalog-product-grid>[data-testid=section-favorites]{padding-top:14px;background:#fbfaf6}
+.catalog-compact .catalog-product-grid>[data-testid=section-favorites] h2{margin-bottom:8px;font-size:15px}
+.catalog-compact .catalog-news{margin-top:44px;padding:28px;background:#f5f4f0;border-top:1px solid #c9c5b9;border-bottom:1px solid #dedbd2}
+.catalog-compact .catalog-news-header{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:20px}
+.catalog-compact .catalog-news-kicker{font-size:10px;letter-spacing:.14em;color:#6b6a45;margin-bottom:7px}
+.catalog-compact .catalog-news-header h2{font-size:20px;font-weight:600;line-height:1.4}
+.catalog-compact .catalog-news-description{font-size:12px;color:#666;margin-top:7px;line-height:1.6}
+.catalog-compact .catalog-news-all{font-size:12px;white-space:nowrap;padding:8px 0;text-decoration:underline;text-underline-offset:4px}
+.catalog-compact .catalog-news-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.catalog-compact .catalog-news-card{display:block;min-width:0;background:#fff;border:1px solid #dedbd2;transition:border-color .2s}
+.catalog-compact .catalog-news-card:hover{border-color:#777759}
+.catalog-compact .catalog-news-card:focus-visible,.catalog-compact .catalog-news-all:focus-visible{outline:2px solid #6b6a45;outline-offset:4px}
+.catalog-compact .catalog-news-image{aspect-ratio:5/2;overflow:hidden;background:#e8e6de}
+.catalog-compact .catalog-news-placeholder{display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;letter-spacing:.18em;color:#77745f}
+.catalog-compact .catalog-news-copy{padding:16px}
+.catalog-compact .catalog-news-meta{font-size:10px;color:#777;margin-bottom:8px}
+.catalog-compact .catalog-news-copy h3{font-size:15px;line-height:1.6;font-weight:500;overflow-wrap:anywhere}
+.catalog-compact .catalog-news-read{display:flex;justify-content:space-between;margin-top:18px;font-size:11px;color:#6b6a45}
+@media(max-width:639px){
+.catalog-compact .catalog-product-grid{gap:20px}
+.catalog-compact .catalog-product-grid>section[data-testid^=section-]:not([data-testid=section-espresso]):not([data-testid=section-catalog-news]){padding-left:12px;padding-right:12px}
+.catalog-compact .catalog-category-header{margin-left:-12px;margin-right:-12px;padding:13px 12px}
+.catalog-compact .catalog-news{margin-top:32px;padding:20px 14px}
+.catalog-compact .catalog-news-header{align-items:start;flex-direction:column;gap:6px}
+.catalog-compact .catalog-news-grid{grid-template-columns:minmax(0,1fr)}
+}
