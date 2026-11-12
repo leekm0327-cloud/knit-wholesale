@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {isTaxInvoiceVisible} from '../../shared/tax-invoice-visibility';
+for (const date of ['2025-12-31','2026-09-07','2026-09-08']) assert.equal(isTaxInvoiceVisible(date,'production'),false);
+for (const date of ['2026-09-09','2026-11-12','2027-09-08',undefined,null,'']) assert.equal(isTaxInvoiceVisible(date,'production'),true);
+assert.equal(isTaxInvoiceVisible('2026-09-08','test'),true);
+const rows=[{id:1,date:'2026-09-08',state:'issued'},{id:2,date:'2026-09-09',state:'unissued'}];
+const before=JSON.stringify(rows);
+assert.deepEqual(rows.filter(r=>isTaxInvoiceVisible(r.date,'production')).map(r=>r.id),[2]);
+assert.equal(JSON.stringify(rows),before);
+console.log('PASS tax invoice display cutoff boundary, test isolation, missing-date preservation, immutable records');

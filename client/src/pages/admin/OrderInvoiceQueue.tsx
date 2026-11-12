@@ -1,3 +1,4 @@
+import {isTaxInvoiceVisible} from '@shared/tax-invoice-visibility';
 import { useTodayTarget } from '@/lib/today-target';
 import {useState} from 'react';
 import {updateOrderBuyer} from '@shared/tax-invoices';
@@ -14,7 +15,7 @@ export default function OrderInvoiceQueue({env,supplier,PartyFields,onDocument}:
  const [date,setDate]=useState(new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'})),[purpose,setPurpose]=useState('1'),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[confirmed,setConfirmed]=useState(false),[approval,setApproval]=useState('');
  const act=async(fn:()=>Promise<void>)=>{setBusy(true);setMessage('');try{await fn();await q.refetch();await cache.invalidateQueries({queryKey:[base]});}catch(e:any){setMessage(e.message);}finally{setBusy(false);}};
  const post=async(path:string,p:any)=>(await apiRequest('POST',base+path,p)).json();
- const rows=(q.data?.rows||[]).filter((r:any)=>(filter==='all'||filter==='actionable'&&r.needsAttention||r.state===filter)&&(!search||(orderId&&search===orderId?String(r.id)===orderId:String(r.id)===search||`${r.orderNo} ${r.name}`.includes(search))));
+ const rows=(q.data?.rows||[]).filter((r:any)=>isTaxInvoiceVisible(r.date,env)&&(filter==='all'||filter==='actionable'&&r.needsAttention||r.state===filter)&&(!search||(orderId&&search===orderId?String(r.id)===orderId:String(r.id)===search||`${r.orderNo} ${r.name}`.includes(search))));
  const selected=(q.data?.rows||[]).filter((r:any)=>ids.includes(r.id)&&r.state==='unissued');
  const prepare=()=>{const g:any[]=[];for(const r of selected){let found=mode==='customer'?g.find(v=>v.customerId===r.customerId):null;if(!found){found={customerId:r.customerId,buyer:{...r.buyer},orders:[],ids:[]};g.push(found);}found.orders.push(r);found.ids.push(r.id);}setGroups(g);setDocs([]);setConfirmed(false);};
  return <section className="border rounded p-4 my-5"><h2 className="font-semibold">주문별 세금계산서</h2><p className="text-sm my-2">처리 완료된 유상 주문을 기준으로 발행합니다. 건별 또는 같은 거래처 합산을 선택하세요. 외부에서 발행한 건은 기존 발행 기록으로 연결해 주세요.</p>
