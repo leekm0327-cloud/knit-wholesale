@@ -168,25 +168,25 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
       toast({ title: "이미지는 최대 10장", description: "10장을 초과해 첨부할 수 없습니다.", variant: "destructive" });
       return;
     }
-    const next: string[] = [...images];
+    const next: (string | undefined)[] = new Array(list.length);
     let remaining = list.length;
     if (remaining === 0) return;
-    list.forEach((file) => {
+    list.forEach((file, index) => {
       if (file.size > 5 * 1024 * 1024) {
         toast({ title: "이미지 크기 초과", description: `${file.name}은 5MB를 초과합니다.`, variant: "destructive" });
         remaining -= 1;
-        if (remaining === 0) setImages(next);
+        if (remaining === 0) setImages([...images, ...next.filter((src): src is string => typeof src === "string")]);
         return;
       }
       const reader = new FileReader();
       reader.onload = () => {
-        if (typeof reader.result === "string") next.push(reader.result);
+        if (typeof reader.result === "string") next[index] = reader.result;
         remaining -= 1;
-        if (remaining === 0) setImages(next);
+        if (remaining === 0) setImages([...images, ...next.filter((src): src is string => typeof src === "string")]);
       };
       reader.onerror = () => {
         remaining -= 1;
-        if (remaining === 0) setImages(next);
+        if (remaining === 0) setImages([...images, ...next.filter((src): src is string => typeof src === "string")]);
       };
       reader.readAsDataURL(file);
     });
@@ -447,7 +447,7 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
             {images.map((src, i) => (
               <div key={i} className="relative aspect-square overflow-hidden border border-border">
-                <img src={src} alt="" className="h-full w-full object-cover" />
+                <img src={src} alt="" className="h-full w-full object-contain" />
                 <button
                   type="button"
                   onClick={() => setImages(images.filter((_, idx) => idx !== i))}
@@ -466,7 +466,7 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
           </div>
         )}
         <p className="text-[11px] text-muted-foreground">
-          첫 번째 사진이 상세페이지 대표 이미지가 됩니다. 드래그로 순서를 바꿀 수는 없으니 추가 순서대로 정렬됩니다.
+          첫 번째 사진은 대표 이미지가 되고, 모든 사진은 상품 상세에 추가한 순서대로 원본 비율로 표시됩니다. 순서를 바꾸려면 삭제 후 다시 추가해 주세요.
         </p>
       </div>
     </div>

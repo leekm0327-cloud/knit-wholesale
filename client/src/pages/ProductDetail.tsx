@@ -155,7 +155,7 @@ function ProductDetailView({ product }: { product: Product }) {
                 <img
                   src={images[activeImageIdx] ?? images[0]}
                   alt={product.name}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                   data-testid="img-hero"
                 />
               </div>
@@ -170,7 +170,7 @@ function ProductDetailView({ product }: { product: Product }) {
                       }`}
                       data-testid={`button-thumb-${i}`}
                     >
-                      <img src={src} alt={`${product.name} ${i + 1}`} className="h-full w-full object-cover" />
+                      <img src={src} alt={`${product.name} ${i + 1}`} className="h-full w-full object-contain" />
                     </button>
                   ))}
                 </div>
@@ -259,6 +259,17 @@ function ProductDetailView({ product }: { product: Product }) {
           </div>
         </aside>
       </div>
+
+      {images.length > 0 && (
+        <section aria-label="상품 상세 이미지" className="border-t border-border pt-8" data-testid="product-detail-images">
+          <h2 className="mb-5 font-display text-lg font-semibold text-foreground">상품 상세</h2>
+          <div className="mx-auto w-full max-w-[860px]">
+            {images.map((src, i) => (
+              <img key={i} src={src} alt={`${product.name} 상세 이미지 ${i + 1}`} loading="lazy" decoding="async" className="block h-auto w-full" />
+            ))}
+          </div>
+        </section>
+      )}
     </article>
   );
 }
