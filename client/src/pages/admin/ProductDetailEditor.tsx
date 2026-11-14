@@ -94,6 +94,8 @@ type Props = {
   setTemplate: (t: "blend" | "single") => void;
   detail: DetailFields;
   setDetail: (key: keyof DetailFields, value: string) => void;
+  thumbnail: string;
+  setThumbnail: (v: string) => void;
   images: string[];
   setImages: (v: string[]) => void;
 };
@@ -157,8 +159,9 @@ function BlendComposition({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
-export function ProductDetailEditor({ template, setTemplate, detail, setDetail, images, setImages, productInfoTitle }: Props) {
+export function ProductDetailEditor({ template, setTemplate, detail, setDetail, thumbnail, setThumbnail, images, setImages, productInfoTitle }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const thumbnailRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   function handleFiles(files: FileList | null) {
@@ -416,10 +419,28 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
       </div>
 
       </>}
-      {/* 이미지 업로더 */}
+      {/* 대표 사진은 상세 이미지와 별도로 저장합니다. */}
+      <div className="space-y-2 border-t border-border pt-4">
+        <Label className="text-xs">대표 썸네일</Label>
+        <p className="text-[11px] text-muted-foreground">상품 이름 아래 대표 사진으로 표시됩니다. 등록하지 않으면 첫 번째 상세 이미지가 사용됩니다.</p>
+        {thumbnail && <div className="h-32 w-40 border border-border bg-background"><img src={thumbnail} alt="대표 썸네일 미리보기" className="h-full w-full object-contain" /></div>}
+        <div className="flex gap-2"><Button type="button" variant="outline" size="sm" onClick={() => thumbnailRef.current?.click()} data-testid="button-add-product-thumbnail">{thumbnail ? '썸네일 변경' : '썸네일 추가'}</Button>
+          {thumbnail && <Button type="button" variant="ghost" size="sm" onClick={() => setThumbnail('')}>삭제</Button>}
+        </div>
+        <input ref={thumbnailRef} type="file" accept="image/*" className="hidden" aria-label="대표 썸네일 파일" onChange={e => {
+          const file = e.target.files?.[0]; e.target.value = '';
+          if (!file) return;
+          if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) { toast({ title: '이미지를 확인해 주세요', description: '5MB 이하 이미지 파일을 선택해 주세요.', variant: 'destructive' }); return; }
+          const reader = new FileReader();
+          reader.onload = () => { if (typeof reader.result === 'string') setThumbnail(reader.result); };
+          reader.onerror = () => toast({ title: '이미지를 불러오지 못했습니다', variant: 'destructive' });
+          reader.readAsDataURL(file);
+        }} />
+      </div>
+      {/* 상세 이미지 업로더 */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs">상품 사진</Label>
+          <Label className="text-xs">상세 이미지</Label>
           <span className="text-[11px] text-muted-foreground">{images.length} / 10장 (각 5MB 이하)</span>
         </div>
         <Button
@@ -456,17 +477,13 @@ export function ProductDetailEditor({ template, setTemplate, detail, setDetail, 
                 >
                   <X className="h-3 w-3" />
                 </button>
-                {i === 0 && (
-                  <span className="absolute left-1 top-1 border border-foreground bg-background px-1 py-0.5 font-ui text-[8px] font-bold uppercase tracking-[0.1em] text-foreground">
-                    대표
-                  </span>
-                )}
+
               </div>
             ))}
           </div>
         )}
         <p className="text-[11px] text-muted-foreground">
-          첫 번째 사진은 대표 이미지가 되고, 모든 사진은 상품 상세에 추가한 순서대로 원본 비율로 표시됩니다. 순서를 바꾸려면 삭제 후 다시 추가해 주세요.
+          상세 이미지는 추가한 순서대로 원본 비율로 표시됩니다. 순서를 바꾸려면 삭제 후 다시 추가해 주세요.
         </p>
       </div>
     </div>

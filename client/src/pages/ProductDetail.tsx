@@ -1,4 +1,4 @@
-import { productDetailKind, storedDetailObject, PRODUCT_SPEC_FIELDS } from "@shared/product-detail-kind";
+import { productDetailKind, storedDetailObject, PRODUCT_SPEC_FIELDS, productGalleryImages } from "@shared/product-detail-kind";
 import type { ProductCategory } from "@shared/schema";
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
@@ -105,6 +105,7 @@ function ProductDetailView({ product }: { product: Product }) {
   const kind = productDetailKind(product.category, category);
   const detail = parseDetail(product);
   const images = parseImages(product);
+  const galleryImages = productGalleryImages(product.detailJson, images);
   const template = detail?.template ?? defaultTemplate(product.category);
   const soldOut = product.available === 0;
   const unitPrice = (product as any).effectivePrice ?? product.price;
@@ -149,19 +150,19 @@ function ProductDetailView({ product }: { product: Product }) {
         {/* 좌측: 이미지 + 본문 */}
         <div className="space-y-8">
           {/* 이미지 갤러리 */}
-          {images.length > 0 && (
+          {galleryImages.length > 0 && (
             <div className="space-y-3">
               <div className="aspect-[4/3] w-full overflow-hidden border border-border bg-muted/20">
                 <img
-                  src={images[activeImageIdx] ?? images[0]}
+                  src={galleryImages[activeImageIdx] ?? galleryImages[0]}
                   alt={product.name}
                   className="h-full w-full object-contain"
                   data-testid="img-hero"
                 />
               </div>
-              {images.length > 1 && (
+              {galleryImages.length > 1 && (
                 <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
-                  {images.map((src, i) => (
+                  {galleryImages.map((src, i) => (
                     <button
                       key={i}
                       onClick={() => setActiveImageIdx(i)}

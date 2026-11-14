@@ -1,4 +1,4 @@
-import { productDetailKind, storedDetailObject } from "@shared/product-detail-kind";
+import { productDetailKind, storedDetailObject, productThumbnail } from "@shared/product-detail-kind";
 import { AdminFold } from "@/components/AdminFold";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -55,6 +55,7 @@ type FormState = {
   detailTemplate: "blend" | "single";
   detail: DetailFields;
   detailImages: string[];
+  thumbnailImage: string;
 };
 
 const empty: FormState = {
@@ -70,6 +71,7 @@ const empty: FormState = {
   detailTemplate: "blend",
   detail: { ...emptyDetailFields },
   detailImages: [],
+  thumbnailImage: "",
 };
 
 function parseStoredDetail(p: Product): { template: "blend" | "single"; detail: DetailFields } {
@@ -165,6 +167,7 @@ export default function AdminProducts() {
       detailTemplate: template,
       detail,
       detailImages: parseStoredImages(p),
+      thumbnailImage: productThumbnail(p.detailJson),
     });
     setOpen(true);
   }
@@ -236,6 +239,7 @@ export default function AdminProducts() {
         detailJson: JSON.stringify({ ...storedDetailObject(editing?.detailJson), ...detailObj,
           description: form.detail.description, recommendedUse: form.detail.recommendedUse,
           specifications: form.detail.specifications, compatibility: form.detail.compatibility,
+          thumbnailImage: form.thumbnailImage,
         }),
         detailImages: JSON.stringify(form.detailImages),
       };
@@ -459,6 +463,8 @@ export default function AdminProducts() {
               setTemplate={(t) => setForm((f) => ({ ...f, detailTemplate: t }))}
               detail={form.detail}
               setDetail={setDetail}
+              thumbnail={form.thumbnailImage}
+              setThumbnail={(image) => setForm((f) => ({ ...f, thumbnailImage: image }))}
               images={form.detailImages}
               setImages={(imgs) => setForm((f) => ({ ...f, detailImages: imgs }))}
             />

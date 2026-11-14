@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { productGalleryImages, productThumbnail, storedDetailObject } from '../../shared/product-detail-kind';
+const oldImages=['old-detail-1', 'old-detail-2'];
+assert.deepEqual(productGalleryImages('', oldImages), oldImages);
+assert.deepEqual(productGalleryImages('{invalid', oldImages), oldImages);
+assert.deepEqual(productGalleryImages('{"thumbnailImage":""}', oldImages), oldImages);
+assert.equal(productThumbnail('{"thumbnailImage":42}'), '');
+const oldDetails={template:'single',customLegacy:'keep',description:'detail'};
+const detail={...storedDetailObject(JSON.stringify(oldDetails)),thumbnailImage:'new-cover'};
+assert.deepEqual(productGalleryImages(JSON.stringify(detail), oldImages), ['new-cover']);
+assert.deepEqual(oldImages, ['old-detail-1','old-detail-2']);
+assert.equal(detail.customLegacy,'keep');
+assert.deepEqual(productGalleryImages(JSON.stringify({...detail,thumbnailImage:''}),oldImages),oldImages);
+console.log('PASS thumbnail and detail images stay independent; legacy fallback and unknown fields retained');

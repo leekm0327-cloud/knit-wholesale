@@ -12,3 +12,14 @@ export function storedDetailObject(raw: string | null | undefined): Record<strin
 export const PRODUCT_SPEC_FIELDS = [
   ['description', '상품 설명'], ['specifications', '규격·사양'], ['compatibility', '호환 정보'], ['recommendedUse', '사용·관리 안내'],
 ] as const;
+
+/** Separate cover photo; older products fall back to their first detail image. */
+export function productThumbnail(raw: string | null | undefined): string {
+  const value = storedDetailObject(raw).thumbnailImage;
+  return typeof value === 'string' ? value : '';
+}
+
+export function productGalleryImages(raw: string | null | undefined, detailImages: string[]): string[] {
+  const thumbnail = productThumbnail(raw);
+  return thumbnail ? [thumbnail] : detailImages;
+}
