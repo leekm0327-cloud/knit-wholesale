@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';import {fixture} from './roastery-shipping.fixture';import {installRoasteryWorkflow,backfillMissingTrackingAssignments} from '../../server/roastery-workflow';import {shippingOrderFingerprint,hasValidShippingTracking} from '../../server/roastery-tracking';
 const {db}=fixture();try{
- db.exec("UPDATE suppliers SET name='클라리멘토' WHERE id=10; DROP TRIGGER roastery_confirm_assign_v2;");
+ db.exec("UPDATE suppliers SET name='클라리멘토' WHERE id=10; DROP TRIGGER roastery_confirm_assign_v3;");
  const make=(id:number,status='done',tracking:any='')=>db.prepare(`INSERT INTO orders(id,order_no,items,customer_snapshot,status,created_at,tracking_no) VALUES(?,?,'[{"name":"가상 원두","qty":5}]','{}',?,1,?)`).run(id,'HISTORICAL-'+id,status,tracking);
  for(let id=100;id<112;id++)make(id);db.exec("UPDATE orders SET status='cancelled' WHERE id=102;UPDATE orders SET status='pending' WHERE id=103;UPDATE orders SET is_sample=1 WHERE id=104;UPDATE orders SET is_store_order=1 WHERE id=105;INSERT INTO roastery_assignments(order_id,roastery_id) VALUES(106,20);INSERT INTO activity_logs VALUES('order.admin_create','order','107');UPDATE orders SET tracking_no='  ' WHERE id=100;UPDATE orders SET tracking_no=NULL WHERE id=101;UPDATE orders SET tracking_no=' 12345678 ' WHERE id=108;");
  const row=(id:number)=>{const o=db.prepare('SELECT * FROM orders WHERE id=?').get(id);return {...o,order_status:o.status,legacy_tracking:o.tracking_no};};

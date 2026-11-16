@@ -19,7 +19,7 @@ test('cutoff only filters the fixed-login Clarimento order list',async()=>{
       if(previous===undefined) delete process.env[key]; else process.env[key]=previous;
     }
   })();
-  assert.deepEqual(startup,[['[roastery-list-cutoff]',{configEnabled:true,boundaryFound:false,reason:'supplier_missing'}]]);
+  assert.deepEqual(startup.filter(args=>args[0]==='[roastery-list-cutoff]'),[['[roastery-list-cutoff]',{configEnabled:true,boundaryFound:false,reason:'supplier_missing'}]]);
   db.exec(`UPDATE suppliers SET name='클라리멘토' WHERE id=10;
     UPDATE orders SET created_at=100 WHERE id IN (2,3,4);
     UPDATE orders SET created_at=99,order_no='TEST-2026-9999' WHERE id=1;

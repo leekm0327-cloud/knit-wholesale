@@ -17,29 +17,33 @@ export function installRoasteryWorkflow(db:Database.Database){
  db.exec(`CREATE TABLE IF NOT EXISTS roastery_confirmations(order_id INTEGER PRIMARY KEY,confirmed_at INTEGER NOT NULL,source TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS roastery_assignment_batches(order_id INTEGER PRIMARY KEY,roastery_id INTEGER NOT NULL,batch TEXT NOT NULL,created_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS roastery_dispatch_outbox(order_id INTEGER PRIMARY KEY,carrier TEXT NOT NULL,tracking TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('suppressed','correction_hold')),reason TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);`);
+ // SQLite IF NOT EXISTS preserves the pre-staff v2 trigger on existing databases.
  db.transaction(()=>{
  db.exec(`DROP TRIGGER IF EXISTS roastery_confirm_assign_v1;
- CREATE TRIGGER IF NOT EXISTS roastery_confirm_assign_v2 AFTER UPDATE OF status ON orders WHEN OLD.status='pending' AND NEW.status='done'
+ DROP TRIGGER IF EXISTS roastery_confirm_assign_v2;
+ CREATE TRIGGER IF NOT EXISTS roastery_confirm_assign_v3 AFTER UPDATE OF status ON orders WHEN OLD.status='pending' AND NEW.status='done'
  BEGIN
  INSERT OR IGNORE INTO roastery_confirmations VALUES(NEW.id,CAST(strftime('%s','now') AS INTEGER)*1000,'admin_pending_to_done');
  INSERT OR IGNORE INTO roastery_assignments(order_id,roastery_id) SELECT o.id,s.id ${source} JOIN suppliers s ON s.id=(${supplier}) WHERE o.id=NEW.id AND ${eligible};
- INSERT OR IGNORE INTO roastery_assignment_batches SELECT a.order_id,a.roastery_id,'confirmation-v2',CAST(strftime('%s','now') AS INTEGER)*1000 FROM roastery_assignments a WHERE a.order_id=NEW.id AND changes()=1;
- INSERT INTO roastery_audit(order_id,actor,action,details,created_at) SELECT NEW.id,0,'auto_assigned',json_object('source','admin_pending_to_done','batch','confirmation-v2'),CAST(strftime('%s','now') AS INTEGER)*1000 WHERE changes()=1;
+ INSERT OR IGNORE INTO roastery_assignment_batches SELECT a.order_id,a.roastery_id,'confirmation-v3',CAST(strftime('%s','now') AS INTEGER)*1000 FROM roastery_assignments a WHERE a.order_id=NEW.id AND changes()=1;
+ INSERT INTO roastery_audit(order_id,actor,action,details,created_at) SELECT NEW.id,0,'auto_assigned',json_object('source','admin_pending_to_done','batch','confirmation-v3'),CAST(strftime('%s','now') AS INTEGER)*1000 WHERE changes()=1;
  END;`);
  })();
- return backfillMissingTrackingAssignments(db);
+ const recovery=backfillMissingTrackingAssignments(db);
+ console.info('[roastery-workflow]',{triggerVersion:3,staffBackfilled:recovery.staffAssigned});
+ return recovery;
 }
 /** All confirmed normal wholesale orders without effective tracking, regardless of age/physical dispatch. */
 export function backfillMissingTrackingAssignments(db:Database.Database){
  const run=db.transaction(()=>{
- const partner:any=db.prepare(supplier).get();if(!partner)return {assigned:0,reason:'supplier_unavailable'};
- const rows:any[]=db.prepare(`SELECT o.id ${source} WHERE ${eligible} AND NOT EXISTS(SELECT 1 FROM roastery_assignments a WHERE a.order_id=o.id)`).all();
+ const partner:any=db.prepare(supplier).get();if(!partner)return {assigned:0,staffAssigned:0,reason:'supplier_unavailable'};
+ const rows:any[]=db.prepare(`SELECT o.id, (o.is_store_order=1 AND EXISTS(SELECT 1 FROM staff_bean_orders sbo WHERE sbo.order_id=o.id)) AS staff_order ${source} WHERE ${eligible} AND NOT EXISTS(SELECT 1 FROM roastery_assignments a WHERE a.order_id=o.id)`).all();
  for(const o of rows){
  db.prepare('INSERT INTO roastery_assignments(order_id,roastery_id) VALUES(?,?)').run(o.id,partner.id);
  db.prepare('INSERT INTO roastery_assignment_batches(order_id,roastery_id,batch,created_at) VALUES(?,?,?,?)').run(o.id,partner.id,'missing-tracking-v2',Date.now());
  db.prepare('INSERT INTO roastery_audit(order_id,actor,action,details,created_at) VALUES(?,0,?,?,?)').run(o.id,'missing_tracking_assigned',JSON.stringify({batch:'missing-tracking-v2',roasteryId:partner.id}),Date.now());
  }
- return {assigned:rows.length,reason:null};
+ return {assigned:rows.length,staffAssigned:rows.reduce((count,row)=>count+Number(row.staff_order===1),0),reason:null};
  });return run.immediate();
 }
 /** Called inside the same IMMEDIATE transaction as shipment persistence. No transport, worker, or replay path exists in this release. */
