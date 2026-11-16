@@ -1,3 +1,4 @@
+import {filterRoasteryList,resolveRoasteryListCutoff} from './roastery-list-cutoff';
 import {registerRoasteryAccounts,isRoasteryCredentialCurrent} from './roastery-accounts';
 import {shippingOrderFingerprint,hasValidShippingTracking} from './roastery-tracking';
 import {installRoasteryWorkflow,recordDispatchNotice} from './roastery-workflow';
@@ -26,6 +27,9 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   registerRoasteryAccounts(app,db,owner);
   registerRoasteryLinks(app,db,owner,shippingOrderFingerprint);
   installRoasteryWorkflow(db);
+  const listAnchor=process.env.CLARIMENTO_SHIPPING_HIDE_THROUGH_ORDER;
+  const {configEnabled,boundaryFound,reason}=resolveRoasteryListCutoff(db,listAnchor);
+  console.info('[roastery-list-cutoff]',{configEnabled,boundaryFound,reason});
   const run=<T,>(f:()=>T):T=>{const tx=db.transaction(f);return tx.immediate?tx.immediate():tx();};
   const safe=(fn:(req:any,res:any)=>unknown):RequestHandler=>(req,res)=>{try{fn(req,res);}catch(e){res.status(e instanceof z.ZodError?400:409).json({message:e instanceof z.ZodError?e.issues[0]?.message:'정보가 변경됐거나 요청을 처리할 수 없습니다. 목록을 새로 확인해 주세요.'});}};
   const user=(req:any):any=>req.session?.userId?db.prepare('SELECT id,role,business_name FROM customers WHERE id=?').get(req.session.userId):null;
@@ -49,7 +53,7 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   const audit=(id:number,actor:number,action:string,detail:unknown)=>db.prepare('INSERT INTO roastery_audit(order_id,actor,action,details,created_at) VALUES(?,?,?,?,?)').run(id,actor,action,JSON.stringify(detail),Date.now());
   // Tracking-only partner view deliberately excludes recipient contacts and free-form instructions.
   const partnerDto=(r:any)=>{const d=dto(r);return {...d,recipient:{business:d.recipient.business},packing:undefined,instruction:undefined,shipment:d.shipment?{...d.shipment,reason:undefined}:null};};
-  app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(rows(req.roasteryId).map(partnerDto))));
+  app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(filterRoasteryList(rows(req.roasteryId),req.roasteryId,resolveRoasteryListCutoff(db,listAnchor)).map(partnerDto))));
   app.patch('/api/roastery/orders/:id/preparation',scope,safe((req,res)=>{const p=z.object({ready:z.boolean(),version:z.number().int()}).parse(req.body);run(()=>{const r=rows(req.roasteryId).find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||r.version!==p.version||r.state==='dispatch_reported'||r.state==='dispatch_confirmed')throw Error();db.prepare('UPDATE roastery_assignments SET ready=?,version=version+1 WHERE order_id=?').run(+p.ready,r.order_id);audit(r.order_id,req.session.userId,'preparation',{ready:p.ready});});res.json({ok:true});}));
   const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1}}).single('file');
   app.post('/api/roastery/workbook',scope,(req,res,next)=>upload(req,res,e=>e?res.status(400).json({message:'5MB 이하 XLSX 파일 한 개를 선택해 주세요.'}):next()),safe((req,res)=>{
