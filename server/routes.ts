@@ -1,3 +1,4 @@
+import {getRoasteryCredentialVersion} from './roastery-accounts';
 import {registerCustomerOrderReads} from './customer-shipping';
 import {registerRoasteryShipping} from './roastery-shipping';
 import { confirmCustomerOrder, OrderConfirmationError } from "./order-confirmation";
@@ -416,8 +417,13 @@ export async function registerRoutes(
       loginFailed(kC);
       return res.status(401).json({ message: "상호명 또는 비밀번호가 올바르지 않습니다." });
     }
+    if (req.body.expectedRole === 'roastery' && customer.role !== 'roastery')
+      return res.status(403).json({message:'로스터리 전용 계정으로 로그인해 주세요.'});
+    if (customer.role === 'roastery' && !sqlite.prepare('SELECT 1 FROM roastery_members WHERE user_id=? AND enabled=1').get(customer.id))
+      return res.status(403).json({message:'계정 설정이 완료되지 않았거나 접근이 중지되었습니다. 니트커피 담당자에게 문의해 주세요.'});
     loginOk(kC);
     req.session.userId = customer.id;
+    (req.session as any).roasteryCredentialVersion = customer.role === "roastery" ? getRoasteryCredentialVersion(sqlite, customer.id) : undefined;
     req.session.role = customer.role;
     req.session.adminRole = customer.adminRole;
     // #45: 로그인 상태 유지. 체크(true=기본) → 30일 쿠키, 해제 → 세션 쿠키(브라우저 종료 시 만료)
@@ -1207,6 +1213,7 @@ export async function registerRoutes(
   // 거래처 수정
   app.patch("/api/admin/customers/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
+    if ((await storage.getCustomer(id))?.role === "roastery") return res.status(403).json({message:"로스터리 계정은 대표 전용 계정 관리에서 변경하세요."});
     // password 는 절대 이 라우트에서 받지 않음
     const allowed = ["businessName", "ownerName", "managerName", "phone", "bizRegNo", "email", "defaultAddress", "paymentMethod"];
     const patch: any = {};
@@ -1243,6 +1250,7 @@ export async function registerRoutes(
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ message: "잘못된 ID" });
     const customer = await storage.getCustomer(id);
+    if (customer?.role === "roastery") return res.status(403).json({message:"로스터리 계정은 대표 전용 계정 관리에서 변경하세요."});
     if (!customer) return res.status(404).json({ message: "거래처 없음" });
     const updated = await storage.updateCustomer(id, { bizVerified: 1 });
     if (!updated) return res.status(404).json({ message: "거래처 없음" });
@@ -1274,6 +1282,7 @@ export async function registerRoutes(
   app.delete("/api/admin/customers/:id", requireAdmin, async (req, res) => {
     const id = Number(req.params.id);
     const customer = await storage.getCustomer(id);
+    if (customer?.role === "roastery") return res.status(403).json({message:"로스터리 계정은 대표 전용 계정 관리에서 변경하세요."});
     if (!customer) return res.status(404).json({ message: "거래처 없음" });
     const actor = await getActor(req);
     await storage.deleteCustomer(id);

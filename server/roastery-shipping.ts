@@ -1,3 +1,4 @@
+import {registerRoasteryAccounts,isRoasteryCredentialCurrent} from './roastery-accounts';
 import {shippingOrderFingerprint,hasValidShippingTracking} from './roastery-tracking';
 import {installRoasteryWorkflow,recordDispatchNotice} from './roastery-workflow';
 import {registerRoasteryLinks} from './roastery-link';
@@ -22,6 +23,7 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
     CREATE UNIQUE INDEX IF NOT EXISTS roastery_tracking_unique ON roastery_shipments(carrier,tracking) WHERE state!='rejected';
     CREATE TABLE IF NOT EXISTS roastery_previews(id TEXT PRIMARY KEY,actor INTEGER NOT NULL,roastery_id INTEGER NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,created_at INTEGER NOT NULL,cancelled INTEGER NOT NULL DEFAULT 0,result TEXT);
     CREATE TABLE IF NOT EXISTS roastery_audit(id INTEGER PRIMARY KEY,order_id INTEGER NOT NULL,actor INTEGER NOT NULL,action TEXT NOT NULL,details TEXT NOT NULL,created_at INTEGER NOT NULL);`);
+  registerRoasteryAccounts(app,db,owner);
   registerRoasteryLinks(app,db,owner,shippingOrderFingerprint);
   installRoasteryWorkflow(db);
   const run=<T,>(f:()=>T):T=>{const tx=db.transaction(f);return tx.immediate?tx.immediate():tx();};
@@ -31,6 +33,8 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   app.use('/api',(req,res,next)=>{const u=user(req);if(u?.role!=='roastery' && req.session?.role!=='roastery')return next();
     res.setHeader('Cache-Control','no-store');
     if(req.path==='/auth/logout'&&req.method==='POST')return next();
+    if(req.path==='/auth/login'&&req.method==='POST'&&req.body?.expectedRole==='roastery')return next();
+    if(!isRoasteryCredentialCurrent(db,req.session!.userId!, (req.session as any).roasteryCredentialVersion))return res.status(401).json({message:'비밀번호 또는 접근 권한이 변경되었습니다. 다시 로그인해 주세요.'});
     if(req.path==='/auth/me'&&req.method==='GET')return u?.role==='roastery'?res.json({id:u.id,role:u.role,businessName:u.business_name}):res.status(403).json({message:'접근 권한을 확인해 주세요.'});
     if(u?.role==='roastery'&&req.path.startsWith('/roastery/'))return next();
     return res.status(403).json({message:'로스터리 출고 화면만 이용할 수 있습니다.'});
@@ -43,7 +47,9 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
     items:parse(r.items).map((i:any)=>({name:String(i.name),qty:Number(i.qty),weight: String(i.name).match(/\d+(?:\.\d+)?\s*(?:kg|g)\b/i)?.[0]||'중량 확인 필요'})),
     shipment:r.state?{carrier:r.carrier,tracking:r.tracking,state:r.state,version:r.shipment_version,reason:r.reason,changed:r.order_fingerprint!==shippingOrderFingerprint(r)}:null,legacyTracking:!!String(r.legacy_tracking??'').trim(),legacyTrackingNo:String(r.legacy_tracking||'')};}
   const audit=(id:number,actor:number,action:string,detail:unknown)=>db.prepare('INSERT INTO roastery_audit(order_id,actor,action,details,created_at) VALUES(?,?,?,?,?)').run(id,actor,action,JSON.stringify(detail),Date.now());
-  app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(rows(req.roasteryId).map(dto))));
+  // Tracking-only partner view deliberately excludes recipient contacts and free-form instructions.
+  const partnerDto=(r:any)=>{const d=dto(r);return {...d,recipient:{business:d.recipient.business},packing:undefined,instruction:undefined,shipment:d.shipment?{...d.shipment,reason:undefined}:null};};
+  app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(rows(req.roasteryId).map(partnerDto))));
   app.patch('/api/roastery/orders/:id/preparation',scope,safe((req,res)=>{const p=z.object({ready:z.boolean(),version:z.number().int()}).parse(req.body);run(()=>{const r=rows(req.roasteryId).find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||r.version!==p.version||r.state==='dispatch_reported'||r.state==='dispatch_confirmed')throw Error();db.prepare('UPDATE roastery_assignments SET ready=?,version=version+1 WHERE order_id=?').run(+p.ready,r.order_id);audit(r.order_id,req.session.userId,'preparation',{ready:p.ready});});res.json({ok:true});}));
   const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1}}).single('file');
   app.post('/api/roastery/workbook',scope,(req,res,next)=>upload(req,res,e=>e?res.status(400).json({message:'5MB 이하 XLSX 파일 한 개를 선택해 주세요.'}):next()),safe((req,res)=>{

@@ -22,3 +22,30 @@
 .ship-detail-body .ship-order-grid>div,.ship-item>span{min-width:0}
 .ship-address .ship-phone{white-space:nowrap;word-break:normal;overflow-wrap:normal}
 @media(max-width:800px){.ship-detail-toggle{grid-column:2;grid-row:1;width:100px}.ship-detail-body{grid-row:4}.ship-detail-body .ship-order-grid{grid-template-columns:minmax(0,1fr);gap:10px}.ship-detail-body .ship-address{border-left:0;border-top:1px solid #d5d9ce;padding:10px 0 0}}
+
+/* Partner-only date groups and compact inline tracking cards. */
+.ship-partner{box-sizing:border-box;max-width:1240px}
+.ship-partner-filters{display:flex;gap:16px;margin:14px 0 12px}
+.ship-partner-filters button{border:0;border-radius:0;border-bottom:2px solid transparent;background:transparent;padding:7px 3px;color:#596653}
+.ship-partner-filters button[aria-pressed=true]{border-bottom-color:#4d6340;color:#33462f;font-weight:600}
+.ship-partner-filters span{display:inline-block;margin-left:4px;background:#e8eee2;border-radius:12px;padding:0 7px}
+.ship-partner .ship-day{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.ship-partner .ship-day>h2{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:11px 0 0;color:#445840;font-size:15px}
+.ship-partner .ship-day>h2::after{content:'';flex:1;border-top:1px solid #dce3d6}
+.ship-partner .ship-order{display:grid;min-width:0;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px 8px;padding:16px;background:#fff;border:1px solid #d8dfd0;border-radius:9px}
+.ship-partner .ship-store{display:block;grid-area:1/1;min-width:0}
+.ship-partner .ship-store strong{max-width:none;font-size:17px;overflow-wrap:anywhere}
+.ship-partner .ship-partner-order-no{margin:4px 0 0;white-space:normal;font-size:12px;color:#63745b}
+.ship-partner .ship-detail-toggle{grid-area:1/2;justify-self:end;width:auto;min-height:38px;padding:5px 8px;white-space:nowrap}
+.ship-partner .ship-brief{grid-area:2/1/3/-1;justify-content:space-between;min-height:25px}
+.ship-partner .ship-brief>span{-webkit-line-clamp:2}
+.ship-partner .ship-work{grid-area:3/1/4/-1;min-width:0}
+.ship-partner .ship-work>.ship-status{margin:0 0 5px}
+.ship-partner .ship-inline{display:grid;grid-template-columns:minmax(86px,1fr) minmax(0,1.55fr);gap:7px}
+.ship-partner .ship-inline select,.ship-partner .ship-inline input{width:100%;min-width:0;padding:8px;font-size:13px}
+.ship-partner .ship-inline>button{grid-column:1/-1;width:100%;color:#fff;background:#4d6340;border-color:#4d6340}
+.ship-partner .ship-inline>p{grid-column:1/-1;margin:0}
+.ship-partner .ship-detail-body{grid-area:4/1/5/-1;min-width:0;border-top:1px solid #e2e7df;padding-top:6px}
+.ship-partner .ship-detail-body .ship-order-grid{grid-template-columns:minmax(0,1fr)}
+@media(max-width:1079px){.ship-partner .ship-day{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:719px){.ship-partner .ship-day{grid-template-columns:minmax(0,1fr)}.ship-partner{padding-right:14px;padding-left:14px}.ship-partner .ship-toolbar{flex-wrap:wrap}}
