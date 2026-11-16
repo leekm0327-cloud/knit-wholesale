@@ -1,3 +1,4 @@
+import { registerStaffBeanOrders } from './staff-bean-orders';
 import {registerShiftTypes} from './shift-types';
 import { registerPayroll } from './payroll';
 import { registerStaffAlerts, queueSupplyAlert } from "./staff-alerts";
@@ -127,6 +128,7 @@ export function registerStaffRoutes(app: Express, storage: IStorage) {
     send: sendAlimtalk,
     notify: (p) => (storage as any).createNotification(p),
   });
+  registerStaffBeanOrders(app, sqlite, requireStaff);
   registerSupplyWorkflow(app, sqlite, requireStaff, requireAdmin, (id,kind,name,now)=>queueSupplyAlert(sqlite,id,kind,name,now));
   registerAdminOperations(app, sqlite, requireAdmin);
   registerWorkspaceFeatures(app, sqlite, { admin: requireAdmin, owner: requireOwner, staff: requireStaff }, storage);

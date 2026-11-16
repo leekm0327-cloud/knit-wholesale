@@ -9,7 +9,7 @@ export class OrderConfirmationError extends Error {
 
 // No network or notification side effects. Both reads and the final write run
 // synchronously in a SQLite transaction, so another writer cannot change the quote.
-export function confirmCustomerOrder(db: BetterSQLite3Database, customerId: number, body: unknown, orderNo?: string) {
+export function confirmCustomerOrder(db: BetterSQLite3Database, customerId: number, body: unknown, orderNo?: string, canMerge: (id:number)=>boolean = ()=>true) {
   return db.transaction((tx) => {
     const parsed = createOrderSchema.safeParse(body);
     if (!parsed.success) throw new OrderConfirmationError(400, parsed.error.errors[0]?.message ?? "입력값 오류");
@@ -36,7 +36,7 @@ export function confirmCustomerOrder(db: BetterSQLite3Database, customerId: numb
     const start = Math.floor((now + kst) / 86400000) * 86400000 - kst;
     const customerOrders = tx.select().from(orders).where(eq(orders.customerId, customerId)).orderBy(desc(orders.createdAt)).all();
     const todayPending = customerOrders.find(o => {
-      if (o.status !== "pending" || o.createdAt < start || o.createdAt >= start + 86400000 || o.isSample === 1) return false;
+      if (o.status !== "pending" || o.createdAt < start || o.createdAt >= start + 86400000 || o.isSample === 1 || !canMerge(o.id)) return false;
       try { return !JSON.parse(o.items).some((i: any) => Number(i?.qty) < 0); } catch { return false; }
     });
     const existingItems: any[] = todayPending ? JSON.parse(todayPending.items) : [];

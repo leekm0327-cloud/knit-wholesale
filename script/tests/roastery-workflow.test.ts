@@ -11,6 +11,7 @@ try{
  const n=make();assert(!assigned(n));confirm(n);assert.equal(assigned(n).roastery_id,10);confirm(n);assert.equal(db.prepare("SELECT count(*) n FROM roastery_audit WHERE order_id=? AND action='auto_assigned'").get(n).n,1);
  const baseline=JSON.stringify(db.prepare('SELECT * FROM orders').all());installRoasteryWorkflow(db);assert.equal(JSON.stringify(db.prepare('SELECT * FROM orders').all()),baseline);
  for(const patch of [{is_sample:1},{is_store_order:1},{is_store_order:-1},{customer_id:3},{tracking_no:'123456789'},{items:'[]'},{items:'[{"qty":-1}]'},{items:'[{"qty":null}]'}]){const x=make(patch);confirm(x);assert(!assigned(x));}
+ const staffStore=make({is_store_order:1});db.prepare('INSERT INTO staff_bean_orders VALUES(?,?,?,?,?)').run(77,'staff-1','synthetic',staffStore,1);assert(!assigned(staffStore));confirm(staffStore);assert.equal(assigned(staffStore).roastery_id,10);
  const cancelled=make({status:'cancelled'});confirm(cancelled);assert(!assigned(cancelled));
  const proxy=make();db.prepare("INSERT INTO activity_logs VALUES('order.admin_create','order',?)").run(String(proxy));confirm(proxy);assert(!assigned(proxy));
  const other=make();db.prepare('INSERT INTO roastery_assignments(order_id,roastery_id) VALUES(?,20)').run(other);confirm(other);assert.equal(assigned(other).roastery_id,20);assert(!db.prepare('SELECT 1 FROM roastery_assignment_batches WHERE order_id=?').get(other));

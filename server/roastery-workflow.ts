@@ -1,6 +1,7 @@
+import {initStaffBeanOrders} from './staff-bean-orders';
 import type Database from 'better-sqlite3';
 import {hasValidShippingTracking} from './roastery-tracking';
-const eligible=`o.status='done' AND c.role='customer' AND o.is_sample=0 AND o.is_store_order=0
+const eligible=`o.status='done' AND c.role='customer' AND o.is_sample=0 AND (o.is_store_order=0 OR (o.is_store_order=1 AND EXISTS(SELECT 1 FROM staff_bean_orders sbo WHERE sbo.order_id=o.id)))
  AND NOT EXISTS(SELECT 1 FROM activity_logs WHERE target_type='order' AND target_id=CAST(o.id AS TEXT) AND action='order.admin_create')
  AND json_valid(o.items) AND json_array_length(o.items)>0
  AND NOT EXISTS(SELECT 1 FROM json_each(o.items) WHERE json_extract(value,'$.qty') IS NULL OR json_extract(value,'$.qty')<=0)
@@ -10,6 +11,7 @@ const supplier=`SELECT s.id FROM suppliers s WHERE s.name='클라리멘토' AND 
  AND (EXISTS(SELECT 1 FROM roastery_members WHERE roastery_id=s.id AND enabled=1) OR EXISTS(SELECT 1 FROM roastery_links WHERE roastery_id=s.id AND revoked_at IS NULL AND expires_at>CAST(strftime('%s','now') AS INTEGER)*1000))`;
 /** Startup migration is local-only until this code is explicitly approved for deployment. No order/status/notification mutation. */
 export function installRoasteryWorkflow(db:Database.Database){
+ initStaffBeanOrders(db);
  db.function('roastery_missing_tracking',{deterministic:true},(items,snapshot,status,legacy,tracking,state,fingerprint)=>
   Number(!hasValidShippingTracking({items,customer_snapshot:snapshot,order_status:status,legacy_tracking:legacy,tracking,state,order_fingerprint:fingerprint})));
  db.exec(`CREATE TABLE IF NOT EXISTS roastery_confirmations(order_id INTEGER PRIMARY KEY,confirmed_at INTEGER NOT NULL,source TEXT NOT NULL);

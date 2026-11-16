@@ -36,6 +36,11 @@ try {
    assert.equal(q.totalQty,6);assert.equal(q.finalItems.length,2);assert.equal(q.supplyAmount,78000);assert.equal(q.totalAmount,85800);
    const r=save(b,q.revision);assert.equal(r.order!.id,o.id);assert.equal(r.order!.desiredDate,'2030-01-01');assert.equal(r.order!.quickRequest,1);assert.equal(r.order!.note,'문 앞\n[추가 주문] 추가 메모');assert.equal(db.select().from(orders).all().length,1);
  });
+ test('isolated staff-origin order cannot be merged into a customer submission',()=>{
+   const o=db.select().from(orders).get()!;
+   const q=confirmCustomerOrder(db,customer.id,body(),undefined,id=>id!==o.id).quote;
+   assert.equal(q.mergeOrderNo,null);assert.equal(q.totalQty,5);
+ });
  test('merge target changes and replay are rejected',()=>{const b=body(1);const q=preview(b);db.update(orders).set({note:'관리자 변경'}).run();rejects(()=>save(b,q.revision),409);const q2=preview(b);save(b,q2.revision);rejects(()=>save(b,q2.revision),409);});
  test('sample, negative-line and non-today orders are excluded from merge',()=>{
    const o=db.select().from(orders).get()!;

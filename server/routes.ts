@@ -1,4 +1,5 @@
 import {getRoasteryCredentialVersion} from './roastery-accounts';
+import {isStaffBeanOrder} from './staff-bean-orders';
 import {registerCustomerOrderReads} from './customer-shipping';
 import {registerRoasteryShipping} from './roastery-shipping';
 import { confirmCustomerOrder, OrderConfirmationError } from "./order-confirmation";
@@ -670,7 +671,7 @@ export async function registerRoutes(
 
   // ===== Orders (거래처) =====
   app.post("/api/orders/preview", requireAuth, (req, res, next) => {
-    try { res.json(confirmCustomerOrder(db, req.session.userId!, req.body).quote); }
+    try { res.json(confirmCustomerOrder(db, req.session.userId!, req.body, undefined, id=>!isStaffBeanOrder(sqlite,id)).quote); }
     catch (e) {
       if (e instanceof OrderConfirmationError) return res.status(e.status).json({ message: e.message });
       next(e);
@@ -679,7 +680,7 @@ export async function registerRoutes(
 
   app.post("/api/orders", requireAuth, async (req, res) => {
     let saved;
-    try { saved = confirmCustomerOrder(db, req.session.userId!, req.body, genOrderNo()); }
+    try { saved = confirmCustomerOrder(db, req.session.userId!, req.body, genOrderNo(), id=>!isStaffBeanOrder(sqlite,id)); }
     catch (e) {
       if (e instanceof OrderConfirmationError) return res.status(e.status).json({ message: e.message });
       throw e;
@@ -973,6 +974,8 @@ export async function registerRoutes(
     if (!order) return res.status(404).json({ message: "주문을 찾을 수 없습니다." });
     if (order.customerId !== req.session.userId)
       return res.status(403).json({ message: "권한이 없습니다." });
+    if (isStaffBeanOrder(sqlite, id))
+      return res.status(403).json({ message: "직원 화면에서 접수한 매장 원두 주문은 관리자에게 수정을 요청해 주세요." });
     if (order.status !== "pending")
       return res.status(400).json({ message: "이미 처리 중인 주문은 수정할 수 없습니다." });
 
@@ -1022,6 +1025,8 @@ export async function registerRoutes(
     if (!order) return res.status(404).json({ message: "주문을 찾을 수 없습니다." });
     if (order.customerId !== req.session.userId)
       return res.status(403).json({ message: "권한이 없습니다." });
+    if (isStaffBeanOrder(sqlite, id))
+      return res.status(403).json({ message: "직원 화면에서 접수한 매장 원두 주문은 관리자에게 취소를 요청해 주세요." });
     if (order.status !== "pending")
       return res.status(400).json({ message: "이미 처리 중인 주문은 취소할 수 없습니다." });
 
@@ -2474,7 +2479,7 @@ export async function registerRoutes(
         metadata: { beforeItems: JSON.parse(order.items), afterItems: JSON.parse(updated.items), beforeDate: order.ecountDate, afterDate: updated.ecountDate },
       });
       const cust = await storage.getCustomer(updated.customerId);
-      if (cust) {
+      if (cust && !isStaffBeanOrder(sqlite, updated.id)) {
         // #31 동적 도메인 처리
         const baseUrl = process.env.PUBLIC_URL ||
           (req.headers.origin as string) ||
@@ -2503,7 +2508,7 @@ export async function registerRoutes(
       // 처리완료(done) 시 거래처에게 메일 발송 (#7)
       if (patch.status === "done") {
         const customer = await storage.getCustomer(updated.customerId);
-        if (customer) {
+        if (customer && !isStaffBeanOrder(sqlite, updated.id)) {
           // #31 동적 도메인 처리
           const baseUrl = process.env.PUBLIC_URL ||
             (req.headers.origin as string) ||

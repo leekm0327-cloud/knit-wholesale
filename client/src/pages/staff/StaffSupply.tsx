@@ -1,3 +1,4 @@
+import StaffBeanOrders from '@/components/StaffBeanOrders';
 import StaffSupplyPicker from "@/components/StaffSupplyPicker";
 import { appendSupplyText, type SupplySelection } from "@/lib/supply-catalog";
 import { useEffect, useState } from 'react';
@@ -102,11 +103,11 @@ function SupplyBoard({ me }: {
     const paid = shown.filter(r => !['needed', 'cancelled', 'refunded'].includes(r.status));
     const update = (patch: Partial<Form>) => setForm(f => f ? { ...f, ...patch } : f);
     return <>
- <div className="s-seg mb-3">{[['ordered', '발주 관리'], ['stock', '원두 재고']].map(([id, label]) => <button key={id} className={(tab === 'stock') === (id === 'stock') ? 'on' : ''} disabled={busy} onClick={() => { if (form && id === 'stock') {
+ <div className="s-seg mb-3">{[['ordered', '발주 관리'], ['stock', '원두 재고'], ['bean-orders','매장 원두 주문']].map(([id, label]) => <button key={id} className={(tab === 'stock' || tab === 'bean-orders' ? tab : 'ordered') === id ? 'on' : ''} disabled={busy} onClick={() => { if (form && id !== 'ordered') {
         toast({ title: '작성 중인 기록을 먼저 저장하거나 닫아주세요.' });
         return;
     } setTab(id); }}>{label}</button>)}</div>
- {tab === 'stock' ? <StaffBeanStock /> : <>
+ {tab === 'bean-orders' ? <StaffBeanOrders staffId={me.id} /> : tab === 'stock' ? <StaffBeanStock /> : <>
  {!form ? <div className="grid grid-cols-2 gap-2 mb-3"><button className="s-pill" onClick={() => start(empty())}>결제한 발주 기록</button><button className="s-pill line" onClick={() => start(empty('needed'))}>발주 필요 추가</button></div> : <div className="s-card" data-testid="supply-form"><div className="flex justify-between items-center mb-4"><h2 className="text-base font-semibold">{form.convert ? '발주 완료 기록' : form.id ? '기록 수정' : form.status === 'needed' ? '발주할 것 남기기' : '결제한 발주 기록'}</h2><button className="s-pill line" onClick={close} disabled={busy}>닫기</button></div>
  <fieldset disabled={busy} className="space-y-4">
  {!form.id && <details><summary className="text-sm cursor-pointer min-h-9">자주 사는 품목 불러오기</summary>{t.isError ? <StaffQueryError retry={t.refetch}/> : <div className="flex flex-wrap gap-2 mt-2">{t.data?.map(x => <button key={x.id} className="s-chip" onClick={() => { if ((form.body || form.selection?.length) && !confirm('작성한 품목을 바꿀까요?'))
