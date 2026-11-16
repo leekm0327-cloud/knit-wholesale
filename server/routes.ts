@@ -1,3 +1,5 @@
+import {clarimentoUsername} from './roastery-accounts';
+import {roasteryLoginWait,roasteryLoginFailed,clearRoasteryLoginFailures} from './roastery-login-lock';
 import {getRoasteryCredentialVersion} from './roastery-accounts';
 import {isStaffBeanOrder} from './staff-bean-orders';
 import {registerCustomerOrderReads} from './customer-shipping';
@@ -410,12 +412,21 @@ export async function registerRoutes(
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success)
       return res.status(400).json({ message: parsed.error.errors[0]?.message ?? "입력값 오류" });
-    const kC = loginKey(req, parsed.data.businessName);
-    const waitC = loginBlocked(kC);
-    if (waitC) return res.status(429).json({ message: `로그인 시도가 많습니다. ${waitC}분 후 다시 시도해 주세요.` });
-    const customer = await storage.getCustomerByBusinessName(parsed.data.businessName);
+    const name = parsed.data.businessName;
+    const kC = loginKey(req, name);
+    // Always account-limit the fixed Clarimento identity, regardless of portal login marker or client IP.
+    const fixedCandidate = name === clarimentoUsername ? await storage.getCustomerByBusinessName(name) : undefined;
+    const fixedId = fixedCandidate?.role === 'roastery' ? fixedCandidate.id : undefined;
+    const blocked = (minutes:number) => res.status(429).json({ message: `로그인 시도가 많습니다. ${minutes}분 후 다시 시도해 주세요.` });
+    const waitC = (fixedId === undefined ? 0 : Math.ceil(roasteryLoginWait(sqlite,fixedId)/60_000)) || loginBlocked(kC);
+    if (waitC) return blocked(waitC);
+    const customer = fixedCandidate ?? await storage.getCustomerByBusinessName(name);
     if (!customer || !bcrypt.compareSync(parsed.data.password, customer.password)) {
       loginFailed(kC);
+      if (fixedId !== undefined) {
+        const wait = roasteryLoginFailed(sqlite,fixedId);
+        if (wait) return blocked(Math.ceil(wait/60_000));
+      }
       return res.status(401).json({ message: "상호명 또는 비밀번호가 올바르지 않습니다." });
     }
     if (req.body.expectedRole === 'roastery' && customer.role !== 'roastery')
@@ -423,6 +434,7 @@ export async function registerRoutes(
     if (customer.role === 'roastery' && !sqlite.prepare('SELECT 1 FROM roastery_members WHERE user_id=? AND enabled=1').get(customer.id))
       return res.status(403).json({message:'계정 설정이 완료되지 않았거나 접근이 중지되었습니다. 니트커피 담당자에게 문의해 주세요.'});
     loginOk(kC);
+    if (fixedId !== undefined) clearRoasteryLoginFailures(sqlite,fixedId);
     req.session.userId = customer.id;
     (req.session as any).roasteryCredentialVersion = customer.role === "roastery" ? getRoasteryCredentialVersion(sqlite, customer.id) : undefined;
     req.session.role = customer.role;

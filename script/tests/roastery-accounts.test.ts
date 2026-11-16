@@ -5,6 +5,8 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import type Database from 'better-sqlite3';
 import {DatabaseSync} from 'node:sqlite';
+import {roasteryLoginFailed,roasteryLoginWait} from '../../server/roastery-login-lock';
+import {changePasswordSchema,registerSchema,resetPasswordSchema} from '../../shared/schema';
 import {getRoasteryCredentialVersion,isRoasteryCredentialCurrent,registerRoasteryAccounts} from '../../server/roastery-accounts';
 
 test('fixed username, fresh owner credential management, and session version revocation',async()=>{
@@ -37,11 +39,11 @@ test('fixed username, fresh owner credential management, and session version rev
       method:body===undefined?'GET':'POST',headers:{'x-test-actor':String(actor),'content-type':'application/json'},
       body:body===undefined?undefined:JSON.stringify(body)
     });
-    const password='Proper Synthetic Passphrase';
+    const password='A7!q';
     assert.equal((await call(base,0)).status,403);
     assert.equal((await call(base,2,{password})).status,403);
     assert.equal((await call(base,3,{password})).status,403);
-    assert.equal((await call(base,1,{password:'short'})).status,400);
+    assert.equal((await call(base,1,{password:'abc'})).status,400);
     assert.equal((await call(base,1,{password:'가'.repeat(25)})).status,400);
     assert.deepEqual(await (await call(base,1)).json(),{account:null});
     sqlite.prepare("UPDATE customers SET business_name='클라리멘토' WHERE id=2").run();
@@ -61,9 +63,13 @@ test('fixed username, fresh owner credential management, and session version rev
     assert.equal(isRoasteryCredentialCurrent(db,id,1),true);
     assert.equal(isRoasteryCredentialCurrent(db,id,undefined),false);
     assert.equal((await call(base+'/'+id+'/password',3,{password})).status,403);
-    const replacement='Another Synthetic Passphrase';
+    const replacement='X6.z';
+    assert.equal((await call(base+'/'+id+'/password',1,{password:'abc'})).status,400);
+    for(let i=0;i<5;i++) roasteryLoginFailed(db,id);
+    assert(roasteryLoginWait(db,id)>0);
     assert.equal((await call(base+'/'+id+'/password',1,{password:replacement})).status,200);
     assert(!bcrypt.compareSync(password,hash()));
+    assert.equal(roasteryLoginWait(db,id),0);
     assert(bcrypt.compareSync(replacement,hash()));
     assert.equal(isRoasteryCredentialCurrent(db,id,1),false);
     assert.equal(isRoasteryCredentialCurrent(db,id,2),true);
@@ -83,5 +89,17 @@ test('fixed username, fresh owner credential management, and session version rev
   } finally {
     await new Promise<void>(resolve=>server.close(()=>resolve()));
     db.close();
+  }
+});
+
+test('ordinary registration, password changes, and resets retain minimum length',()=>{
+  const validators = [
+    (password:string)=>registerSchema.safeParse({email:'test@example.invalid',businessName:'Test',managerName:'Tester',phone:'0000',password,passwordConfirm:password}),
+    (password:string)=>changePasswordSchema.safeParse({currentPassword:'previous',newPassword:password}),
+    (password:string)=>resetPasswordSchema.safeParse({token:'synthetic',password,passwordConfirm:password}),
+  ];
+  for(const validate of validators){
+    assert(!validate('A7!q').success);
+    assert(validate('A7!qXY').success);
   }
 });

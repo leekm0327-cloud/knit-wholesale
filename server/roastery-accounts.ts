@@ -2,9 +2,10 @@ import type Database from 'better-sqlite3';
 import type {Express, RequestHandler} from 'express';
 import bcrypt from 'bcryptjs';
 import {z} from 'zod';
+import {installRoasteryLoginLock,clearRoasteryLoginFailures} from './roastery-login-lock';
 
 export const clarimentoUsername = '클라리멘토';
-const passwordInput = z.object({password:z.string().min(12).max(72).refine(s=>Buffer.byteLength(s,'utf8')<=72)}).strict();
+const passwordInput = z.object({password:z.string().min(4).max(72).refine(s=>Buffer.byteLength(s,'utf8')<=72)}).strict();
 
 export function getRoasteryCredentialVersion(db:Database.Database,userId:number):number|undefined {
   const account = db.prepare(`SELECT COALESCE(v.version,0) AS version
@@ -29,6 +30,7 @@ export function registerRoasteryAccounts(app:Express,db:Database.Database,owner:
       action TEXT NOT NULL,created_at INTEGER NOT NULL
     );
   `);
+  installRoasteryLoginLock(db);
   const base='/api/admin/roastery-accounts';
   const noStore:RequestHandler=(_req,res,next)=>{res.setHeader('Cache-Control','no-store');next();};
   const freshOwner:RequestHandler=(req,res,next)=>{
@@ -48,7 +50,7 @@ export function registerRoasteryAccounts(app:Express,db:Database.Database,owner:
       JOIN roastery_members m ON m.user_id=c.id JOIN roastery_credential_versions v ON v.user_id=c.id
       WHERE c.role='roastery' AND c.business_name=? AND m.roastery_id=?`).get(clarimentoUsername,supplier()??-1) as {id:number;username:string;enabled:number}|undefined;
   const bump=(id:number)=>db.prepare('UPDATE roastery_credential_versions SET version=version+1 WHERE user_id=?').run(id);
-  const invalid='비밀번호는 12자 이상이고 UTF-8 기준 72바이트 이하여야 합니다.';
+  const invalid='비밀번호는 4자 이상이고 UTF-8 기준 72바이트 이하여야 합니다.';
 
   app.get(base,noStore,owner,freshOwner,(_req,res)=>res.json({account:managed()??null}));
   app.post(base,noStore,owner,freshOwner,(req,res)=>{
@@ -81,6 +83,7 @@ export function registerRoasteryAccounts(app:Express,db:Database.Database,owner:
       db.prepare('UPDATE customers SET password=? WHERE id=?').run(hash,id);
       db.prepare('UPDATE roastery_members SET enabled=1 WHERE user_id=?').run(id);
       bump(id);
+      clearRoasteryLoginFailures(db,id);
       audit(id,req.session.userId!,account.enabled?'password_changed':'reactivated_with_new_password');
       return true;
     }).immediate();
