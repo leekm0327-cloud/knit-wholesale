@@ -2,6 +2,7 @@ import {filterRoasteryList,resolveRoasteryListCutoff} from './roastery-list-cuto
 import {registerRoasteryAccounts,isRoasteryCredentialCurrent} from './roastery-accounts';
 import {shippingOrderFingerprint,hasValidShippingTracking} from './roastery-tracking';
 import {installRoasteryWorkflow,recordDispatchNotice} from './roastery-workflow';
+import {installCjReadyNotice,reserveCjReadyNotice,deliverCjReadyNotice,reportCjReadyAggregate,reportCjReadyStartup,isCjReadyNoticeEnabled} from './cj-ready-notice';
 import {registerRoasteryLinks} from './roastery-link';
 import {createHash, randomUUID} from 'node:crypto';
 import type {Express, RequestHandler} from 'express';
@@ -27,6 +28,11 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   registerRoasteryAccounts(app,db,owner);
   registerRoasteryLinks(app,db,owner,shippingOrderFingerprint);
   installRoasteryWorkflow(db);
+  let noticeSchemaReady=false;
+  try{installCjReadyNotice(db);noticeSchemaReady=true;reportCjReadyAggregate(db);}catch{console.error('[cj-ready] optional ledger unavailable; no notices will be attempted');}
+  // Nested better-sqlite3 transaction is a SAVEPOINT: a notice-only error cannot undo the shipment.
+  reportCjReadyStartup();
+  const reserveOptionalNotice=db.transaction((id:number)=>reserveCjReadyNotice(db,id));
   const listAnchor=process.env.CLARIMENTO_SHIPPING_HIDE_THROUGH_ORDER;
   const {configEnabled,boundaryFound,reason}=resolveRoasteryListCutoff(db,listAnchor);
   console.info('[roastery-list-cutoff]',{configEnabled,boundaryFound,reason});
@@ -91,9 +97,9 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
       const review=inspect(rid,p,isAdmin),id=randomUUID();db.prepare('INSERT INTO roastery_previews(id,actor,roastery_id,payload,fingerprint,created_at) VALUES(?,?,?,?,?,?)').run(id,req.session.userId,rid,JSON.stringify(p),review.fingerprint,Date.now());res.json({id,rows:review.rows.map(({snapshot,orderFingerprint,...r})=>r),expiresInSeconds:900});}));
     app.get(path+'/:id',guard,safe((req,res)=>{const p=ownPreview(req);res.json({result:p.result?parse(p.result):null,cancelled:!!p.cancelled});}));
     app.delete(path+'/:id',guard,safe((req,res)=>{run(()=>{const p=ownPreview(req);if(p.result)throw Error();db.prepare('UPDATE roastery_previews SET cancelled=1 WHERE id=?').run(p.id);});res.json({ok:true});}));
-    app.post(path+'/:id/apply',guard,safe((req,res)=>{const result=run(()=>{const p=ownPreview(req);if(p.result)return parse(p.result);if(p.cancelled||Date.now()-p.created_at>900000)throw Error();const checked=inspect(p.roastery_id,batchSchema.parse(parse(p.payload)),isAdmin);if(checked.fingerprint!==p.fingerprint||checked.rows.some(r=>r.error))throw Error();let submitted=0;
-      for(const r of checked.rows){if(r.duplicate)continue;db.prepare(`INSERT INTO roastery_shipments(order_id,carrier,tracking,state,order_fingerprint,updated_at) VALUES(?,?,?,'dispatch_confirmed',?,?) ON CONFLICT(order_id) DO UPDATE SET carrier=excluded.carrier,tracking=excluded.tracking,state='dispatch_confirmed',version=roastery_shipments.version+1,reason='',order_fingerprint=excluded.order_fingerprint,updated_at=excluded.updated_at`).run(r.orderId,r.carrier,r.tracking,r.orderFingerprint,Date.now());recordDispatchNotice(db,r.orderId!,r.carrier,r.tracking);audit(r.orderId!,req.session.userId,isAdmin?'admin_tracking_submitted':'tracking_submitted',{carrier:r.carrier,tracking:r.tracking});submitted++;}
-      const result={submitted,skipped:checked.rows.length-submitted};db.prepare('UPDATE roastery_previews SET result=? WHERE id=?').run(JSON.stringify(result),p.id);return result;});res.json(result);}));
+    app.post(path+'/:id/apply',guard,safe((req,res)=>{const reserved:number[]=[];const result=run(()=>{const p=ownPreview(req);if(p.result)return parse(p.result);if(p.cancelled||Date.now()-p.created_at>900000)throw Error();const checked=inspect(p.roastery_id,batchSchema.parse(parse(p.payload)),isAdmin);if(checked.fingerprint!==p.fingerprint||checked.rows.some(r=>r.error))throw Error();let submitted=0;
+      for(const r of checked.rows){if(r.duplicate)continue;const first=!db.prepare('SELECT 1 FROM roastery_shipments WHERE order_id=?').get(r.orderId);db.prepare(`INSERT INTO roastery_shipments(order_id,carrier,tracking,state,order_fingerprint,updated_at) VALUES(?,?,?,'dispatch_confirmed',?,?) ON CONFLICT(order_id) DO UPDATE SET carrier=excluded.carrier,tracking=excluded.tracking,state='dispatch_confirmed',version=roastery_shipments.version+1,reason='',order_fingerprint=excluded.order_fingerprint,updated_at=excluded.updated_at`).run(r.orderId,r.carrier,r.tracking,r.orderFingerprint,Date.now());if(!isAdmin&&first&&noticeSchemaReady&&isCjReadyNoticeEnabled()){try{if(reserveOptionalNotice(r.orderId!))reserved.push(r.orderId!);}catch{console.warn('[cj-ready] optional reservation failed; shipping operation continues without notification');}}recordDispatchNotice(db,r.orderId!,r.carrier,r.tracking);audit(r.orderId!,req.session.userId,isAdmin?'admin_tracking_submitted':'tracking_submitted',{carrier:r.carrier,tracking:r.tracking});submitted++;}
+      const result={submitted,skipped:checked.rows.length-submitted};db.prepare('UPDATE roastery_previews SET result=? WHERE id=?').run(JSON.stringify(result),p.id);return result;});res.json(result);if(reserved.length)reportCjReadyAggregate(db);for(const id of reserved)void deliverCjReadyNotice(db,id).catch(()=>console.error('[cj-ready] provider attempt requires review'));}));
   }
   app.post('/api/roastery/orders/:id/dispatch',scope,safe((req,res)=>{const p=z.object({version:z.number().int(),confirmed:z.literal(true)}).parse(req.body);run(()=>{const r=rows(req.roasteryId).find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||!r.ready||r.state!=='approved'||r.order_fingerprint!==shippingOrderFingerprint(r)||r.shipment_version!==p.version)throw Error();db.prepare("UPDATE roastery_shipments SET state='dispatch_reported',version=version+1,updated_at=? WHERE order_id=?").run(Date.now(),r.order_id);audit(r.order_id,req.session.userId,'dispatch_reported',{});});res.json({ok:true});}));
   app.get('/api/roastery/orders/:id/history',scope,safe((req,res)=>{if(!rows(req.roasteryId).some(r=>r.order_id===Number(req.params.id)))throw Error();res.json(db.prepare('SELECT id,action,created_at FROM roastery_audit WHERE order_id=? ORDER BY id DESC').all(Number(req.params.id)));}));

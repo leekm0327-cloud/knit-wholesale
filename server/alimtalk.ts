@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 import type { Express, Request, Response, NextFunction } from "express";
 import { sqlite, storage } from "./storage";
+import { parseSingleSolapiReceipt } from "./solapi-single-receipt";
 
 // 기본값은 솔라피 운영 주소. 로컬에서 가짜 서버로 검증할 때만 환경변수로 바꾼다.
 const API_HOST = (process.env.SOLAPI_API_HOST || "https://api.solapi.com").replace(/\/$/, "");
@@ -305,6 +306,7 @@ type SendOne = {
   force?: boolean;
   /** Per-message fallback override for staff templates. */
   disableSms?: boolean;
+  receiptMode?: 'strict-kakao';
 };
 
 /** 변수 키를 #{이름} 형태로 맞춘다 */
@@ -321,10 +323,36 @@ function formatVariables(v: Record<string, string>): Record<string, string> {
  * 실제 발송. 예외를 던지지 않고 결과만 돌려준다.
  * 호출하는 쪽(주문 생성 등)이 이 함수 때문에 실패하는 일은 없어야 한다.
  */
-export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail: string }> {
+export function getCjReadyTransportReadiness() {
+  const s=getSettings();
+  const expected=(process.env.CJ_READY_NOTICE_EXPECTED_PFID??'').trim();
+  const sender=String(s.sender??'').trim();
+  return {
+    shippingEnabled:process.env.CJ_READY_NOTICE_ENABLED==='true',
+    providerCredentialsPresent:isAlimtalkConfigured(),
+    productionEndpoint:API_HOST==='https://api.solapi.com',
+    expectedPfidPresent:!!expected,
+    pfidMatches:!!expected&&String(s.pfId??'').trim()===expected,
+    senderValid:/^[0-9() -]+$/.test(sender)&&/^0[1-9]\d{7,9}$/.test(normalizePhone(sender)),
+    templateIdPresent:!!process.env.SOLAPI_CJ_READY_TEMPLATE_ID?.trim(),
+    legacyAlimtalkEnabled:s.enabled===true,
+  };
+}
+
+export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail: string; receipt?: 'accepted'|'rejected'|'unknown' }> {
   const s = getSettings();
+  const strictReceipt=msg.receiptMode==='strict-kakao';
+  const cjKind=msg.kind==='cj_ready';
+  const cjTemplate=(process.env.SOLAPI_CJ_READY_TEMPLATE_ID??'').trim();
+  const cjLane=strictReceipt&&cjKind&&!msg.force&&process.env.CJ_READY_NOTICE_ENABLED==='true'&&!!cjTemplate&&msg.templateId===cjTemplate;
+  let attemptingPost=false;
   try {
-    if (!s.enabled && !msg.force) {
+    if(strictReceipt||cjKind){
+      const readiness=cjLane?getCjReadyTransportReadiness():null;
+      if(!readiness||!readiness.productionEndpoint||!readiness.pfidMatches||!readiness.senderValid){
+        const detail='출고 알림 전용 설정 확인 필요';logSend({...msg,status:'skip',detail});return {ok:false,detail};
+      }
+    }else if (!s.enabled && !msg.force) {
       logSend({ ...msg, status: "skip", detail: "알림톡 사용 꺼짐" });
       return { ok: false, detail: "알림톡 사용 꺼짐" };
     }
@@ -349,26 +377,43 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
     // 템플릿에 없는 변수는 빼고 보낸다.
     let variables = formatVariables(msg.variables);
     const allowed = await templateVariableNames(msg.templateId);
+    const expectedShippingVars=['#{주문번호}','#{송장번호}'];
+    if(strictReceipt&&(!allowed||allowed.size!==expectedShippingVars.length||!expectedShippingVars.every(k=>allowed.has(k)&&!!variables[k]))){
+      const detail='출고 알림 템플릿 변수 확인 필요';logSend({...msg,phone,status:'skip',detail});return {ok:false,detail};
+    }
     if (allowed) {
       variables = Object.fromEntries(Object.entries(variables).filter(([k]) => allowed.has(k)));
     }
 
     const body = {
+      ...(strictReceipt?{showMessageList:true,strict:true,allowDuplicates:false}:{}),
       messages: [
         {
           to: phone,
           from: normalizePhone(s.sender),
+          ...(strictReceipt?{type:'ATA'}:{}),
           kakaoOptions: {
             pfId: s.pfId,
             templateId: msg.templateId,
             variables,
-            disableSms: msg.disableSms ?? s.disableSms,
+            disableSms: strictReceipt ? true : (msg.disableSms ?? s.disableSms),
           },
         },
       ],
     };
 
+    attemptingPost=true;
     const data = await solapi("POST", "/messages/v4/send-many/detail", body);
+    if(strictReceipt){
+      const receipt=parseSingleSolapiReceipt(data);
+      if(receipt.kind==='accepted'){
+        const detail='발송 접수됨 (최종 전달 미확인)';
+        logSend({...msg,phone,status:'ok',detail,messageId:receipt.messageId});
+        return {ok:true,detail,receipt:'accepted'};
+      }
+      logSend({...msg,phone,status:'fail',detail:receipt.detail});
+      return {ok:false,detail:receipt.detail,receipt:receipt.kind};
+    }
     const failed: any[] = data?.failedMessageList ?? [];
     if (failed.length > 0) {
       const reason = failed[0]?.statusMessage || failed[0]?.statusCode || "발송 실패";
@@ -379,6 +424,11 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
     logSend({ ...msg, phone, status: "ok", detail: "발송 접수됨", messageId });
     return { ok: true, detail: "발송 접수됨" };
   } catch (e: any) {
+    if(strictReceipt&&attemptingPost){
+      const detail='솔라피 접수 여부 확인 필요 · 자동 재발송 금지';
+      logSend({...msg,status:'fail',detail});
+      return {ok:false,detail,receipt:'unknown'};
+    }
     const detail = String(e?.message ?? e).slice(0, 300);
     logSend({ ...msg, status: "fail", detail });
     return { ok: false, detail };
