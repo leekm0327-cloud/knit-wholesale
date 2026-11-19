@@ -1,6 +1,7 @@
 import { Wordmark } from "./Logo";
 import { won, wonNum, fmtDate, CATEGORY_LABEL } from "@/lib/format";
 import type { Order, OrderItem } from "@shared/schema";
+import { isCustomerDispatch, shipmentMethodLabel, type CustomerShipping } from "@shared/shipping";
 
 const SUPPLIER = {
   name: "니트커피 (Knit Coffee)",
@@ -25,7 +26,7 @@ interface Snapshot {
 }
 
 // 화면 + 인쇄 공용 거래명세서 뷰. 부모가 .print-area 로 감싸서 인쇄.
-export function Invoice({ order }: { order: Order }) {
+export function Invoice({ order }: { order: Order & { shipping?: CustomerShipping | null } }) {
   const items: OrderItem[] = JSON.parse(order.items);
   const snap: Snapshot = JSON.parse(order.customerSnapshot);
   // 정액 할인 — 공급가액에서 이미 빠진 금액. 명세서에는 '품목 합계 → 할인 → 공급가액' 순으로 보여준다.
@@ -51,7 +52,16 @@ export function Invoice({ order }: { order: Order }) {
           label="발행일"
           value={order.ecountDate && order.ecountDate.trim() ? order.ecountDate.replace(/-/g, ".") : fmtDate(order.createdAt)}
         />
-        {order.trackingNo ? <InfoRow label="송장번호" value={order.trackingNo} mono /> : null}
+        {isCustomerDispatch(order.shipping) ? (
+          <div>
+            <div className="text-[11px] text-[#777]">{order.shipping.state === "partial_dispatch" ? "부분출고" : "출고 완료"}</div>
+            {order.shipping.consignments.map((delivery, index) => (
+              <div key={delivery.id} className="mt-0.5 break-words font-medium">
+                {index + 1}차 · {fmtDate(delivery.createdAt)} · {shipmentMethodLabel(delivery)} {delivery.tracking}
+              </div>
+            ))}
+          </div>
+        ) : order.trackingNo ? <InfoRow label="송장번호" value={order.trackingNo} mono /> : null}
       </div>
 
       {/* 공급자 / 거래처 */}

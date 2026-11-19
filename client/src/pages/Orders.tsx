@@ -187,7 +187,7 @@ export default function Orders() {
                         <Badge className="bg-foreground text-[11px] text-background hover:bg-foreground">접수됨</Badge>
                       )}
                     </div>
-                    <CustomerShipping shipping={o.shipping} /><div className="order-lines">{items.map((it,i)=><div key={i}><span>{it.name}</span><strong>{it.qty} EA</strong></div>)}</div>
+                    <CustomerShipping shipping={o.shipping} compact /><div className="order-lines">{items.map((it,i)=><div key={i}><span>{it.name}</span><strong>{it.qty} EA</strong></div>)}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       합계 <span className="font-medium text-foreground">{won(o.totalAmount)}</span>
                     </div>

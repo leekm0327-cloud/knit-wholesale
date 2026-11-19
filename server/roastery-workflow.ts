@@ -1,5 +1,6 @@
 import {initStaffBeanOrders} from './staff-bean-orders';
 import type Database from 'better-sqlite3';
+import {dispatchCompleteSql} from './roastery-dispatch';
 import {hasValidShippingTracking} from './roastery-tracking';
 const eligible=`o.status='done' AND c.role='customer' AND o.is_sample=0 AND (o.is_store_order=0 OR (o.is_store_order=1 AND EXISTS(SELECT 1 FROM staff_bean_orders sbo WHERE sbo.order_id=o.id)))
  AND NOT EXISTS(SELECT 1 FROM activity_logs WHERE target_type='order' AND target_id=CAST(o.id AS TEXT) AND action='order.admin_create')
@@ -37,7 +38,7 @@ export function installRoasteryWorkflow(db:Database.Database){
 export function backfillMissingTrackingAssignments(db:Database.Database){
  const run=db.transaction(()=>{
  const partner:any=db.prepare(supplier).get();if(!partner)return {assigned:0,staffAssigned:0,reason:'supplier_unavailable'};
- const rows:any[]=db.prepare(`SELECT o.id, (o.is_store_order=1 AND EXISTS(SELECT 1 FROM staff_bean_orders sbo WHERE sbo.order_id=o.id)) AS staff_order ${source} WHERE ${eligible} AND NOT EXISTS(SELECT 1 FROM roastery_assignments a WHERE a.order_id=o.id)`).all();
+ const rows:any[]=db.prepare(`SELECT o.id, (o.is_store_order=1 AND EXISTS(SELECT 1 FROM staff_bean_orders sbo WHERE sbo.order_id=o.id)) AS staff_order ${source} WHERE ${eligible} AND NOT (${dispatchCompleteSql}) AND NOT EXISTS(SELECT 1 FROM roastery_assignments a WHERE a.order_id=o.id)`).all();
  for(const o of rows){
  db.prepare('INSERT INTO roastery_assignments(order_id,roastery_id) VALUES(?,?)').run(o.id,partner.id);
  db.prepare('INSERT INTO roastery_assignment_batches(order_id,roastery_id,batch,created_at) VALUES(?,?,?,?)').run(o.id,partner.id,'missing-tracking-v2',Date.now());

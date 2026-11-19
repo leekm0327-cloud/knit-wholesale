@@ -10,7 +10,8 @@ const preview=async(id:number,tracking?:string,user=3)=>(await call(root,'POST',
 const apply=(id:string,user=3)=>call(root+'/'+id+'/apply','POST',{},user);
 let checks=0;const pass=(name:string)=>{checks++;console.log('PASS '+name);};
 try{
- for(const role of [0,1,2,4,5])assert.equal((await call(root,'POST',body(1),role)).status,403);
+ for(const role of [0,1,2,4])assert.equal((await call(root,'POST',body(1),role)).status,403);
+ assert.equal((await call(root,'POST',body(1),5)).status,401); // Disabled roastery membership invalidates its session.
  assert.equal((await call(root,'POST',body(1),3,{authorization:'Bearer rsl_fake'})).status,403);
  db.exec("UPDATE customers SET role='customer' WHERE id=3");assert.equal((await call(root,'POST',body(1))).status,403);db.exec("UPDATE customers SET role='admin' WHERE id=3");pass('anonymous/customer/supplier/bearer/stale admin session blocked');
  for(const tracking of ['','   ','123','abc12345678'])assert.equal((await call(root,'POST',body(1,tracking))).status,400);

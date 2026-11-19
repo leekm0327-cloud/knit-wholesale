@@ -1,3 +1,5 @@
+import {DispatchError,conflictsWithDispatch,dispatchSummaries,installRoasteryDispatch,saveDispatch} from './roastery-dispatch';
+import type {DispatchSummary} from '../shared/roastery-dispatch';
 import {filterRoasteryList,resolveRoasteryListCutoff} from './roastery-list-cutoff';
 import {registerRoasteryAccounts,isRoasteryCredentialCurrent} from './roastery-accounts';
 import {shippingOrderFingerprint,hasValidShippingTracking} from './roastery-tracking';
@@ -25,6 +27,7 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
     CREATE UNIQUE INDEX IF NOT EXISTS roastery_tracking_unique ON roastery_shipments(carrier,tracking) WHERE state!='rejected';
     CREATE TABLE IF NOT EXISTS roastery_previews(id TEXT PRIMARY KEY,actor INTEGER NOT NULL,roastery_id INTEGER NOT NULL,payload TEXT NOT NULL,fingerprint TEXT NOT NULL,created_at INTEGER NOT NULL,cancelled INTEGER NOT NULL DEFAULT 0,result TEXT);
     CREATE TABLE IF NOT EXISTS roastery_audit(id INTEGER PRIMARY KEY,order_id INTEGER NOT NULL,actor INTEGER NOT NULL,action TEXT NOT NULL,details TEXT NOT NULL,created_at INTEGER NOT NULL);`);
+  installRoasteryDispatch(db);
   registerRoasteryAccounts(app,db,owner);
   registerRoasteryLinks(app,db,owner,shippingOrderFingerprint);
   installRoasteryWorkflow(db);
@@ -37,7 +40,7 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   const {configEnabled,boundaryFound,reason}=resolveRoasteryListCutoff(db,listAnchor);
   console.info('[roastery-list-cutoff]',{configEnabled,boundaryFound,reason});
   const run=<T,>(f:()=>T):T=>{const tx=db.transaction(f);return tx.immediate?tx.immediate():tx();};
-  const safe=(fn:(req:any,res:any)=>unknown):RequestHandler=>(req,res)=>{try{fn(req,res);}catch(e){res.status(e instanceof z.ZodError?400:409).json({message:e instanceof z.ZodError?e.issues[0]?.message:'정보가 변경됐거나 요청을 처리할 수 없습니다. 목록을 새로 확인해 주세요.'});}};
+  const safe=(fn:(req:any,res:any)=>unknown):RequestHandler=>(req,res)=>{try{fn(req,res);}catch(e){res.status(e instanceof DispatchError?e.status:e instanceof z.ZodError?400:409).json({message:e instanceof DispatchError?e.message:e instanceof z.ZodError?e.issues[0]?.message:'정보가 변경됐거나 요청을 처리할 수 없습니다. 목록을 새로 확인해 주세요.'});}};
   const user=(req:any):any=>req.session?.userId?db.prepare('SELECT id,role,business_name FROM customers WHERE id=?').get(req.session.userId):null;
   // A dedicated roastery role cannot reuse customer/admin APIs to see prices or finances.
   app.use('/api',(req,res,next)=>{const u=user(req);if(u?.role!=='roastery' && req.session?.role!=='roastery')return next();
@@ -52,14 +55,15 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   const scope:RequestHandler=(req:any,res,next)=>{const u=user(req);const m:any=u?.role==='roastery'?db.prepare('SELECT roastery_id FROM roastery_members WHERE user_id=? AND enabled=1').get(u.id):null;
     if(!m)return res.status(403).json({message:'담당 로스터리 접근 권한이 필요합니다.'});req.roasteryId=m.roastery_id;res.setHeader('Cache-Control','no-store');next();};
   const rows=(rid?:number):any[]=>db.prepare(`SELECT a.*,o.order_no,o.items,o.customer_snapshot,o.status AS order_status,o.created_at,o.tracking_no AS legacy_tracking,s.carrier,s.tracking,s.state,s.version AS shipment_version,s.reason,s.order_fingerprint FROM roastery_assignments a JOIN orders o ON o.id=a.order_id LEFT JOIN roastery_shipments s ON s.order_id=a.order_id ${rid===undefined?'':'WHERE a.roastery_id=?'} ORDER BY o.created_at DESC,o.id DESC`).all(...(rid===undefined?[]:[rid]));
-  function dto(r:any){const c=parse(r.customer_snapshot);return {id:r.order_id,orderNo:r.order_no,createdAt:r.created_at,roasteryId:r.roastery_id,version:r.version,ready:!!r.ready,confirmed:r.order_status==='done',hasValidTracking:hasValidShippingTracking(r),cancelled:r.order_status==='cancelled',packing:r.packing,instruction:r.instruction,
+  function dto(r:any,dispatch:DispatchSummary){const c=parse(r.customer_snapshot);return {id:r.order_id,orderNo:r.order_no,createdAt:r.created_at,roasteryId:r.roastery_id,version:r.version,ready:!!r.ready,dispatch,confirmed:r.order_status==='done',hasValidTracking:dispatch.status==='complete'||hasValidShippingTracking(r),cancelled:r.order_status==='cancelled',packing:r.packing,instruction:r.instruction,
     recipient:{name:String(c.managerName||c.businessName||''),business:String(c.businessName||''),phone:String(c.phone||''),address:String(c.defaultAddress||'')},
     items:parse(r.items).map((i:any)=>({name:String(i.name),qty:Number(i.qty),weight: String(i.name).match(/\d+(?:\.\d+)?\s*(?:kg|g)\b/i)?.[0]||'중량 확인 필요'})),
     shipment:r.state?{carrier:r.carrier,tracking:r.tracking,state:r.state,version:r.shipment_version,reason:r.reason,changed:r.order_fingerprint!==shippingOrderFingerprint(r)}:null,legacyTracking:!!String(r.legacy_tracking??'').trim(),legacyTrackingNo:String(r.legacy_tracking||'')};}
   const audit=(id:number,actor:number,action:string,detail:unknown)=>db.prepare('INSERT INTO roastery_audit(order_id,actor,action,details,created_at) VALUES(?,?,?,?,?)').run(id,actor,action,JSON.stringify(detail),Date.now());
   // Tracking-only partner view deliberately excludes recipient contacts and free-form instructions.
-  const partnerDto=(r:any)=>{const d=dto(r);return {...d,recipient:{business:d.recipient.business},packing:undefined,instruction:undefined,shipment:d.shipment?{...d.shipment,reason:undefined}:null};};
-  app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(filterRoasteryList(rows(req.roasteryId),req.roasteryId,resolveRoasteryListCutoff(db,listAnchor)).map(partnerDto))));
+  const partnerDto=(r:any,dispatch:DispatchSummary)=>{const d=dto(r,dispatch);return {...d,recipient:{business:d.recipient.business},packing:undefined,instruction:undefined,shipment:d.shipment?{...d.shipment,reason:undefined}:null};};
+  const orderDtos=(orders:any[],partner:boolean)=>{const summaries=dispatchSummaries(db,orders);return orders.map(row=>(partner?partnerDto:dto)(row,summaries.get(row.order_id)!));};
+  app.get('/api/roastery/orders',scope,safe((req,res)=>res.json(orderDtos(filterRoasteryList(rows(req.roasteryId),req.roasteryId,resolveRoasteryListCutoff(db,listAnchor)),true))));
   app.patch('/api/roastery/orders/:id/preparation',scope,safe((req,res)=>{const p=z.object({ready:z.boolean(),version:z.number().int()}).parse(req.body);run(()=>{const r=rows(req.roasteryId).find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||r.version!==p.version||r.state==='dispatch_reported'||r.state==='dispatch_confirmed')throw Error();db.prepare('UPDATE roastery_assignments SET ready=?,version=version+1 WHERE order_id=?').run(+p.ready,r.order_id);audit(r.order_id,req.session.userId,'preparation',{ready:p.ready});});res.json({ok:true});}));
   const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:5*1024*1024,files:1}}).single('file');
   app.post('/api/roastery/workbook',scope,(req,res,next)=>upload(req,res,e=>e?res.status(400).json({message:'5MB 이하 XLSX 파일 한 개를 선택해 주세요.'}):next()),safe((req,res)=>{
@@ -77,11 +81,12 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
       else if(String(r.legacy_tracking??'').trim())error='기존 관리자 송장이 있습니다. 관리자 검토 필요';
       else if(!parse(r.customer_snapshot).defaultAddress?.trim()||!parse(r.customer_snapshot).phone?.trim())error='배송지 또는 수취인 연락처 확인 필요';
       const key=row.carrier+':'+row.tracking;
-      if(r&&seenOrder.has(r.order_id))error='한 주문의 여러 송장은 개별 관리자 검토가 필요합니다.';
+      if(r&&seenOrder.has(r.order_id))error='여러 송장으로 나누는 주문은 부분 출고에서 건별로 등록하세요.';
       if(seenTracking.has(key))error='파일 안에 중복 송장번호가 있습니다.';
       if(r)seenOrder.add(r.order_id);seenTracking.add(key);
       const other:any=db.prepare("SELECT order_id FROM roastery_shipments WHERE carrier=? AND tracking=? AND state!='rejected'").get(row.carrier,row.tracking);
       if(other&&other.order_id!==r?.order_id)error='이미 등록된 송장번호입니다.';
+      if(conflictsWithDispatch(db,r?.order_id,row.carrier,row.tracking))error='출고 내역이 있는 주문 또는 송장번호입니다. 추가 출고는 해당 주문에서 등록하세요.';
       const duplicate=!!r&&r.state&&r.state!=='rejected'&&r.tracking===row.tracking&&r.carrier===row.carrier;
       if(r?.state&&r.state!=='rejected'&&!duplicate)error='다른 송장이 이미 등록됐습니다. 관리자 검토 필요';
       return {line:i+1,orderId:r?.order_id,orderNo:r?.order_no||row.orderNo,carrier:row.carrier,tracking:row.tracking,error,duplicate:!!duplicate,manual:!!row.orderId,snapshot:r?hash(r):null,orderFingerprint:r?shippingOrderFingerprint(r):null};
@@ -91,6 +96,11 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   const adminTracking:RequestHandler=(req,res,next)=>admin(req,res,()=>{if(user(req)?.role!=='admin')return res.status(403).json({message:'관리자 권한이 필요합니다.'});res.setHeader('Cache-Control','no-store');next();});
   for(const isAdmin of [false,true]){
     const path=isAdmin?'/api/admin/roastery-shipping/preview':'/api/roastery/preview',guard=isAdmin?adminTracking:scope;
+    const consignmentPath=isAdmin?'/api/admin/roastery-shipping/:id/consignments':'/api/roastery/orders/:id/consignments';
+    app.post(consignmentPath,guard,safe((req,res)=>{
+      const orderId=z.coerce.number().int().positive().parse(req.params.id);
+      res.json(saveDispatch(db,{orderId,actor:req.session.userId,roasteryId:isAdmin?undefined:req.roasteryId},req.body));
+    }));
     const ownPreview=(req:any)=>{const p:any=db.prepare('SELECT * FROM roastery_previews WHERE id=? AND actor=?').get(req.params.id,req.session.userId);if(!p||(!isAdmin&&p.roastery_id!==req.roasteryId))throw Error();return p;};
     app.post(path,guard,safe((req,res)=>{const p=batchSchema.parse(req.body);let rid=req.roasteryId;
       if(isAdmin){if(p.rows.length!==1||!p.rows[0].orderId)throw Error();const assignment:any=db.prepare('SELECT roastery_id FROM roastery_assignments WHERE order_id=?').get(p.rows[0].orderId);if(!assignment)throw Error();rid=assignment.roastery_id;}
@@ -104,7 +114,7 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
   app.post('/api/roastery/orders/:id/dispatch',scope,safe((req,res)=>{const p=z.object({version:z.number().int(),confirmed:z.literal(true)}).parse(req.body);run(()=>{const r=rows(req.roasteryId).find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||!r.ready||r.state!=='approved'||r.order_fingerprint!==shippingOrderFingerprint(r)||r.shipment_version!==p.version)throw Error();db.prepare("UPDATE roastery_shipments SET state='dispatch_reported',version=version+1,updated_at=? WHERE order_id=?").run(Date.now(),r.order_id);audit(r.order_id,req.session.userId,'dispatch_reported',{});});res.json({ok:true});}));
   app.get('/api/roastery/orders/:id/history',scope,safe((req,res)=>{if(!rows(req.roasteryId).some(r=>r.order_id===Number(req.params.id)))throw Error();res.json(db.prepare('SELECT id,action,created_at FROM roastery_audit WHERE order_id=? ORDER BY id DESC').all(Number(req.params.id)));}));
   app.get('/api/admin/roastery-shipping/:id/history',admin,safe((req,res)=>res.json(db.prepare('SELECT id,action,created_at FROM roastery_audit WHERE order_id=? ORDER BY id DESC').all(Number(req.params.id)))));
-  app.get('/api/admin/roastery-shipping',admin,safe((_req,res)=>res.json(rows().map(dto))));
+  app.get('/api/admin/roastery-shipping',admin,safe((_req,res)=>res.json(orderDtos(rows(),false))));
   app.get('/api/admin/roastery-shipping/partners',admin,safe((_req,res)=>res.json(db.prepare('SELECT s.id,s.name FROM suppliers s WHERE EXISTS(SELECT 1 FROM roastery_members m WHERE m.roastery_id=s.id AND m.enabled=1) OR EXISTS(SELECT 1 FROM roastery_links l WHERE l.roastery_id=s.id AND l.revoked_at IS NULL AND l.expires_at>?) ORDER BY s.name').all(Date.now()))));
   app.post('/api/admin/roastery-shipping/assign',admin,safe((req,res)=>{const p=z.object({orderNo:text,roasteryId:z.number().int().positive(),packing:z.string().trim().max(500),instruction:z.string().trim().max(500)}).parse(req.body);run(()=>{const order:any=db.prepare("SELECT id FROM orders WHERE order_no=? AND status!='cancelled'").get(p.orderNo);const partner=db.prepare('SELECT 1 WHERE EXISTS(SELECT 1 FROM roastery_members WHERE roastery_id=? AND enabled=1) OR EXISTS(SELECT 1 FROM roastery_links WHERE roastery_id=? AND revoked_at IS NULL AND expires_at>?)').get(p.roasteryId,p.roasteryId,Date.now());if(!order||!partner||db.prepare('SELECT 1 FROM roastery_assignments WHERE order_id=?').get(order.id))throw Error();db.prepare('INSERT INTO roastery_assignments(order_id,roastery_id,packing,instruction) VALUES(?,?,?,?)').run(order.id,p.roasteryId,p.packing,p.instruction);audit(order.id,req.session.userId,'assigned',{roasteryId:p.roasteryId});});res.json({ok:true});}));
   app.post('/api/admin/roastery-shipping/:id/review',admin,safe((req,res)=>{const p=z.object({version:z.number().int(),action:z.enum(['approve','reject','confirm-dispatch']),reason:z.string().trim().max(500).default('')}).parse(req.body);run(()=>{const r=rows().find(r=>r.order_id===Number(req.params.id));if(!r||r.order_status==='cancelled'||r.shipment_version!==p.version)throw Error();if(p.action==='confirm-dispatch'?r.state!=='dispatch_reported':p.action==='reject'?!['submitted','approved','dispatch_confirmed'].includes(r.state):r.state!=='submitted')throw Error();if(p.action!=='reject'&&r.order_fingerprint!==shippingOrderFingerprint(r))throw Error();if(p.action==='reject'&&!p.reason)throw Error();const state=p.action==='approve'?'approved':p.action==='reject'?'rejected':'dispatch_confirmed';db.prepare('UPDATE roastery_shipments SET state=?,reason=?,version=version+1,updated_at=? WHERE order_id=?').run(state,p.reason,Date.now(),r.order_id);audit(r.order_id,req.session.userId,'admin_'+p.action,{reason:p.reason});});res.json({ok:true});}));

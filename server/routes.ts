@@ -1,3 +1,4 @@
+import {installOrderTrackingGuard, orderTrackingConflictMessage} from './order-tracking-guard';
 import {clarimentoUsername} from './roastery-accounts';
 import {roasteryLoginWait,roasteryLoginFailed,clearRoasteryLoginFailures} from './roastery-login-lock';
 import {getRoasteryCredentialVersion} from './roastery-accounts';
@@ -289,6 +290,7 @@ export async function registerRoutes(
   }
 
   registerRoasteryShipping(app, sqlite, requireAdmin, requireOwner);
+  installOrderTrackingGuard(sqlite);
   registerCafe24Routes(app, sqlite, requireAdmin, requireOwner);
   registerSmartstoreRoutes(app, requireAdmin, {db:sqlite});
   registerBankReview(app, sqlite, requireOwner);
@@ -2469,7 +2471,14 @@ export async function registerRoutes(
       patch.quickRequest = patch.quickRequest ? 1 : 0;
     }
 
-    const updated = await storage.updateOrder(Number(req.params.id), patch);
+    let updated;
+    try {
+      updated = await storage.updateOrder(Number(req.params.id), patch);
+    } catch (error) {
+      const message = orderTrackingConflictMessage(error);
+      if (message) return res.status(409).json({message});
+      throw error;
+    }
     if (!updated) return res.status(404).json({ message: "주문 없음" });
 
     if (itemsChanged || patch.ecountDate !== undefined || patch.status === "done") {

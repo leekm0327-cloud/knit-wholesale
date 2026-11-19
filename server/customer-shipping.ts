@@ -1,11 +1,32 @@
 import type {Express,RequestHandler} from 'express';
 import type Database from 'better-sqlite3';
 import type {CustomerShipping} from '../shared/shipping';
-import {shippingOrderFingerprint} from './roastery-shipping';
+import {shippingOrderFingerprint} from './roastery-tracking';
+import {readDispatch} from './roastery-dispatch';
 /** Read the committed shipment source, never copy tracking into mutable legacy orders. Call only after order authorization. */
 export function withCustomerShipping<T extends {id:number;trackingNo:string}>(db:Database.Database,order:T):T & {shipping:CustomerShipping|null}{
- const r:any=db.prepare(`SELECT o.items,o.customer_snapshot,o.status AS order_status,o.tracking_no AS legacy_tracking,s.carrier,s.tracking,s.state,s.order_fingerprint FROM orders o LEFT JOIN roastery_shipments s ON s.order_id=o.id WHERE o.id=?`).get(order.id);
+ const r:any=db.prepare(`SELECT o.items,o.customer_snapshot,o.status AS order_status,o.tracking_no AS legacy_tracking,
+   s.carrier,s.tracking,s.state,s.order_fingerprint,
+   EXISTS(SELECT 1 FROM roastery_consignments c WHERE c.order_id=o.id) AS has_consignments
+   FROM orders o LEFT JOIN roastery_shipments s ON s.order_id=o.id WHERE o.id=?`).get(order.id);
  if(!r||r.order_status==='cancelled')return {...order,trackingNo:'',shipping:null};
+ if (r.has_consignments) {
+   const dispatch = readDispatch(db, order.id);
+   if (dispatch.status !== 'complete' && dispatch.status !== 'partial') {
+     return {...order, trackingNo:'', shipping:{carrier:'', tracking:'', state:'dispatch_review_required'}};
+   }
+   const {consignments} = dispatch;
+   const complete = dispatch.status === 'complete';
+   const soleDelivery = complete && consignments.length === 1 ? consignments[0] : undefined;
+   return {
+     ...order,
+     trackingNo: soleDelivery?.method === 'parcel' ? soleDelivery.tracking : '',
+     shipping: {
+       state: complete ? 'fully_dispatched' : 'partial_dispatch',
+       consignments,
+     },
+   };
+ }
  if(String(r.legacy_tracking??'').trim())return {...order,trackingNo:r.legacy_tracking,shipping:{carrier:'',tracking:r.legacy_tracking,state:'registered'}};
  if(!r.state)return {...order,trackingNo:'',shipping:null};
  if(!String(r.tracking??'').trim()||r.state==='rejected'||r.order_fingerprint!==shippingOrderFingerprint(r))return {...order,trackingNo:'',shipping:{carrier:'',tracking:'',state:'review_required'}};
