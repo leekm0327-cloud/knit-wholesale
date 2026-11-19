@@ -2,7 +2,7 @@
 
 ## Scope and lifecycle
 
-- Customer orders, amounts, payments, POS, purchases and notifications are never updated by this module.
+- Customer orders, amounts, payments, POS and purchases retain their existing workflows. The first partial dispatch or a one-time multi-box dispatch can notify the ordering customer as described below.
 - The authenticated workflow requires a dedicated `customers.role = roastery` identity plus an enabled `roastery_members` entry. No account creation endpoint is added. The API middleware denies other application APIs for these identities, including product pricing and financial endpoints. `/api/auth/me` and login return only ID, role and display name for this role. The separate limited bearer-link workflow is described below.
 - Administrators explicitly assign a whole order to a configured partner. Assignment is not inferred from product name or customer. Existing assignments cannot be silently replaced. Assign only orders whose entire contents belong to that roastery.
 - `/roastery/shipping`: assigned orders, preparation, shipping-only recipient fields, item names/EA/weight indication, packing instructions, tracking submission, dispatch report and event history.
@@ -14,7 +14,36 @@
 
 For a confirmed assigned order, the roastery, an administrator or the supplier's dedicated link can record a parcel, quick courier or direct delivery. Select partial when another dispatch will follow. Select complete for the last dispatch or a one-time delivery. Only parcels require a carrier and tracking number. Partial orders stay in the dispatch queue, including when a tracking number is already present. A complete order moves out of that queue.
 
-Each dispatch preserves its own method, time and parcel tracking. Customer order detail shows the history. No item allocation or remaining-quantity entry is required. Existing whole-order waybills remain whole-order records. The Excel importer continues to accept whole-order parcels. Use the order's dispatch controls from the first shipment for split orders. New quick, direct and split dispatches do not trigger Kakao messages.
+A parcel dispatch supports up to 30 boxes with one carrier and a tracking number per box. Use the **＋** beside the first waybill for another box. Common hyphens and whitespace are removed while preserving leading zeros. **출고 마감** closes a partial order using its recorded dispatches and does not create a shipment or a customer notice. Each dispatch preserves its method, time and every box’s tracking number. Customer order detail shows the history. No item allocation or remaining-quantity entry is required. Existing whole-order waybills remain whole-order records. The Excel importer continues to accept whole-order parcels. Use the order's dispatch controls from the first shipment for split orders.
+
+### Customer Alimtalk for dispatches
+
+Saving the first partial dispatch of an eligible order triggers one customer notification. This applies to parcels, quick courier and direct delivery in the administrator, signed-in roastery and dedicated-link screens. Opening the form, saving an additional dispatch and marking the final dispatch complete do not trigger the partial-dispatch notice. Enabling it later does not notify customers about previously saved partial dispatches.
+
+Register a dedicated Solapi template with the variables below. After approval, select its template ID in the Alimtalk settings (`tplPartialDispatch`) and enable Alimtalk. The shipping information variable contains the carrier, the box count and numbered waybills for a multi-box parcel, the carrier and waybill for a one-box parcel, or the delivery method for quick and direct delivery. An optional fixed web-link button named `주문 내역 보기` can point to `https://wholesale.knitcoffee.co.kr/#/orders`.
+
+```text
+[니트커피] 부분출고 안내
+
+주문하신 상품 중 일부가 먼저 출고됐습니다.
+주문번호  #{주문번호}
+배송 정보  #{배송정보}
+
+나머지 상품의 출고 현황은 주문 내역에서 확인하실 수 있습니다.
+```
+
+For an order sent in full in multiple boxes, select a second approved template in **설정 · 연동 → 알림톡 → 여러 상자 출고 안내 템플릿** (`tplMultiBoxDispatch`). The first partial and full multi-box settings are independent. Each order queues at most one of these notices. Later dispatches and **출고 마감** never create another notice. For either template use a fixed **주문 내역 보기** web button with `https://wholesale.knitcoffee.co.kr/#/orders` as the mobile/desktop URL. Messages show the first five numbered waybills and the remaining count when there are more than five. Order detail lists every box.
+
+```text
+[니트커피] 출고 안내
+
+주문하신 상품을 여러 상자로 나누어 모두 출고했습니다.
+주문번호  #{주문번호}
+
+#{상자별송장}
+
+상자별 배송 현황은 주문 내역에서 확인해 주세요.
+```
 
 ## Excel and matching
 
@@ -31,7 +60,7 @@ New, initially empty tables: `roastery_members`, `roastery_assignments`, `roaste
 
 Before deployment: separate approval, scoped code review, normal backup/rollout procedure, and confirm whether authenticated membership or limited bearer access will be used. No real accounts/grants have been created. Assignment UI lists partners with an enabled membership or an active unexpired link. Assignment remains an explicit administrator action. Existing receiving contact details remain unchanged.
 
-Still needed: an actual CJ export sample to validate column/identifier formatting; handling requirements for multiple parcels per order; review of weight/packing data. Weight shown is an indication extracted from product name, not certified logistics weight. Unknown weight/packing is marked for administrator confirmation. Shipping-only instructions are entered at assignment; internal order notes are not disclosed automatically.
+Still needed: an actual CJ export sample to validate column/identifier formatting; review of weight/packing data. Weight shown is an indication extracted from product name, not certified logistics weight. Unknown weight/packing is marked for administrator confirmation. Shipping-only instructions are entered at assignment; internal order notes are not disclosed automatically.
 
 Rollback: remove/revert this feature's code without dropping its new tables; no legacy financial/order data was changed by the module. Do not automatically replay any shipping action on rollback/redeploy.
 

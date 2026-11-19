@@ -3,6 +3,7 @@ import {
   carrierTrackingLink,
   isCustomerDispatch,
   shipmentMethodLabel,
+  shipmentTrackingNumbers,
   type CustomerShipping as Shipping,
 } from '@shared/shipping';
 import { fmtDateTime } from '@/lib/format';
@@ -23,10 +24,11 @@ export function CustomerShipping({ shipping, compact = false }: { shipping?: Shi
   if (isCustomerDispatch(shipping)) {
     const { consignments } = shipping;
     const status = shipping.state === 'partial_dispatch' ? '부분출고' : '출고 완료';
+    const boxes = consignments.reduce((total, leg) => total + shipmentTrackingNumbers(leg).length, 0);
     if (compact) {
       return (
         <p className="col-span-full my-1 text-sm">
-          <strong>{status}</strong> · {consignments.length === 1 ? shipmentMethodLabel(consignments[0]) : `${consignments.length}회 출고`}
+          <strong>{status}</strong> · {consignments.length === 1 ? shipmentMethodLabel(consignments[0]) : `${consignments.length}회 출고`}{boxes > 1 && ` · 택배 ${boxes}상자`}
         </p>
       );
     }
@@ -34,22 +36,25 @@ export function CustomerShipping({ shipping, compact = false }: { shipping?: Shi
       <section className="mb-6 space-y-3 text-sm" aria-label="출고 내역">
         <h2 className="font-semibold">{status}</h2>
         <ol className="divide-y border-y">
-          {consignments.map((delivery, index) => (
-            <li key={delivery.id} className="py-3">
-              <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <strong>{index + 1}차 출고 · {shipmentMethodLabel(delivery)}</strong>
-                <time className="text-xs text-muted-foreground" dateTime={new Date(delivery.createdAt).toISOString()}>
-                  {fmtDateTime(delivery.createdAt)}
-                </time>
-              </p>
-              {delivery.method === 'parcel' && delivery.tracking && (
-                <div className="flex flex-wrap items-center gap-x-3">
-                  <span className="break-all">송장번호 <strong className="tabular-nums">{delivery.tracking}</strong></span>
-                  <TrackingLink carrier={delivery.carrier} tracking={delivery.tracking} />
-                </div>
-              )}
-            </li>
-          ))}
+          {consignments.map((delivery, index) => {
+            const numbers = shipmentTrackingNumbers(delivery);
+            return (
+              <li key={delivery.id} className="py-3">
+                <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <strong>{index + 1}차 출고 · {shipmentMethodLabel(delivery)}</strong>
+                  <time className="text-xs text-muted-foreground" dateTime={new Date(delivery.createdAt).toISOString()}>
+                    {fmtDateTime(delivery.createdAt)}
+                  </time>
+                </p>
+                {numbers.map((tracking, box) => (
+                  <div key={tracking} className="flex flex-wrap items-center gap-x-3">
+                    <span className="break-all">{numbers.length > 1 ? `상자 ${box + 1}` : '송장번호'} <strong className="tabular-nums">{tracking}</strong></span>
+                    <TrackingLink carrier={delivery.carrier} tracking={tracking} />
+                  </div>
+                ))}
+              </li>
+            );
+          })}
         </ol>
       </section>
     );

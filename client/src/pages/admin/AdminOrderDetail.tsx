@@ -4,6 +4,11 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { AdminLayout } from "@/components/AdminLayout";
+import RoasteryDispatch from "@/components/RoasteryDispatch";
+import "../roastery-shipping.css";
+import { CustomerShipping } from "@/components/CustomerShipping";
+import { normalizeOrderTracking, type CustomerShipping as Shipping } from "@shared/shipping";
+import type { DispatchSummary } from "@shared/roastery-dispatch";
 import { Invoice } from "@/components/Invoice";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,7 +48,7 @@ export default function AdminOrderDetail() {
   const { toast } = useToast();
   const id = params?.id;
 
-  const { data: order, isLoading } = useQuery<Order>({
+  const { data: order, isLoading } = useQuery<Order & { dispatch?: DispatchSummary | null; shipping?: Shipping | null }>({
     queryKey: ["/api/orders", id],
     enabled: !!id,
     staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: 'always',
@@ -279,17 +284,41 @@ export default function AdminOrderDetail() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">송장번호</Label>
-                  <Input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} placeholder="예: 1234-5678-9012" data-testid="input-tracking" />
+              {order.dispatch && (order.dispatch.status === 'partial' || order.dispatch.status === 'open') && !order.trackingNo ? (
+                <section className="order-dispatch-editor space-y-2" aria-label="주문 출고">
+                  <Label className="text-xs">출고 · 송장번호</Label>
+                  <CustomerShipping shipping={order.shipping}/>
+                  <RoasteryDispatch key={order.dispatch.revision} dispatch={order.dispatch} disabled={saving} orderNo={order.orderNo}
+                    initialTracking="" initialCarrier="CJ" singlePending={false} singleHasCarrier={false}
+                    onSaveSingle={(_carrier, number) => patch({ trackingNo: number }, "송장번호 저장됨")}
+                    onSave={async input => {
+                      try {
+                        await apiRequest("POST", `/api/admin/roastery-shipping/${order.id}/consignments`, input);
+                      } catch (err) {
+                        const status = Number(err instanceof Error && err.message.match(/^\d{3}/)?.[0]);
+                        if (status === 409) await queryClient.invalidateQueries({queryKey:["/api/orders", id]});
+                        throw Object.assign(new Error(errMsg(err)), {status});
+                      }
+                      await queryClient.invalidateQueries({queryKey:["/api/orders", id]});
+                      queryClient.invalidateQueries({queryKey:["/api/admin/orders"]});
+                      queryClient.invalidateQueries({queryKey:["/api/admin/stats"]});
+                    }}/>
+                </section>
+              ) : order.dispatch && !order.trackingNo && order.shipping ? (
+                <CustomerShipping shipping={order.shipping}/>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">송장번호</Label>
+                    <Input value={trackingNo} onChange={(e) => setTrackingNo(normalizeOrderTracking(e.target.value))} placeholder="예: 1234-5678-9012" data-testid="input-tracking" />
+                  </div>
+                  <div className="flex items-end">
+                    <Button variant="outline" onClick={() => patch({ trackingNo }, "송장번호 저장됨")} disabled={saving} data-testid="button-save-tracking">
+                      송장 저장
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-end">
-                  <Button variant="outline" onClick={() => patch({ trackingNo }, "송장번호 저장됨")} disabled={saving} data-testid="button-save-tracking">
-                    송장 저장
-                  </Button>
-                </div>
-              </div>
+              )}
 
 
 

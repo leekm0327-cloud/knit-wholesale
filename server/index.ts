@@ -12,6 +12,8 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
+import { startPartialDispatchNotices } from './partial-dispatch-notice';
+import { sqlite } from './storage';
 
 // 요청 처리 중 잡히지 않은 오류 하나 때문에 서버 전체가 죽지 않도록 한다.
 // Node 22는 처리되지 않은 Promise 거부가 나면 기본적으로 프로세스를 종료시키는데,
@@ -90,6 +92,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+  startPartialDispatchNotices(sqlite);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

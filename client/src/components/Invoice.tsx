@@ -1,19 +1,8 @@
 import { Wordmark } from "./Logo";
+import { SELLER } from "./StatementDoc";
 import { won, wonNum, fmtDate, CATEGORY_LABEL } from "@/lib/format";
 import type { Order, OrderItem } from "@shared/schema";
-import { isCustomerDispatch, shipmentMethodLabel, type CustomerShipping } from "@shared/shipping";
-
-const SUPPLIER = {
-  name: "니트커피 (Knit Coffee)",
-  ceo: "이강민",
-  address: "서울 중구 남산트라팰리스 1층",
-};
-
-const BANK = {
-  name: "국민은행",
-  account: "098937-04-011092",
-  holder: "이강민 (니트커피)",
-};
+import { isCustomerDispatch, shipmentMethodLabel, shipmentTrackingNumbers, type CustomerShipping } from "@shared/shipping";
 
 interface Snapshot {
   businessName: string;
@@ -57,7 +46,10 @@ export function Invoice({ order }: { order: Order & { shipping?: CustomerShippin
             <div className="text-[11px] text-[#777]">{order.shipping.state === "partial_dispatch" ? "부분출고" : "출고 완료"}</div>
             {order.shipping.consignments.map((delivery, index) => (
               <div key={delivery.id} className="mt-0.5 break-words font-medium">
-                {index + 1}차 · {fmtDate(delivery.createdAt)} · {shipmentMethodLabel(delivery)} {delivery.tracking}
+                {index + 1}차 · {fmtDate(delivery.createdAt)} · {shipmentMethodLabel(delivery)}
+                {shipmentTrackingNumbers(delivery).map((number, box, numbers) => (
+                  <div className="break-all text-xs tabular-nums" key={number}>{numbers.length > 1 && `상자 ${box + 1} · `}{number}</div>
+                ))}
               </div>
             ))}
           </div>
@@ -67,9 +59,9 @@ export function Invoice({ order }: { order: Order & { shipping?: CustomerShippin
       {/* 공급자 / 거래처 */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Party title="공급자">
-          <PartyLine label="상호" value={SUPPLIER.name} />
-          <PartyLine label="대표" value={SUPPLIER.ceo} />
-          <PartyLine label="주소" value={SUPPLIER.address} />
+          <PartyLine label="상호" value={SELLER.name} />
+          <PartyLine label="대표" value={SELLER.ceo} />
+          <PartyLine label="주소" value={SELLER.address} />
         </Party>
         <Party title="거래처 (공급받는 자)">
           <PartyLine label="상호" value={snap.businessName} />
@@ -143,9 +135,9 @@ export function Invoice({ order }: { order: Order & { shipping?: CustomerShippin
           입금 계좌
         </div>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-[#222]">
-          <span className="font-semibold">{BANK.name}</span>
-          <span className="font-display tabular text-base font-semibold tracking-wide">{BANK.account}</span>
-          <span className="text-[#777]">예금주 {BANK.holder}</span>
+          <span className="font-semibold">{SELLER.bankName}</span>
+          <span className="font-display tabular text-base font-semibold tracking-wide">{SELLER.bankAccount}</span>
+          <span className="text-[#777]">예금주 {SELLER.bankHolder}</span>
         </div>
       </div>
 

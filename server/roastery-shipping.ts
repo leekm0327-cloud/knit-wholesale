@@ -1,5 +1,6 @@
 import {DispatchError,conflictsWithDispatch,dispatchSummaries,installRoasteryDispatch,saveDispatch} from './roastery-dispatch';
-import type {DispatchSummary} from '../shared/roastery-dispatch';
+import {normalizeTrackingNumber,type DispatchSummary} from '../shared/roastery-dispatch';
+import {normalizeOrderTracking} from '../shared/shipping';
 import {filterRoasteryList,resolveRoasteryListCutoff} from './roastery-list-cutoff';
 import {registerRoasteryAccounts,isRoasteryCredentialCurrent} from './roastery-accounts';
 import {shippingOrderFingerprint,hasValidShippingTracking} from './roastery-tracking';
@@ -16,10 +17,17 @@ import {readWorkbook} from './settlement-files';
 const hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export {shippingOrderFingerprint} from './roastery-tracking';
 const text=z.string().trim().min(1).max(100);
-const rowSchema=z.object({orderNo:z.string().trim().max(100),orderId:z.number().int().positive().optional(),carrier:z.enum(['CJ','HANJIN','LOTTE','POST','LOGEN']),tracking:z.string().trim().regex(/^[0-9]{8,30}$/, '송장번호는 8~30자리 숫자로 입력해 주세요.')});
+const rowSchema=z.object({orderNo:z.string().trim().max(100),orderId:z.number().int().positive().optional(),carrier:z.enum(['CJ','HANJIN','LOTTE','POST','LOGEN']),tracking:z.string().max(120).transform(normalizeTrackingNumber).pipe(z.string().regex(/^[0-9]{8,30}$/, '송장번호는 8~30자리 숫자로 입력해 주세요.'))});
 const batchSchema=z.object({rows:z.array(rowSchema).min(1).max(500)});
 const parse=(v:string)=>JSON.parse(v);
 export function registerRoasteryShipping(app:Express, db:Database.Database, admin:RequestHandler, owner:RequestHandler) {
+  // The existing admin order editor accepts legacy tracking labels as well as parcel numbers.
+  app.patch('/api/admin/orders/:id', (req, _res, next) => {
+    if (typeof req.body?.trackingNo === 'string') {
+      req.body.trackingNo = normalizeOrderTracking(req.body.trackingNo);
+    }
+    next();
+  });
   // Additive, empty tables only. No automatic grants, assignment, import, or order mutation.
   db.exec(`CREATE TABLE IF NOT EXISTS roastery_members(user_id INTEGER PRIMARY KEY,roastery_id INTEGER NOT NULL,enabled INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS roastery_assignments(order_id INTEGER PRIMARY KEY,roastery_id INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,version INTEGER NOT NULL DEFAULT 1,packing TEXT NOT NULL DEFAULT '',instruction TEXT NOT NULL DEFAULT '');
@@ -73,6 +81,8 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
     res.json({sheets}); // In-memory parse only; no file or customer data retained.
   }));
   function inspect(rid:number,p:z.infer<typeof batchSchema>,requireConfirmed=false){const orders=rows(rid),seenOrder=new Set<number>(),seenTracking=new Set<string>();
+    const legacyNumbers = new Set((db.prepare("SELECT DISTINCT tracking_no FROM orders WHERE tracking_no!=''").all() as {tracking_no:string}[])
+      .map(row => normalizeTrackingNumber(row.tracking_no)));
     const inspected=p.rows.map((row,i)=>{const exact=orders.filter(o=>o.order_no===row.orderNo);const r=row.orderId?orders.find(o=>o.order_id===row.orderId):exact.length===1?exact[0]:null;
       let error='';if(!r)error='담당 주문을 찾지 못했습니다. 주문을 직접 확인해 선택하세요.';
       else if(row.orderId&&exact.length&&exact[0].order_id!==row.orderId)error='주문번호와 선택 주문이 다릅니다.';
@@ -81,11 +91,12 @@ export function registerRoasteryShipping(app:Express, db:Database.Database, admi
       else if(String(r.legacy_tracking??'').trim())error='기존 관리자 송장이 있습니다. 관리자 검토 필요';
       else if(!parse(r.customer_snapshot).defaultAddress?.trim()||!parse(r.customer_snapshot).phone?.trim())error='배송지 또는 수취인 연락처 확인 필요';
       const key=row.carrier+':'+row.tracking;
-      if(r&&seenOrder.has(r.order_id))error='여러 송장으로 나누는 주문은 부분 출고에서 건별로 등록하세요.';
+      if(r&&seenOrder.has(r.order_id))error='여러 송장의 주문은 해당 주문의 송장 입력창 옆 + 버튼으로 등록하세요.';
       if(seenTracking.has(key))error='파일 안에 중복 송장번호가 있습니다.';
       if(r)seenOrder.add(r.order_id);seenTracking.add(key);
       const other:any=db.prepare("SELECT order_id FROM roastery_shipments WHERE carrier=? AND tracking=? AND state!='rejected'").get(row.carrier,row.tracking);
       if(other&&other.order_id!==r?.order_id)error='이미 등록된 송장번호입니다.';
+      if(legacyNumbers.has(row.tracking))error='이미 등록된 송장번호입니다.';
       if(conflictsWithDispatch(db,r?.order_id,row.carrier,row.tracking))error='출고 내역이 있는 주문 또는 송장번호입니다. 추가 출고는 해당 주문에서 등록하세요.';
       const duplicate=!!r&&r.state&&r.state!=='rejected'&&r.tracking===row.tracking&&r.carrier===row.carrier;
       if(r?.state&&r.state!=='rejected'&&!duplicate)error='다른 송장이 이미 등록됐습니다. 관리자 검토 필요';

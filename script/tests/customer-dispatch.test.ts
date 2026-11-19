@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { withCustomerShipping } from '../../server/customer-shipping';
 import { installRoasteryDispatch, readDispatch, saveDispatch } from '../../server/roastery-dispatch';
-import { carrierTrackingLink, isCustomerDispatch, shipmentMethodLabel } from '../../shared/shipping';
+import { carrierTrackingLink, isCustomerDispatch, normalizeOrderTracking, shipmentMethodLabel, shipmentTrackingNumbers } from '../../shared/shipping';
 
 const db: any = new DatabaseSync(':memory:');
 db.transaction = (fn: () => unknown) => ({
@@ -37,13 +37,19 @@ try {
   const send = (fields: object) => saveDispatch(db, { orderId:id, roasteryId:10, actor:1 }, {
     ...fields, revision:readDispatch(db, id).revision, requestKey:randomUUID(),
   });
-  send({method:'parcel', carrier:'CJ', tracking:'000111222333', completion:'partial'});
+  send({method:'parcel', carrier:'CJ', trackings:['0001-1122-2333', '0001–1122–2444'], completion:'partial'});
   const first = read();
   assert.equal(first.trackingNo, '');
   assert(isCustomerDispatch(first.shipping));
   assert.equal(first.shipping.state, 'partial_dispatch');
   assert(!('remainingItems' in first.shipping));
   const parcel = first.shipping.consignments[0];
+  assert.deepEqual(shipmentTrackingNumbers(parcel), ['000111222333','000111222444']);
+  assert.deepEqual(shipmentTrackingNumbers({method:'parcel',tracking:'000000123456'}), ['000000123456']);
+  assert.deepEqual(shipmentTrackingNumbers({method:'direct',tracking:''}), []);
+  assert.equal(normalizeOrderTracking(' 0001-1122-2444 '), '000111222444');
+  assert.equal(normalizeOrderTracking('REF-123'), 'REF-123');
+  assert(carrierTrackingLink(parcel.carrier, '0001–1122–2444')?.url.endsWith('000111222444'));
   assert(!('items' in parcel));
   assert.equal(parcel.completion, 'partial');
   assert.equal(shipmentMethodLabel(parcel), 'CJ대한통운');

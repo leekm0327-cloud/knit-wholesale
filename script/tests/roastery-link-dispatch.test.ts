@@ -22,7 +22,7 @@ try {
   const list=async()=> (await api('/api/roastery-link/orders',token)).data.orders;
   const initial=(await list()).find((o:any)=>o.id===1);
   const register=(payload:unknown,id=1)=>api('/api/roastery-link/orders/'+id+'/consignments',token,payload);
-  const parcel={revision:initial.dispatch.revision,completion:'partial',method:'parcel',carrier:'CJ',tracking:'012345678902',requestKey:randomUUID()};
+  const parcel={revision:initial.dispatch.revision,completion:'partial',method:'parcel',carrier:'CJ',tracking:'012345678902',trackings:['012345678902','0123-4567-8910'],requestKey:randomUUID()};
   assert.equal((await register(parcel,5)).status,404);
   const first=await register(parcel);
   assert.equal(first.status,200);
@@ -38,6 +38,7 @@ try {
   const conflict = (e:unknown)=>!!orderTrackingConflictMessage(e);
   const setLegacy=db.prepare('UPDATE orders SET tracking_no=? WHERE id=?');
   assert.throws(()=>setLegacy.run(parcel.tracking,2),conflict);
+  assert.throws(()=>setLegacy.run('0123-4567-8910',2),conflict);
   assert.throws(()=>setLegacy.run('differentTracking',1),conflict);
   assert.doesNotThrow(()=>setLegacy.run('',1));
   const quick={revision:after.dispatch.revision,completion:'partial',method:'quick',requestKey:randomUUID()};
@@ -60,5 +61,6 @@ try {
   assert.equal(customer.shipping.consignments.length,3);
   assert.equal(db.prepare('SELECT count(*) n FROM cj_ready_notice_attempts').get().n,0);
   assert.equal(db.prepare('SELECT count(*) n FROM roastery_dispatch_outbox').get().n,0);
-  console.log('PASS link → mixed dispatches → customer view, quick-only completion, replay, cross-scope/legacy conflict protection, no new Kakao notices');
+  assert.equal(db.prepare('SELECT count(*) n FROM partial_dispatch_notices').get().n,0);
+  console.log('PASS link → mixed dispatches → customer view, quick-only completion, replay, cross-scope/legacy conflict protection, unconfigured Kakao stays off');
 } finally {server.close();db.close();}

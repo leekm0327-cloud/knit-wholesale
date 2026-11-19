@@ -22,6 +22,8 @@ type Settings = {
   sender: string;
   tplOrder: string;
   tplBalance: string;
+  tplPartialDispatch: string;
+  tplMultiBoxDispatch: string;
   disableSms: boolean;
   testPhone: string;
   alertOn: boolean;
@@ -182,11 +184,15 @@ export default function AdminAlimtalk() {
   }
 
   function TemplatePicker({ value, field, label }: { value: string; field: keyof Settings; label: string }) {
+    const dispatch = field === "tplPartialDispatch" || field === "tplMultiBoxDispatch";
     return (
       <div>
-        <Label className="text-xs text-muted-foreground">{label}</Label>
-        {templates === null ? (
+        <Label htmlFor={field} className="text-xs text-muted-foreground">{label}</Label>
+        {templates === null && dispatch ? (
+          <Input id={field} readOnly value={value || "미설정"} className="mt-1" />
+        ) : templates === null ? (
           <Input
+            id={field}
             value={value}
             onChange={(e) => saveMut.mutate({ [field]: e.target.value } as Partial<Settings>)}
             placeholder="템플릿 ID (또는 위에서 목록 불러오기)"
@@ -195,6 +201,7 @@ export default function AdminAlimtalk() {
           />
         ) : (
           <select
+            id={field}
             value={value}
             onChange={(e) => saveMut.mutate({ [field]: e.target.value } as Partial<Settings>)}
             className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
@@ -204,7 +211,7 @@ export default function AdminAlimtalk() {
             {/* 승인 전 템플릿도 함께 보여준다. 목록에서 빼버리면 이미 저장해 둔 값이 화면에서 사라져
                 아무것도 고르지 않은 것처럼 보인다. */}
             {templates.map((t) => (
-              <option key={t.templateId} value={t.templateId}>
+              <option key={t.templateId} value={t.templateId} disabled={dispatch && !isApproved(t)}>
                 {t.name}
                 {isApproved(t) ? "" : " — 심사 중"}
               </option>
@@ -213,6 +220,13 @@ export default function AdminAlimtalk() {
               <option value={value}>{value} (목록에 없는 ID)</option>
             )}
           </select>
+        )}
+        {dispatch && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {field === "tplPartialDispatch"
+              ? "첫 부분출고 때 한 번 보냅니다. 승인 템플릿 변수는 #{주문번호}, #{배송정보}입니다."
+              : "주문 전체를 여러 상자로 한 번에 출고할 때 한 건으로 보냅니다. 승인 템플릿 변수는 #{주문번호}, #{상자별송장}입니다."}
+          </p>
         )}
       </div>
     );
@@ -224,8 +238,7 @@ export default function AdminAlimtalk() {
         <div className="eyebrow">Alimtalk</div>
         <h1 className="font-display mb-1 mt-1 text-xl font-semibold text-foreground">카카오 알림톡</h1>
         <AdminFold id="AdminAlimtalk.tsx-intro-0"><p className="mb-6 text-sm text-muted-foreground">
-          거래처에게 나가는 알림입니다. 주문 접수는 자동으로, 미수금 안내는 고른 곳에만 직접 보냅니다. 카카오톡을 쓰지
-          않는 번호로는 문자로 대신 나갑니다.
+          주문 접수와 첫 부분출고는 자동으로 안내하고, 미수금 안내는 선택한 거래처에 직접 보냅니다.
         </p></AdminFold>
 
         {isLoading ? (
@@ -238,7 +251,7 @@ export default function AdminAlimtalk() {
                 <div className="flex gap-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
                   <div className="text-xs leading-relaxed text-amber-900">
-                    <p className="mb-1 font-semibold">아직 발송할 수 없는 상태입니다.</p>
+                    <p className="mb-1 font-semibold">주문 접수 알림 설정을 확인해 주세요.</p>
                     <ul className="list-inside list-disc space-y-0.5">
                       {data?.status.reasons.map((r) => (
                         <li key={r}>{r}</li>
@@ -308,6 +321,8 @@ export default function AdminAlimtalk() {
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <TemplatePicker value={s?.tplOrder ?? ""} field="tplOrder" label="주문 접수 확인 템플릿" />
                 <TemplatePicker value={s?.tplBalance ?? ""} field="tplBalance" label="미수금 안내 템플릿" />
+                <TemplatePicker value={s?.tplPartialDispatch ?? ""} field="tplPartialDispatch" label="첫 부분출고 안내 템플릿" />
+                <TemplatePicker value={s?.tplMultiBoxDispatch ?? ""} field="tplMultiBoxDispatch" label="여러 상자 출고 안내 템플릿" />
               </div>
 
               <div className="mt-4 flex flex-wrap items-end gap-4 border-t border-border pt-4">
@@ -464,13 +479,10 @@ export default function AdminAlimtalk() {
                       )}
                       <span className="font-display w-20 shrink-0 text-muted-foreground">{fmtWhen(l.createdAt)}</span>
                       <span className="w-16 shrink-0 text-muted-foreground">
-                        {l.kind.startsWith("test")
-                          ? "테스트"
-                          : l.kind === "order"
-                            ? "주문접수"
-                            : l.kind === "alert"
-                              ? "주문알림"
-                              : "미수금"}
+                        {l.kind.startsWith("test") ? "테스트" : ({
+                          partial_dispatch: "부분출고", multi_box_dispatch: "여러 상자", cj_ready: "택배 출고", order: "주문접수",
+                          alert: "주문알림", balance: "미수금",
+                        } as Record<string, string>)[l.kind] ?? l.kind}
                       </span>
                       <span className="w-28 shrink-0 truncate text-foreground">{l.businessName}</span>
                       <span className={`min-w-0 flex-1 ${l.status === "fail" ? "text-destructive" : "text-muted-foreground"}`}>

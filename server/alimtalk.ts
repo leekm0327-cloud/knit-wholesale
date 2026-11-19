@@ -63,6 +63,8 @@ try {
 for (const ddl of [
   "ALTER TABLE alimtalk_settings ADD COLUMN alert_on INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE alimtalk_settings ADD COLUMN alert_phone TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE alimtalk_settings ADD COLUMN tpl_partial_dispatch TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE alimtalk_settings ADD COLUMN tpl_multi_box_dispatch TEXT NOT NULL DEFAULT ''",
 ]) {
   try {
     sqlite.exec(ddl);
@@ -79,6 +81,8 @@ export type AlimtalkSettings = {
   sender: string;
   tplOrder: string;
   tplBalance: string;
+  tplPartialDispatch: string;
+  tplMultiBoxDispatch: string;
   disableSms: boolean;
   testPhone: string;
   /** 새 주문이 들어오면 대표님 휴대폰으로 문자 보내기 */
@@ -93,6 +97,8 @@ type SettingsRow = {
   sender: string;
   tpl_order: string;
   tpl_balance: string;
+  tpl_partial_dispatch: string;
+  tpl_multi_box_dispatch: string;
   disable_sms: number;
   test_phone: string;
   alert_on: number;
@@ -107,6 +113,8 @@ export function getSettings(): AlimtalkSettings {
     sender: r.sender,
     tplOrder: r.tpl_order,
     tplBalance: r.tpl_balance,
+    tplPartialDispatch: r.tpl_partial_dispatch,
+    tplMultiBoxDispatch: r.tpl_multi_box_dispatch,
     disableSms: r.disable_sms === 1,
     testPhone: r.test_phone,
     alertOn: r.alert_on === 1,
@@ -214,16 +222,42 @@ export async function listTemplates(): Promise<
  */
 const varCache = new Map<string, { at: number; names: Set<string> }>();
 const VAR_CACHE_MS = 30 * 60 * 1000;
+const dispatchTemplates = {
+  partial_dispatch: { setting: 'tplPartialDispatch', label: '부분출고', variables: ['#{주문번호}', '#{배송정보}'] },
+  multi_box_dispatch: { setting: 'tplMultiBoxDispatch', label: '여러 상자 출고', variables: ['#{주문번호}', '#{상자별송장}'] },
+} as const;
+type DispatchTemplate = typeof dispatchTemplates[keyof typeof dispatchTemplates];
 
-async function templateVariableNames(templateId: string): Promise<Set<string> | null> {
-  const hit = varCache.get(templateId);
+function dispatchTemplateVariables(t: Record<string, any>): Set<string> {
+  if (Array.isArray(t.variables)) return new Set(t.variables.map(v => {
+    const name = String(v?.name || '');
+    return name.startsWith('#{') ? name : '#{' + name + '}';
+  }));
+  const fields = [t.content,t.buttons,t.quickReplies,t.header,t.highlight,t.item,t.emphasizeTitle,t.emphasizeSubtitle,t.extra,t.ad];
+  return new Set(JSON.stringify(fields).match(/#\{[^}]+\}/g) || []);
+}
+
+async function checkDispatchTemplate(templateId: string, channel: string, config: DispatchTemplate): Promise<string | undefined> {
+  if (!channel) return '먼저 발신 채널을 선택해 주세요.';
+  const query = new URLSearchParams({templateId, channelId:channel});
+  const templates = await solapi('GET', '/kakao/v2/templates/sendable?' + query);
+  const t = Array.isArray(templates) && templates.find(item => item.templateId === templateId);
+  if (!t || ((t.channelId || t.pfId) && (t.channelId || t.pfId) !== channel))
+    return '선택한 채널에서 발송 가능한 승인 템플릿을 선택해 주세요.';
+  const variables = dispatchTemplateVariables(t);
+  if (variables.size !== config.variables.length || !config.variables.every(v => variables.has(v)))
+    return config.label + ' 템플릿에는 ' + config.variables.join(', ') + ' 변수가 필요해요.';
+}
+
+async function templateVariableNames(templateId: string, dispatch = false): Promise<Set<string> | null> {
+  const cacheKey = dispatch ? 'dispatch:' + templateId : templateId;
+  const hit = varCache.get(cacheKey);
   if (hit && Date.now() - hit.at < VAR_CACHE_MS) return hit.names;
   try {
     const detail = await solapi("GET", `/kakao/v2/templates/${encodeURIComponent(templateId)}`);
-    const found = JSON.stringify(detail ?? {}).match(/#\{[^}]+\}/g) ?? [];
-    const names = new Set(found);
+    const names = dispatch ? dispatchTemplateVariables(detail ?? {}) : new Set(JSON.stringify(detail ?? {}).match(/#\{[^}]+\}/g) ?? []);
     if (names.size === 0) return null; // 이상하면 거르지 않는다
-    varCache.set(templateId, { at: Date.now(), names });
+    varCache.set(cacheKey, { at: Date.now(), names });
     return names;
   } catch (e) {
     console.warn("[alimtalk] 템플릿 변수 조회 실패:", (e as any)?.message ?? e);
@@ -345,9 +379,16 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
   const cjKind=msg.kind==='cj_ready';
   const cjTemplate=(process.env.SOLAPI_CJ_READY_TEMPLATE_ID??'').trim();
   const cjLane=strictReceipt&&cjKind&&!msg.force&&process.env.CJ_READY_NOTICE_ENABLED==='true'&&!!cjTemplate&&msg.templateId===cjTemplate;
+  const dispatch = (msg.kind === 'partial_dispatch' || msg.kind === 'multi_box_dispatch') ? dispatchTemplates[msg.kind] : undefined;
   let attemptingPost=false;
   try {
-    if(strictReceipt||cjKind){
+    if (dispatch) {
+      if (!strictReceipt || msg.force || !s.enabled || !s[dispatch.setting] || msg.templateId !== s[dispatch.setting]) {
+        const detail = dispatch.label + ' 알림 설정 확인 필요';
+        logSend({...msg,status:'skip',detail});
+        return {ok:false,detail};
+      }
+    } else if(strictReceipt||cjKind){
       const readiness=cjLane?getCjReadyTransportReadiness():null;
       if(!readiness||!readiness.productionEndpoint||!readiness.pfidMatches||!readiness.senderValid){
         const detail='출고 알림 전용 설정 확인 필요';logSend({...msg,status:'skip',detail});return {ok:false,detail};
@@ -376,8 +417,8 @@ export async function sendAlimtalk(msg: SendOne): Promise<{ ok: boolean; detail:
 
     // 템플릿에 없는 변수는 빼고 보낸다.
     let variables = formatVariables(msg.variables);
-    const allowed = await templateVariableNames(msg.templateId);
-    const expectedShippingVars=['#{주문번호}','#{송장번호}'];
+    const allowed = await templateVariableNames(msg.templateId, !!dispatch);
+    const expectedShippingVars = dispatch?.variables ?? ['#{주문번호}','#{송장번호}'];
     if(strictReceipt&&(!allowed||allowed.size!==expectedShippingVars.length||!expectedShippingVars.every(k=>allowed.has(k)&&!!variables[k]))){
       const detail='출고 알림 템플릿 변수 확인 필요';logSend({...msg,phone,status:'skip',detail});return {ok:false,detail};
     }
@@ -623,9 +664,25 @@ export function registerAlimtalkRoutes(app: Express) {
   app.patch(
     "/api/admin/alimtalk",
     requireOwner,
-    safe((req, res) => {
-      const cur = getSettings();
+    safe(async (req, res) => {
       const b = req.body ?? {};
+      let cur = getSettings();
+      const channel = typeof b.pfId === 'string' ? b.pfId.trim() : cur.pfId;
+      const configs = Object.values(dispatchTemplates);
+      const selected = (config: DispatchTemplate) => typeof b[config.setting] === 'string' ? b[config.setting].trim() : cur[config.setting];
+      const changed = configs.filter(config => selected(config) && (selected(config) !== cur[config.setting] || channel !== cur.pfId));
+      if (changed.length) {
+        for (const config of changed) {
+          let reason;
+          try { reason = await checkDispatchTemplate(selected(config),channel,config); }
+          catch { return res.status(502).json({ message:'솔라피에서 출고 템플릿을 확인하지 못했습니다. 다시 시도해 주세요.' }); }
+          if (reason) return res.status(400).json({message:reason});
+        }
+        const latest = getSettings();
+        if (latest.pfId !== cur.pfId || configs.some(config => latest[config.setting] !== cur[config.setting]))
+          return res.status(409).json({ message:'발신 채널이나 출고 템플릿이 변경됐습니다. 새로고침해 주세요.' });
+        cur = latest;
+      }
       const next = {
         enabled: typeof b.enabled === "boolean" ? (b.enabled ? 1 : 0) : cur.enabled ? 1 : 0,
         pfId: typeof b.pfId === "string" ? b.pfId.trim() : cur.pfId,
@@ -640,7 +697,7 @@ export function registerAlimtalkRoutes(app: Express) {
       sqlite
         .prepare(
           `UPDATE alimtalk_settings
-              SET enabled = ?, pf_id = ?, sender = ?, tpl_order = ?, tpl_balance = ?,
+              SET enabled = ?, pf_id = ?, sender = ?, tpl_order = ?, tpl_balance = ?, tpl_partial_dispatch = ?, tpl_multi_box_dispatch = ?,
                   disable_sms = ?, test_phone = ?, alert_on = ?, alert_phone = ?, updated_at = ?
             WHERE id = 1`,
         )
@@ -650,6 +707,8 @@ export function registerAlimtalkRoutes(app: Express) {
           next.sender,
           next.tplOrder,
           next.tplBalance,
+          selected(dispatchTemplates.partial_dispatch),
+          selected(dispatchTemplates.multi_box_dispatch),
           next.disableSms,
           next.testPhone,
           next.alertOn,

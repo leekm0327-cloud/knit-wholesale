@@ -55,9 +55,32 @@
 .dispatch-form{margin-top:8px;padding:12px;border:1px solid #cbd5c5;border-radius:5px;background:#f7f9f5}
 .dispatch-form legend{margin-bottom:7px;font-weight:600}
 .dispatch-form label,.dispatch-form p{font-size:13px}
-.dispatch-parcel{display:grid;grid-template-columns:minmax(95px,1fr) minmax(80px,1.4fr);gap:6px;margin-top:8px}
+.dispatch-inline,.dispatch-parcels{margin-top:6px}
+.dispatch-inline fieldset,.dispatch-form fieldset{border:0;margin:0;padding:0;min-width:0}
+.dispatch-parcels{display:grid;grid-template-columns:minmax(80px,.8fr) minmax(0,1.8fr);gap:6px;align-items:start}
+.dispatch-parcels select,.dispatch-box input{width:100%;min-width:0}
+.dispatch-boxes{display:grid;gap:5px;min-width:0}
+.dispatch-box{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:5px}
+.dispatch-box button{min-height:44px;padding:5px}
+.dispatch-inline .dispatch-actions .ship-primary{flex:1}
+@media(max-width:380px){.dispatch-parcels{grid-template-columns:minmax(0,1fr)}}
 .dispatch-history{list-style:none;margin:8px 0;padding:0}
 .dispatch-history li{padding:7px 0;border-top:1px solid #d5dbd0}
 .dispatch-history time{margin-left:8px;font-size:12px;color:#56624f}
 .dispatch-history p{margin:3px 0}
 .ship-partner-filters{flex-wrap:wrap;gap:4px 12px}
+
+.order-dispatch-editor :is(.dispatch-form,.dispatch-actions,.dispatch-inline) :is(input,select,button) {
+  box-sizing:border-box;
+  max-width:100%;
+  min-height:44px;
+  padding:7px 10px;
+  border:1px solid #b9bdb4;
+  border-radius:4px;
+  background:white;
+  color:#252822;
+  font:inherit;
+}
+.order-dispatch-editor .dispatch-form label{display:grid;gap:4px}
+.order-dispatch-editor .dispatch-actions .ship-primary{background:#28352b;color:white;border-color:#28352b}
+.order-dispatch-editor button:disabled{opacity:.5}
